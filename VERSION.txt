@@ -1,0 +1,5 @@
+CNCT HCM Portal - DESIGN FINAL FIXED
+Home layout: approved reference
+Admin apps preserved
+
+APP_GROUPS_UPDATE=2026-08-08

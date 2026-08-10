@@ -1,0 +1,28 @@
+# CNCT HCM Portal - DEPLOYMENT COMPOSE
+# IMPORTANT: The hosting platform used by this project builds ./backend.
+# Keep backend/Dockerfile present. Do not point this service at frontend/.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      DATA_DIR: /app/data
+      SECRET_KEY: ${SECRET_KEY:-CHANGE-ME-TO-A-LONG-RANDOM-SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      DATABASE_URL: ${DATABASE_URL:-}
+      REQUIRE_POSTGRES: ${REQUIRE_POSTGRES:-0}
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
