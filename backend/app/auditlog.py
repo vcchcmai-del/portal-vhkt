@@ -1,4 +1,7 @@
-"""Ghi nhật ký thao tác. Gọi log_action() ngay sau khi một hành động có tác động thành công."""
+"""Ghi nhật ký thao tác.
+Gọi log_action() ngay sau khi một hành động có tác động thành công.
+"""
+
 from typing import Optional
 import logging
 
@@ -16,6 +19,7 @@ def client_ip(request: Optional[Request]) -> Optional[str]:
     if not request or not request.client:
         return None
 
+    # Ưu tiên IP thật khi chạy sau proxy/Caddy.
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -47,7 +51,7 @@ def log_action(
     )
 
     # Audit log là dữ liệu phụ.
-    # Không được để lỗi ghi nhật ký làm hỏng thao tác chính.
+    # Không để lỗi ghi nhật ký làm hỏng thao tác chính.
     try:
         db.add(row)
         db.commit()
