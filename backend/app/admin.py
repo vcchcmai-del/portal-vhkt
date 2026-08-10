@@ -505,12 +505,90 @@ def admin_update_person(pid: int, data: PersonIn, db: Session = Depends(get_db),
 
 
 @router.delete("/people/{pid}")
-def admin_delete_person(pid: int, db: Session = Depends(get_db), user=Depends(require_module("people", "delete")),
-                        request: Request = None):
+def admin_delete_person(
+    pid: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_module("people", "delete")),
+    request: Request = None,
+):
+    """Xoá nhân viên an toàn.
+
+    Không cho xoá cứng nếu nhân viên vẫn đang được dữ liệu khác tham chiếu.
+    Trước đây thao tác db.delete() trực tiếp có thể làm PostgreSQL trả lỗi
+    khóa ngoại, khiến giao diện chỉ hiện chung chung "Cơ sở dữ liệu đang bận...".
+    """
     row = get_or_404(db, models.Person, pid)
     label = row.full_name
-    db.delete(row); db.commit()
-    log_action(db, user, "delete", "people", pid, label, request=request)
+
+    # 1. Tài khoản đăng nhập đang liên kết với nhân viên.
+    linked_user = (
+        db.query(models.User)
+        .filter(models.User.person_id == pid)
+        .first()
+    )
+
+    if linked_user:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Không thể xoá nhân viên '{label}'. "
+                f"Nhân viên đang được liên kết với tài khoản "
+                f"'{linked_user.username}'. "
+                "Hãy vào Quản lý tài khoản, bỏ liên kết nhân viên "
+                "trước rồi mới xoá."
+            ),
+        )
+
+    # 2. Sáng kiến đang dùng nhân viên này làm tác giả.
+    linked_idea = (
+        db.query(models.Idea)
+        .filter(models.Idea.author_id == pid)
+        .first()
+    )
+
+    if linked_idea:
+        idea_title = (linked_idea.title or "Sáng kiến không có tiêu đề")[:150]
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Không thể xoá nhân viên '{label}'. "
+                f"Nhân viên đang là tác giả của sáng kiến '{idea_title}'. "
+                "Hãy đổi tác giả hoặc xử lý sáng kiến trước khi xoá."
+            ),
+        )
+
+    # 3. Chỉ xoá khi không còn tham chiếu.
+    try:
+        db.delete(row)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+
+        # Ghi lỗi thật vào Runtime Log để không còn bị che bởi thông báo chung.
+        import logging
+        logging.getLogger("portal.admin").exception(
+            "Lỗi xoá nhân viên: pid=%s, name=%s: %s",
+            pid,
+            label,
+            exc,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Không thể xoá nhân viên '{label}': {str(exc)[:500]}",
+        )
+
+    # Audit log là bước phụ; auditlog.py đã có cơ chế tự rollback nếu ghi log lỗi.
+    log_action(
+        db,
+        user,
+        "delete",
+        "people",
+        pid,
+        label,
+        request=request,
+    )
+
     return {"deleted": pid}
 
 
