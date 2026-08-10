@@ -1,19 +1,25 @@
 """Ghi nhật ký thao tác. Gọi log_action() ngay sau khi một hành động có tác động thành công."""
 from typing import Optional
+import logging
 
 from fastapi import Request
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .models import AuditLog, User
 
 
+log = logging.getLogger("portal.auditlog")
+
+
 def client_ip(request: Optional[Request]) -> Optional[str]:
     if not request or not request.client:
         return None
-    # Ưu tiên IP thật khi chạy sau proxy/Caddy, nếu không có thì lấy IP kết nối trực tiếp.
+
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
+
     return request.client.host
 
 
@@ -39,5 +45,33 @@ def log_action(
         detail=detail,
         ip_address=client_ip(request),
     )
-    db.add(row)
-    db.commit()
+
+    # Audit log là dữ liệu phụ.
+    # Không được để lỗi ghi nhật ký làm hỏng thao tác chính.
+    try:
+        db.add(row)
+        db.commit()
+
+    except SQLAlchemyError as exc:
+        db.rollback()
+
+        log.exception(
+            "Không ghi được audit log: "
+            "action=%s module=%s target_id=%s: %s",
+            action,
+            module,
+            target_id,
+            exc,
+        )
+
+    except Exception as exc:
+        db.rollback()
+
+        log.exception(
+            "Lỗi không xác định khi ghi audit log: "
+            "action=%s module=%s target_id=%s: %s",
+            action,
+            module,
+            target_id,
+            exc,
+        )
