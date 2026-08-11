@@ -1076,6 +1076,9 @@ const DASHBOARD_BOARDS = [
   { value: "KPI_VTT", label: "Nguyên nhân phạt — nhóm VTT" },
   { value: "WO", label: "Rời mạng CĐBR (tỷ lệ / số lượng KH)" },
   { value: "WO_TARGET", label: "Chỉ tiêu/Target Rời mạng CĐBR" },
+  { value: "WO_TINH", label: "Rời mạng CĐBR — số lượng theo tỉnh" },
+  { value: "WO_HUYEN_BD", label: "Rời mạng CĐBR — theo huyện (Bình Dương)" },
+  { value: "WO_HUYEN_BRVT", label: "Rời mạng CĐBR — theo huyện (Bà Rịa - Vũng Tàu)" },
 ];
 
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };

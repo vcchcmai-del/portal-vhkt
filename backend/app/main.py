@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-11.v25"
+PORTAL_BUILD = "2026-08-11.v26"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -648,6 +648,65 @@ def _nhom_phat_vtt_vtnet(db: Session):
     }
 
 
+def _ro_mang_dia_ban(db: Session):
+    """
+    Rời mạng CĐBR chi tiết theo địa bàn: số lượng theo tỉnh (WO_TINH), và số
+    lượng + tỷ lệ theo huyện cho Bình Dương / Bà Rịa - Vũng Tàu (WO_HUYEN_BD,
+    WO_HUYEN_BRVT). Bình quân tính động (không lưu sẵn) để không lệch khi có
+    kỳ mới. Chỉ gắn vào bảng WO.
+    """
+    tinh_rows, _ = _flat_metric_rows("WO_TINH", db)
+    huyen_bd_rows, _ = _flat_metric_rows("WO_HUYEN_BD", db)
+    huyen_brvt_rows, _ = _flat_metric_rows("WO_HUYEN_BRVT", db)
+    if not tinh_rows and not huyen_bd_rows and not huyen_brvt_rows:
+        return None
+
+    def _binh_quan(vals):
+        vals = [v for v in vals if v is not None]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    def _theo_tinh(rows):
+        theo: dict = {}
+        for r in rows:
+            theo.setdefault(r["don_vi"], {})[r["ky"]] = r["gia_tri"]
+        out = []
+        for ten, theo_ky in theo.items():
+            out.append({
+                "ten": ten,
+                "theo_thang": [{"ky": k, "gia_tri": theo_ky[k]} for k in sorted(theo_ky)],
+                "binh_quan": _binh_quan(theo_ky.values()),
+            })
+        return sorted(out, key=lambda x: x["ten"])
+
+    def _theo_huyen(rows, ten_tinh):
+        theo: dict = {}
+        for r in rows:
+            d = theo.setdefault(r["don_vi"], {"sl": {}, "tl": {}, "thue_bao": None})
+            if r["chi_tieu"] == "Số lượng rời mạng":
+                d["sl"][r["ky"]] = r["gia_tri"]
+            elif r["chi_tieu"] == "Tỷ lệ rời mạng":
+                d["tl"][r["ky"]] = r["gia_tri"]
+            elif r["chi_tieu"] == "Thuê bao FTTH":
+                d["thue_bao"] = r["gia_tri"]
+        out = []
+        for huyen, d in theo.items():
+            ky_sap_xep = sorted(d["tl"].keys())
+            ky_3_thang_gan_nhat = ky_sap_xep[-3:]
+            out.append({
+                "tinh": ten_tinh, "huyen": huyen, "thue_bao": d["thue_bao"],
+                "sl_theo_thang": [{"ky": k, "gia_tri": d["sl"].get(k)} for k in ky_sap_xep],
+                "tl_theo_thang": [{"ky": k, "gia_tri": d["tl"].get(k)} for k in ky_sap_xep],
+                "tl_binh_quan": _binh_quan(d["tl"].values()),
+                "tl_binh_quan_3_thang": _binh_quan(d["tl"].get(k) for k in ky_3_thang_gan_nhat),
+            })
+        return sorted(out, key=lambda x: x["huyen"])
+
+    return {
+        "tinh": _theo_tinh(tinh_rows),
+        "huyen": _theo_huyen(huyen_bd_rows, "Bình Dương") + _theo_huyen(huyen_brvt_rows, "Bà Rịa - Vũng Tàu"),
+    }
+
+
 @app.get("/api/dashboard/{board}", tags=["Dashboard"])
 def dashboard(board: str, db: Session = Depends(get_db)):
     """
@@ -665,7 +724,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
     # bảng Metric cũ (nhập tay rời rạc, dễ lệch với dữ liệu tuyển dụng thật).
     if board == "HIRE":
         return {"board": board, "series": _hire_series_that(db), "source": "database",
-                "compare": [], "canh_bao_trung_tam": [], "nhom_phat": None}
+                "compare": [], "canh_bao_trung_tam": [], "nhom_phat": None, "dia_ban": None}
 
     rows, nguon = _flat_metric_rows(board, db)
     if not rows:
@@ -728,6 +787,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
         "board": board, "series": list(buckets.values()), "source": nguon,
         "compare": compare, "canh_bao_trung_tam": canh_bao_trung_tam,
         "nhom_phat": _nhom_phat_vtt_vtnet(db) if board == "KPI" else None,
+        "dia_ban": _ro_mang_dia_ban(db) if board == "WO" else None,
     }
 
 

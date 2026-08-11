@@ -193,6 +193,9 @@ BOARDS = {
     # Chi tiết nguyên nhân phạt theo nhóm VTT / VTNet — mỗi dòng là một nguyên
     # nhân (chi_tieu), giá trị đơn vị triệu đồng.
     "KPI_VTT", "KPI_VTNET",
+    # Rời mạng CĐBR theo địa bàn: số lượng theo tỉnh, số lượng+tỷ lệ theo huyện
+    # (Bình Dương, Bà Rịa - Vũng Tàu) — đơn vị (unit_name) = tên tỉnh/huyện.
+    "WO_TINH", "WO_HUYEN_BD", "WO_HUYEN_BRVT",
 }
 ROLES = {"admin", "editor", "staff"}
 MAX_ROWS = 2000

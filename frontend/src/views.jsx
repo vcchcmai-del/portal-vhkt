@@ -12,8 +12,8 @@ import {
   Activity, CalendarDays, ClipboardList, Coins, ShieldCheck,
 } from "lucide-react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
-  LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend,
+  Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 import { api, adapt, useRemote } from "./api";
@@ -948,9 +948,9 @@ function seriesMotChiTieu(series, chiTieu) {
 /**
  * Biểu đồ xu thế theo tháng: Target (nếu có) + năm hiện tại + cùng kỳ năm trước,
  * dựng từ dữ liệu "compare" (đã đối chiếu sẵn ở máy chủ). Dùng cho Tiền phạt/Doanh thu
- * và Tỷ lệ rời mạng CĐBR.
+ * và Tỷ lệ rời mạng CĐBR. `hienSo` bật hiển thị số ngay trên biểu đồ (định dạng theo `dinhDang`).
  */
-function TrendChart({ compare, chiTieu }) {
+function TrendChart({ compare, chiTieu, hienSo = true, dinhDang = (v) => (v == null ? "" : `${Number(v).toFixed(2)}%`) }) {
   const rows = (compare || []).filter((c) => !chiTieu || c.chi_tieu === chiTieu);
   if (!rows.length) return <Empty title="Chưa có số liệu đối chiếu." hint="Cần nhập cả bảng chính và bảng Target." />;
 
@@ -961,6 +961,7 @@ function TrendChart({ compare, chiTieu }) {
   const nhanNamNay = String(namMoiNhat);
   const nhanNamTruoc = String(namMoiNhat - 1);
   const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
+  const nhanSo = { position: "top", fontSize: 10.5, formatter: dinhDang };
 
   const data = cuaNamNay
     .sort((a, b) => a.ky.localeCompare(b.ky))
@@ -972,16 +973,20 @@ function TrendChart({ compare, chiTieu }) {
     }));
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data}>
+    <ResponsiveContainer width="100%" height={320}>
+      <LineChart data={data} margin={{ top: 22, right: 12, left: 4, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
         <XAxis dataKey="name" {...truc} />
         <YAxis {...truc} />
-        <Tooltip {...tooltipStyle} />
+        <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
         <Legend wrapperStyle={{ fontSize: 12.5 }} />
         <Line type="monotone" dataKey="Target" stroke="#A9A3A5" strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
-        <Line type="monotone" dataKey={nhanNamTruoc} stroke={RED} strokeDasharray="5 3" dot={{ r: 3 }} strokeWidth={2} />
-        <Line type="monotone" dataKey={nhanNamNay} stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5} />
+        <Line type="monotone" dataKey={nhanNamTruoc} stroke={RED} strokeDasharray="5 3" dot={{ r: 3 }} strokeWidth={2}>
+          {hienSo && <LabelList dataKey={nhanNamTruoc} {...nhanSo} fill={RED} />}
+        </Line>
+        <Line type="monotone" dataKey={nhanNamNay} stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5}>
+          {hienSo && <LabelList dataKey={nhanNamNay} {...nhanSo} fill="#0E6CD6" />}
+        </Line>
       </LineChart>
     </ResponsiveContainer>
   );
@@ -1005,41 +1010,237 @@ function CanhBaoTrungTam({ danhSach }) {
 
 const MAU_TRON = [RED, "#0E6CD6", "#F2A007", "#0E9C99", "#7C3AED", "#B45309", "#0A7A50", "#DB2777", "#4B5563", "#65A30D", "#DC2626", "#0891B2", "#7E22CE", "#CA8A04", "#059669"];
 
+/** Biểu đồ cột số lượng KH rời mạng theo tỉnh, mỗi tỉnh một màu riêng. */
+function SoLuongRoMangTheoTinh({ theoTinh }) {
+  if (!theoTinh?.length) return null;
+  const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
+  const kyDuNhat = [...new Set(theoTinh.flatMap((t) => t.theo_thang.map((r) => r.ky)))].sort();
+  const data = kyDuNhat.map((ky) => {
+    const hang = { name: `T${parseInt(ky.split("-")[1], 10)}` };
+    theoTinh.forEach((t) => { hang[t.ten] = t.theo_thang.find((r) => r.ky === ky)?.gia_tri ?? null; });
+    return hang;
+  });
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
+        <XAxis dataKey="name" {...truc} />
+        <YAxis {...truc} />
+        <Tooltip {...tooltipStyle} formatter={(v) => v?.toLocaleString("vi-VN")} />
+        <Legend wrapperStyle={{ fontSize: 12.5 }} />
+        {theoTinh.map((t, i) => (
+          <Bar key={t.ten} dataKey={t.ten} name={t.ten} radius={[4, 4, 0, 0]} fill={MAU_VE[i % MAU_VE.length]} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Bảng chi tiết rời mạng theo huyện, gộp nhóm theo tỉnh — kèm thuê bao FTTH và bình quân. */
+function BangRoMangTheoHuyen({ diaBan }) {
+  if (!diaBan?.tinh?.length && !diaBan?.huyen?.length) return null;
+  const kyTinh = [...new Set((diaBan.tinh || []).flatMap((t) => t.theo_thang.map((r) => r.ky)))].sort();
+  const kyHuyen = [...new Set((diaBan.huyen || []).flatMap((h) => h.tl_theo_thang.map((r) => r.ky)))].sort();
+  const theoThang = (thang, ky) => (thang || []).find((r) => r.ky === ky)?.gia_tri;
+  const nhomTheoTinh = {};
+  (diaBan.huyen || []).forEach((h) => { (nhomTheoTinh[h.tinh] ||= []).push(h); });
+
+  return (
+    <>
+      {diaBan.tinh?.length > 0 && (
+        <Card title="Số lượng KH rời mạng theo tỉnh" icon={MapPin} pad={false}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Tỉnh</th>
+                  {kyTinh.map((k) => <th key={k} style={{ textAlign: "right" }}>{`T${parseInt(k.split("-")[1], 10)}`}</th>)}
+                  <th style={{ textAlign: "right" }}>Bình quân</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diaBan.tinh.map((t) => (
+                  <tr key={t.ten}>
+                    <td style={{ fontWeight: 600 }}>{t.ten}</td>
+                    {kyTinh.map((k) => <td key={k} className="mono" style={{ textAlign: "right" }}>{theoThang(t.theo_thang, k)?.toLocaleString("vi-VN") ?? "—"}</td>)}
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{t.binh_quan?.toLocaleString("vi-VN") ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {Object.entries(nhomTheoTinh).map(([tinh, danhSach]) => (
+        <Card key={tinh} title={`Rời mạng CĐBR theo huyện — ${tinh}`} icon={MapPin} pad={false}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Huyện</th>
+                  <th style={{ textAlign: "right" }}>Thuê bao FTTH</th>
+                  {kyHuyen.map((k) => <th key={`sl-${k}`} style={{ textAlign: "right" }}>{`SL T${parseInt(k.split("-")[1], 10)}`}</th>)}
+                  {kyHuyen.map((k) => <th key={`tl-${k}`} style={{ textAlign: "right" }}>{`TL T${parseInt(k.split("-")[1], 10)}`}</th>)}
+                  <th style={{ textAlign: "right" }}>BQ tỷ lệ</th>
+                  <th style={{ textAlign: "right" }}>BQ 3 tháng</th>
+                </tr>
+              </thead>
+              <tbody>
+                {danhSach.map((h) => (
+                  <tr key={h.huyen}>
+                    <td style={{ fontWeight: 600 }}>{h.huyen}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{h.thue_bao?.toLocaleString("vi-VN") ?? "—"}</td>
+                    {kyHuyen.map((k) => <td key={`sl-${k}`} className="mono" style={{ textAlign: "right" }}>{theoThang(h.sl_theo_thang, k)?.toLocaleString("vi-VN") ?? "—"}</td>)}
+                    {kyHuyen.map((k) => {
+                      const v = theoThang(h.tl_theo_thang, k);
+                      return <td key={`tl-${k}`} className="mono" style={{ textAlign: "right", color: v != null && v > 0.61 ? RED_DARK : undefined }}>{v != null ? `${v.toFixed(2)}%` : "—"}</td>;
+                    })}
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{h.tl_binh_quan != null ? `${h.tl_binh_quan.toFixed(2)}%` : "—"}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{h.tl_binh_quan_3_thang != null ? `${h.tl_binh_quan_3_thang.toFixed(2)}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+/** Ghi chú kỳ gần nhất trên các biểu đồ lũy kế theo tháng — kỳ cuối là số lũy kế đến hết tháng đó, không phải phát sinh riêng trong tháng. */
+function GhiChuLuyKe({ kyGanNhat }) {
+  if (!kyGanNhat) return null;
+  const thang = parseInt((kyGanNhat.split("-")[1] || ""), 10);
+  return (
+    <p className="muted" style={{ fontSize: 12, marginTop: 8, fontStyle: "italic" }}>
+      * Số liệu {`T${thang < 10 ? "0" + thang : thang}`} là lũy kế đến hết tháng {thang < 10 ? "0" + thang : thang},
+      không phải số phát sinh riêng trong tháng.
+    </p>
+  );
+}
+
 /** Biểu đồ xu thế tổng tiền phạt 2 nhóm VTT/VTNet theo tháng (triệu đồng). */
 function NhomPhatTrend({ xuHuong }) {
   if (!xuHuong?.length) return null;
   const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
   const data = xuHuong.map((r) => ({ ...r, name: `T${parseInt(r.name.split("-")[1], 10)}` }));
+  const nhanSo = { position: "top", fontSize: 10.5, formatter: (v) => v.toLocaleString("vi-VN") };
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
-        <XAxis dataKey="name" {...truc} />
-        <YAxis {...truc} label={{ value: "Triệu đồng", angle: -90, position: "insideLeft", fontSize: 11, fill: "#A9A3A5" }} />
-        <Tooltip {...tooltipStyle} />
-        <Legend wrapperStyle={{ fontSize: 12.5 }} />
-        <Line type="monotone" dataKey="VTNet" stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5} />
-        <Line type="monotone" dataKey="VTT" stroke="#F2A007" dot={{ r: 3 }} strokeWidth={2.5} />
-      </LineChart>
-    </ResponsiveContainer>
+    <>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={data} margin={{ top: 22, right: 14, left: 4, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
+          <XAxis dataKey="name" {...truc} />
+          <YAxis {...truc} label={{ value: "Triệu đồng", angle: -90, position: "insideLeft", fontSize: 11, fill: "#A9A3A5" }} />
+          <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu`} />
+          <Legend wrapperStyle={{ fontSize: 12.5 }} />
+          <Line type="monotone" dataKey="VTNet" stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5}>
+            <LabelList dataKey="VTNet" {...nhanSo} fill="#0E6CD6" />
+          </Line>
+          <Line type="monotone" dataKey="VTT" stroke="#F2A007" dot={{ r: 3 }} strokeWidth={2.5}>
+            <LabelList dataKey="VTT" {...nhanSo} fill="#B45309" />
+          </Line>
+        </LineChart>
+      </ResponsiveContainer>
+      <GhiChuLuyKe kyGanNhat={xuHuong[xuHuong.length - 1]?.name} />
+    </>
   );
 }
 
-/** Biểu đồ tròn cơ cấu nguyên nhân phạt của một nhóm (VTT hoặc VTNet), kỳ gần nhất. */
+/**
+ * Biểu đồ tròn cơ cấu nguyên nhân phạt của một nhóm (VTT hoặc VTNet), kỳ gần nhất.
+ * Sắp xếp giảm dần, chú giải riêng bên dưới (giãn dòng) thay vì nhãn chồng nhau trên lát cắt
+ * — nhóm có tới 14-15 nguyên nhân nên nhãn trực tiếp trên biểu đồ tròn rất dễ đè lên nhau.
+ */
 function NhomPhatPie({ title, coCau, ky }) {
   if (!coCau?.length) return null;
-  const tong = coCau.reduce((s, x) => s + x.value, 0);
+  const sapXep = [...coCau].sort((a, b) => b.value - a.value);
+  const tong = sapXep.reduce((s, x) => s + x.value, 0);
   return (
     <Card title={`${title}${ky ? ` — kỳ ${ky}` : ""}`} pad={false}>
-      <ResponsiveContainer width="100%" height={280}>
-        <PieChart>
-          <Pie data={coCau} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={95}
-            label={({ name, value }) => `${name} ${Math.round((value / tong) * 100)}%`} labelLine={{ strokeWidth: 1 }}>
-            {coCau.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
-          </Pie>
-          <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu`} />
-        </PieChart>
-      </ResponsiveContainer>
+      <div style={{ padding: "8px 18px 18px" }}>
+        <ResponsiveContainer width="100%" height={300}>
+          <PieChart>
+            <Pie data={sapXep} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={100} paddingAngle={1.5}>
+              {sapXep.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
+            </Pie>
+            <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu (${Math.round((v / tong) * 100)}%)`} />
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "9px 16px", marginTop: 10 }}>
+          {sapXep.map((x, i) => (
+            <div key={x.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: MAU_TRON[i % MAU_TRON.length], flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
+              <b className="mono">{Math.round((x.value / tong) * 100)}%</b>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Bảng số liệu phạt theo tháng: phạt VTT/VTNet, tổng, lũy kế tổng phạt, tỷ lệ
+ * phạt/doanh thu từng tháng và tỷ lệ phạt trung bình lũy kế (trung bình cộng
+ * các tháng đã có số liệu, không phải tổng — tỷ lệ % không cộng dồn được).
+ */
+function BangChiTietPhat({ xuHuong, compare }) {
+  if (!xuHuong?.length) return null;
+  const tiLeTheoKy = {};
+  (compare || []).forEach((c) => { if (c.chi_tieu === "Tiền phạt/Doanh thu") tiLeTheoKy[c.ky] = c.thuc_hien; });
+
+  let luyKe = 0;
+  let tongTiLe = 0;
+  let soThangCoTiLe = 0;
+  const hang = [...xuHuong].sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
+    const tong = (r.VTT || 0) + (r.VTNet || 0);
+    luyKe += tong;
+    const tiLe = tiLeTheoKy[r.name];
+    if (tiLe != null) { tongTiLe += tiLe; soThangCoTiLe += 1; }
+    return {
+      ky: r.name, thang: `T${parseInt(r.name.split("-")[1], 10)}`,
+      vtt: r.VTT || 0, vtnet: r.VTNet || 0, tong, luyKe, tiLe,
+      tiLeTbLuyKe: soThangCoTiLe ? tongTiLe / soThangCoTiLe : null,
+    };
+  });
+
+  return (
+    <Card title="Số liệu chi tiết phạt theo tháng" icon={ClipboardList} pad={false}>
+      <div style={{ overflowX: "auto" }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Tháng</th>
+              <th style={{ textAlign: "right" }}>Phạt VTT (triệu)</th>
+              <th style={{ textAlign: "right" }}>Phạt VTNet (triệu)</th>
+              <th style={{ textAlign: "right" }}>Tổng phạt (triệu)</th>
+              <th style={{ textAlign: "right" }}>Lũy kế tổng phạt (triệu)</th>
+              <th style={{ textAlign: "right" }}>Tỷ lệ phạt/DT</th>
+              <th style={{ textAlign: "right" }}>TB lũy kế tỷ lệ phạt/DT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {hang.map((h) => (
+              <tr key={h.ky}>
+                <td className="mono">{h.thang}</td>
+                <td className="mono" style={{ textAlign: "right" }}>{h.vtt.toLocaleString("vi-VN")}</td>
+                <td className="mono" style={{ textAlign: "right" }}>{h.vtnet.toLocaleString("vi-VN")}</td>
+                <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{h.tong.toLocaleString("vi-VN")}</td>
+                <td className="mono" style={{ textAlign: "right", color: RED_DARK }}>{h.luyKe.toLocaleString("vi-VN")}</td>
+                <td className="mono" style={{ textAlign: "right" }}>{h.tiLe != null ? `${h.tiLe.toFixed(2)}%` : "—"}</td>
+                <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{h.tiLeTbLuyKe != null ? `${h.tiLeTbLuyKe.toFixed(2)}%` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ padding: "0 18px 16px" }}>
+        <GhiChuLuyKe kyGanNhat={hang[hang.length - 1]?.ky} />
+      </div>
     </Card>
   );
 }
@@ -1119,17 +1320,21 @@ export function DashView() {
                 <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" coCau={duLieu.nhom_phat.co_cau_vtnet} ky={duLieu.nhom_phat.ky_vtnet} />
                 <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" coCau={duLieu.nhom_phat.co_cau_vtt} ky={duLieu.nhom_phat.ky_vtt} />
               </div>
+              <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} />
             </>
           )}
         </>
       ) : laWO ? (
         <>
           <Card title="Số lượng KH rời mạng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <BieuDo kieu="cot-don" series={seriesMotChiTieu(series, "Số lượng KH rời mạng")} />
+            {duLieu?.dia_ban?.tinh?.length > 0
+              ? <SoLuongRoMangTheoTinh theoTinh={duLieu.dia_ban.tinh} />
+              : <BieuDo kieu="cot-don" series={seriesMotChiTieu(series, "Số lượng KH rời mạng")} />}
           </Card>
           <Card title="Tỷ lệ rời mạng CĐBR" icon={board.icon}>
             <TrendChart compare={duLieu?.compare} chiTieu="Tỷ lệ rời mạng CĐBR" />
           </Card>
+          <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
         </>
       ) : (
         <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
