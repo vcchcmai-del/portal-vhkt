@@ -80,7 +80,7 @@ KINDS = {
         "label": "Số liệu Dashboard",
         "key_col": None,
         "columns": [
-            ("bang", "Bảng: KPI / WO / PAKH / FUEL / HIRE / OUTPUT / NETWORK / VHKT / VHKT_TARGET", True, "WO"),
+            ("bang", "Bảng: KPI(=Tiền phạt & Doanh thu) / WO(=Rời mạng CĐBR) / PAKH / FUEL / OUTPUT / NETWORK / VHKT / VHKT_TARGET", True, "WO"),
             ("ky", "Kỳ số liệu", True, "2026-08"),
             ("chi_tieu", "Tên chỉ tiêu", True, "Hoàn thành"),
             ("don_vi", "Đơn vị / tổ (nếu có)", False, "Tổ KV1"),

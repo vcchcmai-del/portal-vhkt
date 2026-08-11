@@ -1061,6 +1061,121 @@ export function AdminNotifications() {
   );
 }
 
+/* ==================================== QUẢN LÝ DASHBOARD — THÊM THỦ CÔNG */
+
+const DASHBOARD_BOARDS = [
+  { value: "PAKH", label: "PAKH — Phản ánh khách hàng" },
+  { value: "FUEL", label: "Xăng dầu" },
+  { value: "OUTPUT", label: "Sản lượng" },
+  { value: "NETWORK", label: "Chất lượng mạng" },
+  { value: "VHKT", label: "KPI vận hành (Cell*h, ksubmin, TKM, XLSC...)" },
+  { value: "VHKT_TARGET", label: "Chỉ tiêu/Target KPI vận hành" },
+  { value: "KPI", label: "Tiền phạt & Doanh thu" },
+  { value: "WO", label: "Rời mạng CĐBR (tỷ lệ / số lượng KH)" },
+];
+
+const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };
+
+export function AdminMetrics() {
+  const { rows, loading, error, reload } = useAdminList("/api/admin/metrics");
+  const [edit, setEdit] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [filterBoard, setFilterBoard] = useState("");
+  const [search, setSearch] = useState("");
+
+  const boardLabel = (v) => DASHBOARD_BOARDS.find((b) => b.value === v)?.label || v;
+
+  const filteredRows = useMemo(() => {
+    let r = rows;
+    if (filterBoard) r = r.filter((x) => x.board === filterBoard);
+    const term = search.trim().toLowerCase();
+    if (term) r = r.filter((x) => [x.period, x.label, x.unit_name].filter(Boolean).join(" ").toLowerCase().includes(term));
+    return r;
+  }, [rows, filterBoard, search]);
+
+  const save = async () => {
+    if (!edit.board) { setMsg("Chưa chọn bảng."); return; }
+    if (!edit.period?.trim()) { setMsg("Chưa nhập kỳ (ví dụ 2026-08)."); return; }
+    if (!edit.label?.trim()) { setMsg("Chưa nhập tên chỉ tiêu."); return; }
+    if (edit.value === "" || edit.value == null || isNaN(Number(edit.value))) { setMsg("Giá trị phải là số."); return; }
+    setSaving(true); setMsg("");
+    try {
+      const payload = { ...edit, value: Number(edit.value) };
+      if (edit.id) await api.put(`/api/admin/metrics/${edit.id}`, payload);
+      else await api.post("/api/admin/metrics", payload);
+      setEdit(null); reload();
+    } catch (e) { setMsg(e.message); }
+    setSaving(false);
+  };
+
+  const remove = async (r) => {
+    if (!window.confirm(`Xoá "${r.label}" (${r.period})?`)) return;
+    await api.del(`/api/admin/metrics/${r.id}`).catch((e) => window.alert(e.message));
+    reload();
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Toolbar title="Số liệu Dashboard" onReload={reload} addLabel="Thêm chỉ số"
+        onAdd={() => { setEdit({ ...blankMetric }); setMsg(""); }}
+        hint="Kỳ nhập dạng YYYY-MM, ví dụ 2026-08. Đặt cùng tên chỉ tiêu + cùng kỳ ở bảng Target thì Dashboard tự đối chiếu." />
+
+      <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+        <select className="inp" style={{ maxWidth: 260 }} value={filterBoard} onChange={(e) => setFilterBoard(e.target.value)}>
+          <option value="">Tất cả các bảng</option>
+          {DASHBOARD_BOARDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+        </select>
+        <input className="inp" style={{ maxWidth: 260 }} placeholder="🔎 Tìm theo kỳ / chỉ tiêu / đơn vị…"
+          value={search} onChange={(e) => setSearch(e.target.value)} />
+      </div>
+
+      <Card pad={false}>
+        <Status loading={loading} error={error} empty={!loading && !error && filteredRows.length === 0} />
+        {filteredRows.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr><th>Bảng</th><th>Kỳ</th><th>Chỉ tiêu</th><th>Đơn vị</th><th style={{ textAlign: "right" }}>Giá trị</th><th style={{ textAlign: "right" }}>Thao tác</th></tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((r) => (
+                  <tr key={r.id}>
+                    <td><span className="tag tag-grey">{boardLabel(r.board)}</span></td>
+                    <td className="mono">{r.period}</td>
+                    <td style={{ fontWeight: 600 }}>{r.label}</td>
+                    <td className="muted">{r.unit_name || "—"}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{r.value?.toLocaleString("vi-VN")}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button className="btn btn-sm" onClick={() => setEdit({ ...r, value: String(r.value) })}><Edit3 size={13} /> Sửa</button>{" "}
+                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {edit && (
+        <Modal title={edit.id ? "Sửa chỉ số" : "Thêm chỉ số"} saving={saving} onSave={save} onClose={() => setEdit(null)}>
+          {msg && <p style={{ background: "#FBF4F5", color: RED_DARK, padding: "9px 12px", borderRadius: 9, fontSize: 13, marginBottom: 14 }}>{msg}</p>}
+          <Field label="Bảng">
+            <select className="inp" value={edit.board} onChange={(e) => setEdit({ ...edit, board: e.target.value })}>
+              {DASHBOARD_BOARDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Kỳ (YYYY-MM)"><input className="inp" value={edit.period || ""} onChange={(e) => setEdit({ ...edit, period: e.target.value })} placeholder="2026-08" /></Field>
+          <Field label="Tên chỉ tiêu"><input className="inp" value={edit.label || ""} onChange={(e) => setEdit({ ...edit, label: e.target.value })} placeholder="Cell*h" /></Field>
+          <Field label="Đơn vị / trung tâm (nếu có)"><input className="inp" value={edit.unit_name || ""} onChange={(e) => setEdit({ ...edit, unit_name: e.target.value })} placeholder="Trung tâm Thới Hòa" /></Field>
+          <Field label="Giá trị"><input className="inp" type="number" value={edit.value ?? ""} onChange={(e) => setEdit({ ...edit, value: e.target.value })} /></Field>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------- Danh mục khu quản trị */
 
 export const ADMIN_PAGES = [
@@ -1106,7 +1221,9 @@ export const ADMIN_PAGES = [
     group: "schedule", groupLabel: "Lịch công tác tuần", groupIcon: CalendarClock },
   { id: "adm-schedule-import", label: "Nhập từ Excel", icon: Upload, comp: () => <AdminImport fixedKind="schedule" />, module: "events",
     group: "schedule", groupLabel: "Lịch công tác tuần", groupIcon: CalendarClock },
-  { id: "adm-dashboard-import", label: "Nhập số liệu Dashboard", icon: Table2, comp: () => <AdminImport fixedKind="metrics" />, module: "import",
+  { id: "adm-dashboard-manual", label: "Thêm thủ công", icon: Table2, comp: AdminMetrics, module: "import",
+    group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2 },
+  { id: "adm-dashboard-import", label: "Nhập từ Excel", icon: Upload, comp: () => <AdminImport fixedKind="metrics" />, module: "import",
     group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2 },
   { id: "adm-sheets", label: "Nguồn dữ liệu Sheet", icon: Database, comp: AdminSheets, module: "sheets",
     group: "sysconfig", groupLabel: "Cấu hình website", groupIcon: Settings },

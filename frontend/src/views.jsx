@@ -743,15 +743,15 @@ function DocRow({ d, dau }) {
 // Bảy bảng số liệu, kèm cách vẽ và dữ liệu mẫu dùng khi chưa có số thật
 const BOARDS = {
   KPI: {
-    nhan: "KPI", ma: "KPI", icon: BarChart3,
-    tieuDe: "Kế hoạch và thực hiện KPI theo tháng",
-    mau: D.D_KPI.map((r) => ({ name: r.m, "Kế hoạch": r.kh, "Thực hiện": r.th })),
+    nhan: "Tiền phạt & Doanh thu", ma: "KPI", icon: Coins,
+    tieuDe: "Tiền phạt và doanh thu theo tháng",
+    mau: [],
     ve: "cot-kep",
   },
   WO: {
-    nhan: "WO", ma: "WO", icon: Wrench,
-    tieuDe: "Work order: được giao và hoàn thành",
-    mau: D.D_WO.map((r) => ({ name: r.m, "Được giao": r.giao, "Hoàn thành": r.xong })),
+    nhan: "Rời mạng CĐBR", ma: "WO", icon: Users,
+    tieuDe: "Tỷ lệ và số lượng khách hàng rời mạng CĐBR — theo tỉnh, trung tâm",
+    mau: [],
     ve: "cot-kep",
   },
   PAKH: {

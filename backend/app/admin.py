@@ -1274,6 +1274,80 @@ def admin_preview_sheet(data: SheetIn, _=Depends(require_module("sheets", "view"
     }
 
 
+# ========================================= Quản lý dashboard — thêm thủ công
+
+def metric_out(m: models.Metric):
+    return {"id": m.id, "board": m.board, "period": m.period, "label": m.label,
+            "unit_name": m.unit_name, "value": m.value}
+
+
+class MetricIn(BaseModel):
+    board: Optional[str] = None
+    period: Optional[str] = None
+    label: Optional[str] = None
+    unit_name: Optional[str] = None
+    value: Optional[float] = None
+
+
+@router.get("/metrics")
+def admin_list_metrics(board: Optional[str] = None, db: Session = Depends(get_db),
+                       _=Depends(require_module("import", "view"))):
+    q = db.query(models.Metric)
+    if board:
+        q = q.filter(models.Metric.board == board.strip().upper())
+    rows = q.order_by(models.Metric.board, models.Metric.period.desc()).limit(1000).all()
+    return [metric_out(m) for m in rows]
+
+
+@router.post("/metrics")
+def admin_create_metric(data: MetricIn, db: Session = Depends(get_db),
+                        user=Depends(require_module("import", "create")), request: Request = None):
+    if not (data.board or "").strip():
+        raise HTTPException(400, "Chưa chọn bảng.")
+    if not (data.period or "").strip():
+        raise HTTPException(400, "Chưa nhập kỳ.")
+    if not (data.label or "").strip():
+        raise HTTPException(400, "Chưa nhập tên chỉ tiêu.")
+    if data.value is None:
+        raise HTTPException(400, "Chưa nhập giá trị.")
+    row = models.Metric(
+        board=data.board.strip().upper(), period=data.period.strip(), label=data.label.strip(),
+        unit_name=(data.unit_name or "").strip() or None, value=data.value,
+    )
+    db.add(row); db.commit(); db.refresh(row)
+    log_action(db, user, "create", "import", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
+    return metric_out(row)
+
+
+@router.put("/metrics/{item_id}")
+def admin_update_metric(item_id: int, data: MetricIn, db: Session = Depends(get_db),
+                        user=Depends(require_module("import", "update")), request: Request = None):
+    row = db.get(models.Metric, item_id)
+    if not row:
+        raise HTTPException(404, "Không tìm thấy chỉ số.")
+    vals = data.model_dump(exclude_unset=True)
+    if vals.get("board"):
+        vals["board"] = vals["board"].strip().upper()
+    for k, v in vals.items():
+        if v is not None and hasattr(row, k):
+            setattr(row, k, v)
+    db.commit(); db.refresh(row)
+    log_action(db, user, "update", "import", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
+    return metric_out(row)
+
+
+@router.delete("/metrics/{item_id}")
+def admin_delete_metric(item_id: int, db: Session = Depends(get_db),
+                        user=Depends(require_module("import", "delete")), request: Request = None):
+    row = db.get(models.Metric, item_id)
+    if not row:
+        raise HTTPException(404, "Không tìm thấy chỉ số.")
+    nhan = f"{row.board}/{row.period}/{row.label}"
+    db.delete(row); db.commit()
+    log_action(db, user, "delete", "import", item_id, nhan, request=request)
+    return {"deleted": item_id}
+
+
 # ========================================= Nhập dữ liệu hàng loạt
 
 from fastapi.responses import PlainTextResponse   # noqa: E402
