@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-11.v19"
+PORTAL_BUILD = "2026-08-11.v20"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -557,40 +557,78 @@ def list_people(q: Optional[str] = None, dept: Optional[str] = None, db: Session
 
 # ---------------------------------------------------------------- Dashboard
 
+def _flat_metric_rows(board: str, db: Session):
+    """
+    Danh sách phẳng {ky, chi_tieu, don_vi, gia_tri} của một bảng, ưu tiên
+    Google Sheet nếu đã cấu hình, không thì đọc bảng Metric. Dùng chung cho
+    cả phần vẽ biểu đồ (series) lẫn phần đối chiếu target/cùng kỳ (compare).
+    """
+    from .sheets import get_data
+    sheet_rows = [r for r in get_data(db, "dashboard", models) if r.get("bang") == board]
+    if sheet_rows:
+        return [{"ky": r.get("ky"), "chi_tieu": r.get("chi_tieu"),
+                 "don_vi": r.get("don_vi"), "gia_tri": r.get("gia_tri")} for r in sheet_rows], "sheet"
+
+    rows = db.query(models.Metric).filter(models.Metric.board == board).order_by(models.Metric.period).all()
+    return [{"ky": r.period, "chi_tieu": r.label, "don_vi": r.unit_name, "gia_tri": r.value} for r in rows], "database"
+
+
+def _ky_cung_ky_truoc(ky: str):
+    """"2026-08" -> "2025-08". Không đúng dạng YYYY-MM thì trả None."""
+    try:
+        nam, thang = ky.split("-")
+        return f"{int(nam) - 1}-{thang}"
+    except (ValueError, AttributeError):
+        return None
+
+
 @app.get("/api/dashboard/{board}", tags=["Dashboard"])
 def dashboard(board: str, db: Session = Depends(get_db)):
     """
     Trả về số liệu của một bảng điều khiển.
-    board nhận: KPI, WO, PAKH, FUEL, HIRE, OUTPUT, NETWORK
+    board nhận: KPI, WO, PAKH, FUEL, HIRE, OUTPUT, NETWORK, VHKT...
+
+    Nếu có bảng "{board}_TARGET" thì tự đối chiếu thực hiện với chỉ tiêu,
+    và tự so sánh với cùng kỳ năm trước (dựa trên đúng chỉ tiêu, kỳ dạng YYYY-MM).
+    Kết quả đối chiếu nằm ở trường "compare", không ảnh hưởng "series" cũ
+    (vẫn dùng để vẽ biểu đồ như trước).
     """
     board = board.upper()
 
-    # Ưu tiên số liệu từ Google Sheet nếu đã cấu hình nguồn
-    from .sheets import get_data
-    sheet_rows = [r for r in get_data(db, "dashboard", models) if r.get("bang") == board]
-    if sheet_rows:
-        buckets: dict = {}
-        for r in sheet_rows:
-            key = r.get("don_vi") or r.get("ky")
-            buckets.setdefault(key, {"name": key})
-            buckets[key][r.get("chi_tieu")] = r.get("gia_tri")
-        return {"board": board, "series": list(buckets.values()), "source": "sheet"}
-
-    rows = (
-        db.query(models.Metric)
-        .filter(models.Metric.board == board)
-        .order_by(models.Metric.period)
-        .all()
-    )
+    rows, nguon = _flat_metric_rows(board, db)
     if not rows:
         raise HTTPException(404, f"Chưa có số liệu cho bảng {board}.")
-    # Gom theo kỳ để frontend vẽ biểu đồ ngay
+
+    # Gom theo kỳ (hoặc đơn vị) để frontend vẽ biểu đồ ngay — giữ nguyên hành vi cũ
     buckets: dict = {}
     for r in rows:
-        key = r.unit_name or r.period
+        key = r["don_vi"] or r["ky"]
         buckets.setdefault(key, {"name": key})
-        buckets[key][r.label] = r.value
-    return {"board": board, "series": list(buckets.values()), "source": "database"}
+        buckets[key][r["chi_tieu"]] = r["gia_tri"]
+
+    # Đối chiếu target + cùng kỳ năm trước, chỉ khi có bảng target tương ứng
+    compare = []
+    target_rows, _ = _flat_metric_rows(f"{board}_TARGET", db)
+    if target_rows:
+        target_map = {(r["ky"], r["chi_tieu"]): r["gia_tri"] for r in target_rows}
+        actual_map = {(r["ky"], r["chi_tieu"]): r["gia_tri"] for r in rows}
+        for r in rows:
+            ky, chi_tieu, gia_tri = r["ky"], r["chi_tieu"], r["gia_tri"]
+            target = target_map.get((ky, chi_tieu))
+            ky_truoc = _ky_cung_ky_truoc(ky)
+            gia_tri_ky_truoc = actual_map.get((ky_truoc, chi_tieu)) if ky_truoc else None
+            compare.append({
+                "ky": ky, "chi_tieu": chi_tieu, "thuc_hien": gia_tri,
+                "target": target,
+                "dat_target_phan_tram": round(gia_tri / target * 100, 1) if target else None,
+                "cung_ky_truoc": gia_tri_ky_truoc,
+                "chenh_lech_cung_ky_phan_tram": (
+                    round((gia_tri - gia_tri_ky_truoc) / gia_tri_ky_truoc * 100, 1)
+                    if gia_tri_ky_truoc else None
+                ),
+            })
+
+    return {"board": board, "series": list(buckets.values()), "source": nguon, "compare": compare}
 
 
 # ------------------------------------------------------------- Góc sáng kiến

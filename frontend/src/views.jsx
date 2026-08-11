@@ -784,6 +784,12 @@ const BOARDS = {
     mau: D.D_NET.map((r) => ({ name: r.m, "Availability": r.av, "Số sự cố": r.sc })),
     ve: "cot-duong",
   },
+  VHKT: {
+    nhan: "KPI vận hành", ma: "VHKT", icon: Activity,
+    tieuDe: "KPI vận hành khai thác theo tháng (Cell*h, ksubmin, TKM, XLSC...)",
+    mau: [],
+    ve: "duong",
+  },
 };
 
 const MAU_VE = [RED, "#DCD7D8", "#F2A007", "#0E9C99", "#7C3AED"];
@@ -973,6 +979,39 @@ export function DashView() {
         )}
       </Card>
 
+      {duLieu?.compare?.length > 0 && (
+        <Card title="Đối chiếu chỉ tiêu & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Kỳ</th><th>Chỉ tiêu</th><th style={{ textAlign: "right" }}>Thực hiện</th>
+                  <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>Đạt target</th>
+                  <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {duLieu.compare.map((c, i) => (
+                  <tr key={i}>
+                    <td className="mono">{c.ky}</td>
+                    <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
+                    <td className="mono" style={{ textAlign: "right" }}>{c.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
+                    <td className="mono muted" style={{ textAlign: "right" }}>{c.target?.toLocaleString("vi-VN") ?? "—"}</td>
+                    <td className="mono" style={{ textAlign: "right", color: c.dat_target_phan_tram == null ? undefined : (c.dat_target_phan_tram >= 100 ? "#0A7A50" : RED) }}>
+                      {c.dat_target_phan_tram != null ? `${c.dat_target_phan_tram}%` : "—"}
+                    </td>
+                    <td className="mono muted" style={{ textAlign: "right" }}>{c.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
+                    <td className="mono" style={{ textAlign: "right", color: c.chenh_lech_cung_ky_phan_tram == null ? undefined : (c.chenh_lech_cung_ky_phan_tram >= 0 ? "#0A7A50" : RED) }}>
+                      {c.chenh_lech_cung_ky_phan_tram != null ? `${c.chenh_lech_cung_ky_phan_tram > 0 ? "+" : ""}${c.chenh_lech_cung_ky_phan_tram}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {coSoThat && (
         <Card title="Số liệu chi tiết" icon={BarChart3} pad={false}>
           <div style={{ overflowX: "auto" }}>
@@ -999,7 +1038,51 @@ export function DashView() {
           </div>
         </Card>
       )}
+
+      <DashRecruitmentPanel />
     </div>
+  );
+}
+
+/** Khung tuyển dụng cố định ở cuối trang Dashboard, lấy đúng dữ liệu tuyển dụng thật đang có. */
+function DashRecruitmentPanel() {
+  const [s] = useRemote("/api/recruitment/summary", null);
+  if (!s) return null;
+  const statusCount = (key) => s.by_status?.find((x) => x.status === key)?.count ?? 0;
+  const the = [
+    ["Tổng hồ sơ nhận", s.total ?? 0, RED],
+    ["Thiếu OFT", s.staffing?.total_oft_gap ?? 0, "#B45309"],
+    ["Thiếu FT", s.staffing?.total_ft_gap ?? 0, "#B45309"],
+    ["HS đang trao đổi", statusCount("negotiating"), undefined],
+  ];
+  return (
+    <Card title="Tuyển dụng" icon={UserPlus} pad={false}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ padding: 16 }}>
+        {the.map(([nhan, gt, mau]) => (
+          <div key={nhan}>
+            <p className="muted" style={{ fontSize: 12 }}>{nhan}</p>
+            <p style={{ fontSize: 24, fontWeight: 800, marginTop: 5, color: mau }}>{gt}</p>
+          </div>
+        ))}
+      </div>
+      {(s.staffing?.centers || []).length > 0 && (
+        <div style={{ overflowX: "auto", borderTop: "1px solid #EFECED" }}>
+          <table className="tbl">
+            <thead><tr><th>Trung tâm</th><th style={{ textAlign: "right" }}>Thiếu OFT</th><th style={{ textAlign: "right" }}>Thiếu FT</th><th style={{ textAlign: "right" }}>Tổng thiếu</th></tr></thead>
+            <tbody>
+              {s.staffing.centers.slice(0, 6).map((c) => (
+                <tr key={c.center}>
+                  <td>{c.center}</td>
+                  <td className="mono" style={{ textAlign: "right" }}>{c.oft_gap}</td>
+                  <td className="mono" style={{ textAlign: "right" }}>{c.ft_gap}</td>
+                  <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: c.total_gap >= 8 ? RED : undefined }}>{c.total_gap}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 

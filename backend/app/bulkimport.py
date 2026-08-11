@@ -80,13 +80,15 @@ KINDS = {
         "label": "Số liệu Dashboard",
         "key_col": None,
         "columns": [
-            ("bang", "Bảng: KPI / WO / PAKH / FUEL / HIRE / OUTPUT / NETWORK", True, "WO"),
+            ("bang", "Bảng: KPI / WO / PAKH / FUEL / HIRE / OUTPUT / NETWORK / VHKT / VHKT_TARGET", True, "WO"),
             ("ky", "Kỳ số liệu", True, "2026-08"),
             ("chi_tieu", "Tên chỉ tiêu", True, "Hoàn thành"),
             ("don_vi", "Đơn vị / tổ (nếu có)", False, "Tổ KV1"),
             ("gia_tri", "Giá trị", True, "1.284"),
         ],
-        "note": "Trùng cả bảng, kỳ, chỉ tiêu và đơn vị thì ghi đè giá trị cũ.",
+        "note": "Trùng cả bảng, kỳ, chỉ tiêu và đơn vị thì ghi đè giá trị cũ. "
+                "Với KPI vận hành khai thác: nhập số thật vào bảng VHKT, nhập chỉ tiêu/target "
+                "(cùng đúng tên chỉ tiêu, cùng kỳ) vào bảng VHKT_TARGET — hệ thống tự đối chiếu hai bảng này.",
     },
     "candidates": {
         "label": "Ứng viên tuyển dụng",
@@ -181,7 +183,11 @@ KINDS = {
     },
 }
 
-BOARDS = {"KPI", "WO", "PAKH", "FUEL", "HIRE", "OUTPUT", "NETWORK"}
+BOARDS = {
+    "KPI", "WO", "PAKH", "FUEL", "HIRE", "OUTPUT", "NETWORK",
+    # KPI vận hành khai thác: Cell*h, sự cố truyền dẫn, ksubmin, TKM 3h/10h/24h, XLSC 3h/10h/24h...
+    "VHKT", "VHKT_TARGET",
+}
 ROLES = {"admin", "editor", "staff"}
 MAX_ROWS = 2000
 
