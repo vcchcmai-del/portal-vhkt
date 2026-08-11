@@ -1039,7 +1039,7 @@ export function DashView() {
         </Card>
       )}
 
-      <DashRecruitmentPanel />
+      {ma === "HIRE" && <DashRecruitmentPanel />}
     </div>
   );
 }
