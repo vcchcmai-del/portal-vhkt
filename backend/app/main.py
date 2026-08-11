@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-11.v20"
+PORTAL_BUILD = "2026-08-11.v21"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -582,6 +582,33 @@ def _ky_cung_ky_truoc(ky: str):
         return None
 
 
+def _hire_series_that(db: Session):
+    """
+    Bảng "Tuyển dụng" (HIRE) tính thẳng từ dữ liệu Ứng viên/Định biên thật đang
+    có trong hệ thống — không cần nhập tay, luôn khớp với khu quản trị Tuyển dụng.
+    """
+    candidates = db.query(models.Candidate).all()
+    staffing_rows = (
+        db.query(models.CenterStaffing).order_by(models.CenterStaffing.report_date.desc()).all()
+    )
+    latest_per_center = {}
+    for r in staffing_rows:
+        latest_per_center.setdefault(r.center, r)
+    nhu_cau = sum((r.oft_gap or 0) + (r.ft_gap or 0) for r in latest_per_center.values())
+
+    da_phong_van = sum(1 for c in candidates if c.status not in ("new", "reviewing"))
+    dat = sum(1 for c in candidates if c.status in ("hired", "probation", "left"))
+    da_nhan_viec = sum(1 for c in candidates if c.status in ("hired", "probation"))
+
+    return [
+        {"name": "Nhu cầu", "Số lượng": nhu_cau},
+        {"name": "Ứng tuyển", "Số lượng": len(candidates)},
+        {"name": "Phỏng vấn", "Số lượng": da_phong_van},
+        {"name": "Đạt", "Số lượng": dat},
+        {"name": "Đã nhận việc", "Số lượng": da_nhan_viec},
+    ]
+
+
 @app.get("/api/dashboard/{board}", tags=["Dashboard"])
 def dashboard(board: str, db: Session = Depends(get_db)):
     """
@@ -594,6 +621,11 @@ def dashboard(board: str, db: Session = Depends(get_db)):
     (vẫn dùng để vẽ biểu đồ như trước).
     """
     board = board.upper()
+
+    # Tuyển dụng luôn lấy thẳng từ dữ liệu Ứng viên/Định biên thật, không đọc
+    # bảng Metric cũ (nhập tay rời rạc, dễ lệch với dữ liệu tuyển dụng thật).
+    if board == "HIRE":
+        return {"board": board, "series": _hire_series_that(db), "source": "database", "compare": []}
 
     rows, nguon = _flat_metric_rows(board, db)
     if not rows:
