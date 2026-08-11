@@ -187,6 +187,9 @@ BOARDS = {
     "KPI", "WO", "PAKH", "FUEL", "HIRE", "OUTPUT", "NETWORK",
     # KPI vận hành khai thác: Cell*h, sự cố truyền dẫn, ksubmin, TKM 3h/10h/24h, XLSC 3h/10h/24h...
     "VHKT", "VHKT_TARGET",
+    # Target cho Tiền phạt & Doanh thu (KPI) và Rời mạng CĐBR (WO) — để trống
+    # cột đơn vị trong bảng target thì áp dụng chung cho mọi trung tâm.
+    "KPI_TARGET", "WO_TARGET",
 }
 ROLES = {"admin", "editor", "staff"}
 MAX_ROWS = 2000

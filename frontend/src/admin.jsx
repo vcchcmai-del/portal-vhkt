@@ -1071,7 +1071,9 @@ const DASHBOARD_BOARDS = [
   { value: "VHKT", label: "KPI vận hành (Cell*h, ksubmin, TKM, XLSC...)" },
   { value: "VHKT_TARGET", label: "Chỉ tiêu/Target KPI vận hành" },
   { value: "KPI", label: "Tiền phạt & Doanh thu" },
+  { value: "KPI_TARGET", label: "Chỉ tiêu/Target Tiền phạt & Doanh thu" },
   { value: "WO", label: "Rời mạng CĐBR (tỷ lệ / số lượng KH)" },
+  { value: "WO_TARGET", label: "Chỉ tiêu/Target Rời mạng CĐBR" },
 ];
 
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };

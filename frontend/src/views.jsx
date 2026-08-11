@@ -906,6 +906,69 @@ function BieuDo({ kieu, series }) {
   );
 }
 
+/** Lọc series chung của bảng, chỉ giữ đúng một chỉ tiêu — dùng khi một bảng gồm nhiều chỉ tiêu khác bản chất (ví dụ Rời mạng: số lượng + tỷ lệ). */
+function seriesMotChiTieu(series, chiTieu) {
+  return (series || []).map((r) => ({ name: r.name, [chiTieu]: r[chiTieu] })).filter((r) => r[chiTieu] != null);
+}
+
+/**
+ * Biểu đồ xu thế theo tháng: Target (nếu có) + năm hiện tại + cùng kỳ năm trước,
+ * dựng từ dữ liệu "compare" (đã đối chiếu sẵn ở máy chủ). Dùng cho Tiền phạt/Doanh thu
+ * và Tỷ lệ rời mạng CĐBR.
+ */
+function TrendChart({ compare, chiTieu }) {
+  const rows = (compare || []).filter((c) => !chiTieu || c.chi_tieu === chiTieu);
+  if (!rows.length) return <Empty title="Chưa có số liệu đối chiếu." hint="Cần nhập cả bảng chính và bảng Target." />;
+
+  const namMoiNhat = Math.max(...rows.map((c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0));
+  const cuaNamNay = rows.filter((c) => parseInt((c.ky || "0-0").split("-")[0], 10) === namMoiNhat);
+  if (!cuaNamNay.length) return <Empty title="Chưa có số liệu đối chiếu." />;
+
+  const nhanNamNay = String(namMoiNhat);
+  const nhanNamTruoc = String(namMoiNhat - 1);
+  const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
+
+  const data = cuaNamNay
+    .sort((a, b) => a.ky.localeCompare(b.ky))
+    .map((c) => ({
+      name: `T${parseInt(c.ky.split("-")[1], 10)}`,
+      Target: c.target,
+      [nhanNamNay]: c.thuc_hien,
+      [nhanNamTruoc]: c.cung_ky_truoc,
+    }));
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
+        <XAxis dataKey="name" {...truc} />
+        <YAxis {...truc} />
+        <Tooltip {...tooltipStyle} />
+        <Legend wrapperStyle={{ fontSize: 12.5 }} />
+        <Line type="monotone" dataKey="Target" stroke="#A9A3A5" strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
+        <Line type="monotone" dataKey={nhanNamTruoc} stroke={RED} strokeDasharray="5 3" dot={{ r: 3 }} strokeWidth={2} />
+        <Line type="monotone" dataKey={nhanNamNay} stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Cảnh báo trung tâm chưa đạt KPI vận hành — nhóm theo trung tâm, liệt kê các chỉ tiêu vượt target. */
+function CanhBaoTrungTam({ danhSach }) {
+  if (!danhSach?.length) return null;
+  return (
+    <Card title="Trung tâm chưa đạt KPI vận hành" icon={AlertTriangle} pad={false}>
+      <div style={{ padding: "6px 18px 16px" }}>
+        {danhSach.map((c) => (
+          <div key={c.trung_tam} style={{ padding: "9px 0", borderBottom: "1px solid #EFECED", fontSize: 13.5 }}>
+            <b>{c.trung_tam}:</b> <span style={{ color: RED_DARK }}>{c.chi_tieu_khong_dat.join(", ")}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function NhanNguon({ nguon }) {
   const nhan = {
     sheet: ["Nguồn: Google Sheet", "tag-green"],
@@ -941,6 +1004,9 @@ export function DashView() {
   const coSoThat = duLieu?.series?.length > 0;
   const series = coSoThat ? duLieu.series : board.mau;
   const nguon = coSoThat ? (duLieu.source || "database") : "mau";
+  const laKPI = ma === "KPI";     // Tiền phạt & Doanh thu — biểu đồ xu thế Target/năm nay/năm trước
+  const laWO = ma === "WO";       // Rời mạng CĐBR — 2 biểu đồ: cột (số lượng) + xu thế (tỷ lệ)
+  const laVHKT = ma === "VHKT";   // KPI vận hành — kèm cảnh báo trung tâm chưa đạt
 
   return (
     <div className="flex flex-col gap-4">
@@ -958,28 +1024,43 @@ export function DashView() {
         </div>
       )}
 
-      <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-        {dangTai ? (
+      {dangTai ? (
+        <Card title={board.tieuDe} icon={board.icon}>
           <p className="muted" style={{ fontSize: 13.5, padding: "40px 0", textAlign: "center" }}>
             Đang tải số liệu…
           </p>
-        ) : (
-          <>
-            <BieuDo kieu={board.ve} series={series} />
+        </Card>
+      ) : laKPI ? (
+        <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+          <TrendChart compare={duLieu?.compare} chiTieu="Tiền phạt/Doanh thu" />
+        </Card>
+      ) : laWO ? (
+        <>
+          <Card title="Số lượng KH rời mạng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+            <BieuDo kieu="cot-don" series={seriesMotChiTieu(series, "Số lượng KH rời mạng")} />
+          </Card>
+          <Card title="Tỷ lệ rời mạng CĐBR" icon={board.icon}>
+            <TrendChart compare={duLieu?.compare} chiTieu="Tỷ lệ rời mạng CĐBR" />
+          </Card>
+        </>
+      ) : (
+        <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+          <BieuDo kieu={board.ve} series={series} />
 
-            {nguon === "mau" && (
-              <p style={{ background: "#FFF8E8", color: "#6B5426", fontSize: 12.5,
-                          padding: "10px 13px", borderRadius: 9, marginTop: 12, lineHeight: 1.6 }}>
-                Chưa có số liệu thật cho bảng này nên đang hiển thị số liệu mẫu.
-                Nhập số tại <strong>Quản trị → Nhập dữ liệu hàng loạt</strong> chọn nhóm
-                Số liệu Dashboard, hoặc nối bảng tính tại <strong>Nguồn dữ liệu Sheet</strong>.
-              </p>
-            )}
-          </>
-        )}
-      </Card>
+          {nguon === "mau" && (
+            <p style={{ background: "#FFF8E8", color: "#6B5426", fontSize: 12.5,
+                        padding: "10px 13px", borderRadius: 9, marginTop: 12, lineHeight: 1.6 }}>
+              Chưa có số liệu thật cho bảng này nên đang hiển thị số liệu mẫu.
+              Nhập số tại <strong>Quản trị → Quản lý dashboard</strong>, hoặc nối bảng tính tại{" "}
+              <strong>Nguồn dữ liệu Sheet</strong>.
+            </p>
+          )}
+        </Card>
+      )}
 
-      {duLieu?.compare?.length > 0 && (
+      {laVHKT && <CanhBaoTrungTam danhSach={duLieu?.canh_bao_trung_tam} />}
+
+      {!laKPI && !laWO && duLieu?.compare?.length > 0 && (
         <Card title="Đối chiếu chỉ tiêu & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
