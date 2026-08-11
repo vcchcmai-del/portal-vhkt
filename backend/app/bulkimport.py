@@ -190,6 +190,9 @@ BOARDS = {
     # Target cho Tiền phạt & Doanh thu (KPI) và Rời mạng CĐBR (WO) — để trống
     # cột đơn vị trong bảng target thì áp dụng chung cho mọi trung tâm.
     "KPI_TARGET", "WO_TARGET",
+    # Chi tiết nguyên nhân phạt theo nhóm VTT / VTNet — mỗi dòng là một nguyên
+    # nhân (chi_tieu), giá trị đơn vị triệu đồng.
+    "KPI_VTT", "KPI_VTNET",
 }
 ROLES = {"admin", "editor", "staff"}
 MAX_ROWS = 2000

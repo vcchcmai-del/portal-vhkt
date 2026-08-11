@@ -1072,6 +1072,8 @@ const DASHBOARD_BOARDS = [
   { value: "VHKT_TARGET", label: "Chỉ tiêu/Target KPI vận hành" },
   { value: "KPI", label: "Tiền phạt & Doanh thu" },
   { value: "KPI_TARGET", label: "Chỉ tiêu/Target Tiền phạt & Doanh thu" },
+  { value: "KPI_VTNET", label: "Nguyên nhân phạt — nhóm VTNet" },
+  { value: "KPI_VTT", label: "Nguyên nhân phạt — nhóm VTT" },
   { value: "WO", label: "Rời mạng CĐBR (tỷ lệ / số lượng KH)" },
   { value: "WO_TARGET", label: "Chỉ tiêu/Target Rời mạng CĐBR" },
 ];

@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-11.v24"
+PORTAL_BUILD = "2026-08-11.v25"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -609,6 +609,45 @@ def _hire_series_that(db: Session):
     ]
 
 
+def _nhom_phat_vtt_vtnet(db: Session):
+    """
+    Tổng tiền phạt theo tháng cho 2 nhóm VTT/VTNet (bảng KPI_VTT/KPI_VTNET),
+    và cơ cấu nguyên nhân phạt của kỳ gần nhất mỗi nhóm — dùng cho biểu đồ
+    xu thế 2 đường và 2 biểu đồ tròn trên tab Tiền phạt & Doanh thu.
+    """
+    vtt_rows, _ = _flat_metric_rows("KPI_VTT", db)
+    vtnet_rows, _ = _flat_metric_rows("KPI_VTNET", db)
+    if not vtt_rows and not vtnet_rows:
+        return None
+
+    tong_theo_ky: dict = {}
+    for r in vtt_rows:
+        tong_theo_ky.setdefault(r["ky"], {"name": r["ky"], "VTT": 0.0, "VTNet": 0.0})
+        tong_theo_ky[r["ky"]]["VTT"] += r["gia_tri"] or 0
+    for r in vtnet_rows:
+        tong_theo_ky.setdefault(r["ky"], {"name": r["ky"], "VTT": 0.0, "VTNet": 0.0})
+        tong_theo_ky[r["ky"]]["VTNet"] += r["gia_tri"] or 0
+    xu_huong = [tong_theo_ky[k] for k in sorted(tong_theo_ky)]
+
+    def _co_cau(rows):
+        if not rows:
+            return [], None
+        ky_gan_nhat = max(r["ky"] for r in rows)
+        return (
+            [{"name": r["chi_tieu"], "value": r["gia_tri"]} for r in rows if r["ky"] == ky_gan_nhat and r["gia_tri"]],
+            ky_gan_nhat,
+        )
+
+    co_cau_vtt, ky_vtt = _co_cau(vtt_rows)
+    co_cau_vtnet, ky_vtnet = _co_cau(vtnet_rows)
+
+    return {
+        "xu_huong": xu_huong,
+        "co_cau_vtt": co_cau_vtt, "ky_vtt": ky_vtt,
+        "co_cau_vtnet": co_cau_vtnet, "ky_vtnet": ky_vtnet,
+    }
+
+
 @app.get("/api/dashboard/{board}", tags=["Dashboard"])
 def dashboard(board: str, db: Session = Depends(get_db)):
     """
@@ -626,7 +665,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
     # bảng Metric cũ (nhập tay rời rạc, dễ lệch với dữ liệu tuyển dụng thật).
     if board == "HIRE":
         return {"board": board, "series": _hire_series_that(db), "source": "database",
-                "compare": [], "canh_bao_trung_tam": []}
+                "compare": [], "canh_bao_trung_tam": [], "nhom_phat": None}
 
     rows, nguon = _flat_metric_rows(board, db)
     if not rows:
@@ -688,6 +727,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
     return {
         "board": board, "series": list(buckets.values()), "source": nguon,
         "compare": compare, "canh_bao_trung_tam": canh_bao_trung_tam,
+        "nhom_phat": _nhom_phat_vtt_vtnet(db) if board == "KPI" else None,
     }
 
 

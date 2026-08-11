@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
-  LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 import { api, adapt, useRemote } from "./api";
@@ -270,21 +270,55 @@ export function HomeView({ onGo, onOpenNews, config }) {
         </div>
       </section>
 
-      <section className="cnct-panel">
-        <div className="cnct-panel-head">
-          <div className="cnct-panel-title"><Calendar size={17} /> LỊCH CÔNG TÁC HÔM NAY</div>
-          <span className="cnct-panel-note">
-            {home?.schedule_from_sheet ? "Nguồn: Google Sheet" : new Date().toLocaleDateString("vi-VN")}
-          </span>
-        </div>
-        {schedule.length === 0 ? (
-          <p className="cnct-empty">
-            Hôm nay chưa có lịch công tác. Quản trị viên nhập tại
-            Quản trị → Lịch công tác tuần.
-          </p>
-        ) : schedule.map((s, i) => <SchedRow key={i} s={s} />)}
-      </section>
+      <div className="cnct-bottom-grid">
+        <section className="cnct-panel">
+          <div className="cnct-panel-head">
+            <div className="cnct-panel-title"><Calendar size={17} /> LỊCH CÔNG TÁC HÔM NAY</div>
+            <span className="cnct-panel-note">
+              {home?.schedule_from_sheet ? "Nguồn: Google Sheet" : new Date().toLocaleDateString("vi-VN")}
+            </span>
+          </div>
+          {schedule.length === 0 ? (
+            <p className="cnct-empty">
+              Hôm nay chưa có lịch công tác. Quản trị viên nhập tại
+              Quản trị → Lịch công tác tuần.
+            </p>
+          ) : schedule.map((s, i) => <SchedRow key={i} s={s} />)}
+        </section>
+
+        <BirthdayPanel />
+      </div>
     </div>
+  );
+}
+
+/** Sinh nhật trong tháng — khôi phục từ Góc văn hoá cũ, đặt ở trang chủ. */
+function BirthdayPanel() {
+  const [birthdays] = useRemote("/api/birthdays", null);
+  const [wishes, setWishes] = useState({});
+  const bdays = birthdays?.length ? birthdays : [];
+
+  return (
+    <section className="cnct-panel">
+      <div className="cnct-panel-head">
+        <div className="cnct-panel-title"><Cake size={17} /> SINH NHẬT TRONG THÁNG</div>
+      </div>
+      {bdays.length === 0 ? (
+        <p className="cnct-empty">Chưa có dữ liệu sinh nhật trong tháng này.</p>
+      ) : bdays.map((b, i) => (
+        <div key={i} className="flex items-center gap-3" style={{ padding: "12px 16px", borderTop: i ? "1px solid #F1EEEF" : 0 }}>
+          <Avatar name={b.name} color={b.color} size={40} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontWeight: 600, fontSize: 13.5 }}>{b.name}</p>
+            <p className="muted" style={{ fontSize: 12 }}>{b.dept} · {b.day}</p>
+          </div>
+          <button className="btn btn-sm" onClick={() => setWishes((w) => ({ ...w, [b.name]: true }))}
+            style={wishes[b.name] ? { background: RED, borderColor: RED, color: "#fff" } : undefined}>
+            {wishes[b.name] ? <><Check size={13} /> Đã chúc</> : <><PartyPopper size={13} /> Chúc mừng</>}
+          </button>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -969,6 +1003,47 @@ function CanhBaoTrungTam({ danhSach }) {
   );
 }
 
+const MAU_TRON = [RED, "#0E6CD6", "#F2A007", "#0E9C99", "#7C3AED", "#B45309", "#0A7A50", "#DB2777", "#4B5563", "#65A30D", "#DC2626", "#0891B2", "#7E22CE", "#CA8A04", "#059669"];
+
+/** Biểu đồ xu thế tổng tiền phạt 2 nhóm VTT/VTNet theo tháng (triệu đồng). */
+function NhomPhatTrend({ xuHuong }) {
+  if (!xuHuong?.length) return null;
+  const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
+  const data = xuHuong.map((r) => ({ ...r, name: `T${parseInt(r.name.split("-")[1], 10)}` }));
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
+        <XAxis dataKey="name" {...truc} />
+        <YAxis {...truc} label={{ value: "Triệu đồng", angle: -90, position: "insideLeft", fontSize: 11, fill: "#A9A3A5" }} />
+        <Tooltip {...tooltipStyle} />
+        <Legend wrapperStyle={{ fontSize: 12.5 }} />
+        <Line type="monotone" dataKey="VTNet" stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5} />
+        <Line type="monotone" dataKey="VTT" stroke="#F2A007" dot={{ r: 3 }} strokeWidth={2.5} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Biểu đồ tròn cơ cấu nguyên nhân phạt của một nhóm (VTT hoặc VTNet), kỳ gần nhất. */
+function NhomPhatPie({ title, coCau, ky }) {
+  if (!coCau?.length) return null;
+  const tong = coCau.reduce((s, x) => s + x.value, 0);
+  return (
+    <Card title={`${title}${ky ? ` — kỳ ${ky}` : ""}`} pad={false}>
+      <ResponsiveContainer width="100%" height={280}>
+        <PieChart>
+          <Pie data={coCau} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={95}
+            label={({ name, value }) => `${name} ${Math.round((value / tong) * 100)}%`} labelLine={{ strokeWidth: 1 }}>
+            {coCau.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
+          </Pie>
+          <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu`} />
+        </PieChart>
+      </ResponsiveContainer>
+    </Card>
+  );
+}
+
 function NhanNguon({ nguon }) {
   const nhan = {
     sheet: ["Nguồn: Google Sheet", "tag-green"],
@@ -1031,9 +1106,22 @@ export function DashView() {
           </p>
         </Card>
       ) : laKPI ? (
-        <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-          <TrendChart compare={duLieu?.compare} chiTieu="Tiền phạt/Doanh thu" />
-        </Card>
+        <>
+          <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+            <TrendChart compare={duLieu?.compare} chiTieu="Tiền phạt/Doanh thu" />
+          </Card>
+          {duLieu?.nhom_phat && (
+            <>
+              <Card title="Nhóm nguyên nhân phạt VTT / VTNet — tổng theo tháng" icon={board.icon}>
+                <NhomPhatTrend xuHuong={duLieu.nhom_phat.xu_huong} />
+              </Card>
+              <div className="grid lg:grid-cols-2 gap-4">
+                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" coCau={duLieu.nhom_phat.co_cau_vtnet} ky={duLieu.nhom_phat.ky_vtnet} />
+                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" coCau={duLieu.nhom_phat.co_cau_vtt} ky={duLieu.nhom_phat.ky_vtt} />
+              </div>
+            </>
+          )}
+        </>
       ) : laWO ? (
         <>
           <Card title="Số lượng KH rời mạng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
