@@ -1,0 +1,15 @@
+PORTAL-VHKT SAFE UPDATE PACKAGE
+
+This package intentionally excludes:
+- data/ and data/portal.db
+- uploads/backups/runtime logs
+- .env and secret keys
+- frontend/node_modules
+- Python __pycache__ / *.pyc
+
+IMPORTANT:
+Copy/overwrite source files into the existing GitHub repository.
+Do NOT delete the existing data/ directory or replace the production DATABASE_URL.
+Keep the production PostgreSQL database and environment variables on Mắt Bão.
+
+admin.py and auditlog.py include the latest fixes from the current troubleshooting session.
