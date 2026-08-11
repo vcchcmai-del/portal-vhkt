@@ -1,0 +1,53 @@
+# Dùng khi chạy trên máy tính Windows có Docker Desktop,
+# muốn lưu toàn bộ dữ liệu vào ổ D thay vì trong Docker.
+#
+# Chạy:  docker compose -f docker-compose.windows.yml up -d --build
+#
+# Trước khi chạy: mở Docker Desktop > Settings > Resources > File sharing,
+# thêm ổ D vào danh sách được chia sẻ.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: portal-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doi-mat-khau-nay}
+      POSTGRES_DB: portal
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      # Dữ liệu nằm thẳng trên ổ D, sao lưu bằng cách chép thư mục này
+      - D:/portal-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: portal-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://portal:${POSTGRES_PASSWORD:-doi-mat-khau-nay}@db:5432/portal
+      SECRET_KEY: ${SECRET_KEY:-doi-chuoi-nay-truoc-khi-chay-that}
+      CORS_ORIGINS: "*"
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      # Tệp đính kèm do người dùng tải lên cũng để trên ổ D
+      - D:/portal-data/uploads:/app/uploads
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: portal-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"

@@ -1,0 +1,30 @@
+# Caddy tự xin chứng chỉ HTTPS từ Let's Encrypt và tự gia hạn.
+# Điều kiện: tên miền đã trỏ đúng về địa chỉ IP của máy chủ này,
+# và cổng 80, 443 đang mở.
+
+{
+	email {$ADMIN_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode gzip zstd
+
+	# Các tiêu đề bảo mật cơ bản
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Toàn bộ lưu lượng vào frontend; frontend tự chuyển tiếp /api sang backend
+	reverse_proxy frontend:80
+
+	log {
+		output file /data/access.log {
+			roll_size 20mb
+			roll_keep 10
+		}
+	}
+}
