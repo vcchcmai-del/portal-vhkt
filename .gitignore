@@ -1,0 +1,33 @@
+# Bí mật — không bao giờ đưa lên Git
+.env
+.env.local
+*.pem
+
+# Dữ liệu thật — chỉ giữ cấu trúc thư mục (.gitkeep), không giữ nội dung
+data/*.db
+data/secret.key
+data/server.log
+data/backups/*
+!data/backups/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+backend/data/
+
+# Phụ thuộc và sản phẩm dựng lại được — KHÔNG áp dụng cho backend/static,
+# vì nền tảng triển khai (Vibe Host) chỉ build thư mục backend/, không có
+# bước dựng frontend riêng — backend/static là giao diện đã dựng sẵn, PHẢI
+# được commit để deploy hoạt động đúng. Xem backend/Dockerfile.
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+*.pyc
+
+# Nhật ký / tệp tạm khi chạy thử cục bộ
+*.log
+backend-local.log
+.smoke-data*/
+
+# IDE / hệ điều hành / công cụ trợ lý cục bộ
+.DS_Store
+Thumbs.db
+.claude/

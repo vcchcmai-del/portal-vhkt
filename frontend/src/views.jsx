@@ -1,0 +1,1514 @@
+/**
+ * Các phân hệ người dùng thường xem.
+ * Dữ liệu lấy từ API, nếu API chưa sẵn sàng thì dùng dữ liệu dự phòng trong data.js
+ */
+import React, { useEffect, useState } from "react";
+import {
+  AlertTriangle, ArrowUpRight, Award, BarChart3, BookOpen, Building2, Cake, Calendar,
+  Check, ChevronRight, Clock, CloudRain, Download, Droplets, FileText, Hash,
+  Image as ImageIcon, Lightbulb, MapPin, Megaphone, MessageSquare, PartyPopper,
+  Plus, Rocket, Send, Signal, Star, ThumbsUp, TrendingUp, Trophy, UserPlus, Users,
+  Video, Wind, Wrench, X, Quote, Pin,
+  Activity, CalendarDays, ClipboardList, Coins, ShieldCheck,
+} from "lucide-react";
+import {
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
+  LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+
+import { api, adapt, useRemote } from "./api";
+import * as D from "./data";
+import { Avatar, Card, Check as CheckBox, Delta, Empty, RED, RED_DARK, initials, norm, tooltipStyle } from "./ui";
+
+/* ============================== TRANG CHỦ ============================== */
+
+function Weather() {
+  const hours = [
+    { h: "14h", r: 20 }, { h: "15h", r: 65 }, { h: "16h", r: 85 },
+    { h: "17h", r: 70 }, { h: "18h", r: 40 }, { h: "19h", r: 15 },
+  ];
+  return (
+    <Card title="Thời tiết và cảnh báo VHKT" icon={CloudRain}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="mono" style={{ fontSize: 34, fontWeight: 700, lineHeight: 1, color: RED }}>31°C</div>
+          <p className="dim" style={{ fontSize: 13, marginTop: 6 }}>TP. Hồ Chí Minh · Mưa rào rải rác</p>
+        </div>
+        <div style={{ textAlign: "right", fontSize: 12.5 }} className="dim">
+          <p className="flex items-center gap-1.5 justify-end"><Droplets size={13} /> Độ ẩm 84%</p>
+          <p className="flex items-center gap-1.5 justify-end" style={{ marginTop: 4 }}><Wind size={13} /> Gió ĐN 18 km/h</p>
+        </div>
+      </div>
+
+      <div style={{ background: "#FDF6F7", border: "1px solid #EFE0E3", borderRadius: 11, padding: "11px 13px", marginTop: 14, display: "flex", gap: 10 }}>
+        <AlertTriangle size={17} style={{ color: RED, flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <p style={{ fontWeight: 700, fontSize: 13 }}>Cảnh báo mưa dông diện rộng 15:00 – 18:00</p>
+          <p className="dim" style={{ fontSize: 12.5, marginTop: 2 }}>
+            Khu vực Quận 12, Hóc Môn, Bình Chánh. Đề nghị ca trực chuẩn bị phương án dự phòng nguồn
+            và tạm dừng thi công trên cao.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-end gap-2" style={{ marginTop: 14, height: 62 }}>
+        {hours.map((x) => (
+          <div key={x.h} style={{ flex: 1, textAlign: "center" }}>
+            <div style={{ height: 40, display: "flex", alignItems: "flex-end" }}>
+              <div style={{ width: "100%", height: `${x.r}%`, background: x.r > 60 ? RED : "#E5E1E2", borderRadius: "4px 4px 0 0" }} />
+            </div>
+            <span className="mono muted" style={{ fontSize: 10.5 }}>{x.h}</span>
+          </div>
+        ))}
+      </div>
+      <p className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>Xác suất mưa theo giờ</p>
+    </Card>
+  );
+}
+
+// Sáu ô chỉ số mặc định, dùng khi chưa nối Google Sheet
+const STAT_FB = [
+  { ma: "kpi", nhan: "HOÀN THÀNH KPI THÁNG", gia_tri: "68", don_vi: "%", muc_tieu: "Mục tiêu: 100%", mau: "green", tien_do: 68, lon: true },
+  { ma: "wo_dung_han", nhan: "WO ĐÚNG HẠN", gia_tri: "1.28", don_vi: "%", muc_tieu: "Mục tiêu: ≤ 3%", ghi_chu: "Đạt", mau: "orange", lon: true },
+  { ma: "tien_phat", nhan: "TIỀN PHẠT THÁNG", gia_tri: "0", don_vi: "đ", muc_tieu: "Mục tiêu: 0 đ", mau: "blue" },
+  { ma: "su_co_ngay", nhan: "SỰ CỐ NGÀY", gia_tri: "12", don_vi: "", ghi_chu: "Hôm nay", mau: "purple" },
+  { ma: "wo_qua_han", nhan: "WO QUÁ HẠN", gia_tri: "28", don_vi: "", ghi_chu: "Quá hạn", mau: "orange" },
+  { ma: "an_toan", nhan: "AN TOÀN", gia_tri: "100", don_vi: "%", ghi_chu: "Không sự cố", mau: "teal" },
+];
+
+// Biểu tượng cho từng ô chỉ số, khớp với bản thiết kế đã duyệt
+const STAT_ICONS = {
+  kpi: TrendingUp, wo_dung_han: ClipboardList, tien_phat: Coins,
+  su_co_ngay: CalendarDays, wo_qua_han: Wrench, an_toan: ShieldCheck,
+};
+
+function StatIcon({ ma, size = 26 }) {
+  const Ico = STAT_ICONS[ma] || Activity;
+  return <Ico size={size} strokeWidth={2.4} />;
+}
+
+const MEET_LABEL = {
+  truc_tiep: "Trực tiếp", cau_truyen_hinh: "Cầu truyền hình",
+  zoom: "Zoom", google_meet: "Google Meet", teams: "Teams", khac: "Khác",
+};
+
+/** Một dòng lịch công tác, hiện kèm thành phần tham gia và cách vào họp. */
+function SchedRow({ s }) {
+  const [hienIP, setHienIP] = useState(false);
+  const loai = s.meeting_type || "truc_tiep";
+  const online = ["zoom", "google_meet", "teams"].includes(loai);
+  const laLink = (s.meeting_info || "").toLowerCase().startsWith("http");
+
+  const chepIP = () => {
+    navigator.clipboard?.writeText(s.meeting_info || "").then(
+      () => { setHienIP(true); setTimeout(() => setHienIP(false), 1800); },
+      () => {}
+    );
+  };
+
+  return (
+    <div className="cnct-sched">
+      <span className="cnct-sched-time">{s.time}</span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p className="cnct-sched-title">{s.title}</p>
+
+        <p className="cnct-sched-meta">
+          {s.place && <span><MapPin size={12} /> {s.place}</span>}
+          {s.host && <span><Users size={12} /> {s.host}</span>}
+          {loai !== "truc_tiep" && (
+            <span style={{ color: RED, fontWeight: 700 }}>
+              <Video size={12} /> {MEET_LABEL[loai] || loai}
+            </span>
+          )}
+        </p>
+
+        {s.participants && (
+          <p className="cnct-sched-meta" style={{ marginTop: 3 }}>
+            <span><Users size={12} /> Thành phần: {s.participants}</span>
+          </p>
+        )}
+
+        {s.meeting_info && (
+          <div style={{ marginTop: 7 }}>
+            {online && laLink ? (
+              <a className="btn btn-sm btn-red" href={s.meeting_info} target="_blank" rel="noreferrer"
+                style={{ textDecoration: "none" }}>
+                <Video size={13} /> Vào phòng họp
+              </a>
+            ) : (
+              <button className="btn btn-sm" onClick={chepIP} title="Bấm để sao chép">
+                <Signal size={13} />
+                <span className="mono">{s.meeting_info}</span>
+                {hienIP && <span style={{ color: "#0A7A50", fontWeight: 700 }}>đã chép</span>}
+              </button>
+            )}
+            {(s.meeting_id || s.meeting_pass) && (
+              <p className="muted mono" style={{ fontSize: 11.5, marginTop: 5 }}>
+                {s.meeting_id && <>Mã: {s.meeting_id}</>}
+                {s.meeting_id && s.meeting_pass && " · "}
+                {s.meeting_pass && <>Mật khẩu: {s.meeting_pass}</>}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function HomeView({ onGo, onOpenNews, config }) {
+  const [home] = useRemote("/api/home", null);
+  const [APPS] = useRemote("/api/apps", D.APPS_FB, adapt.apps);
+
+  const banners = home?.banners?.length ? home.banners : D.BANNERS_FB;
+  const [slide, setSlide] = useState(0);
+  useEffect(() => {
+    if (banners.length < 2) return;
+    const t = setInterval(() => setSlide((i) => (i + 1) % banners.length), 6000);
+    return () => clearInterval(t);
+  }, [banners.length]);
+  const banner = banners[slide] || banners[0] || { title: "", link_url: "#" };
+
+  // Chỉ số lấy từ Google Sheet nếu đã cấu hình, chưa có thì dùng số mặc định
+  const stats = home?.home_stats?.length ? home.home_stats : STAT_FB;
+  const soLaMau = !!home && !home.home_stats?.length;
+  const big = stats.slice(0, 2);
+  const small = stats.slice(2, 6);
+
+  // Khi máy chủ đã trả lời mà không có lịch, hiện đúng là trống.
+  // Chỉ dùng lịch mẫu lúc chưa gọi được máy chủ, để trang không rỗng khi xem thử.
+  const schedule = home ? (home.schedule || []) : D.SCHEDULE_FB;
+  const apps = APPS.slice(0, 7);
+
+  const num = (s) => {
+    const v = parseFloat(String(s.tien_do ?? s.gia_tri ?? "").replace(",", "."));
+    return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 0;
+  };
+
+  return (
+    <div className="cnct-home-v2">
+      <a className="cnct-banner" href={banner.link_url || "#"} style={{ textDecoration: "none" }}>
+        <div className="cnct-banner-icon">📣</div>
+        <div className="cnct-banner-title">{banner.title}</div>
+        <div className="cnct-banner-arrow">›</div>
+      </a>
+      <div className="cnct-dots">
+        {banners.map((b, i) => (
+          <span key={b.id || i} onClick={() => setSlide(i)}
+            style={{ background: i === slide ? RED : "#d9dde4", cursor: "pointer" }} />
+        ))}
+      </div>
+
+      <div className="cnct-top-grid">
+        <section className="cnct-message">
+          <div className="cnct-message-kicker">
+            <div className="cnct-message-icon">💬</div><span>Thông điệp của Giám đốc</span>
+          </div>
+          <div className="cnct-message-line" />
+          <div className="cnct-message-text">{config.director_message}</div>
+          <div className="cnct-message-author">
+            <Avatar name={config.director_name} color={RED} size={58} photo={config.director_photo} />
+            <div>
+              <div className="cnct-author-name">{config.director_name}</div>
+              <div className="cnct-author-title">{config.director_title}</div>
+            </div>
+          </div>
+          <div className="cnct-tower" aria-hidden="true" />
+        </section>
+
+        <div className="cnct-kpi-stack">
+          {big.map((s) => (
+            <section key={s.ma} className={`cnct-kpi-card ${s.mau || "green"}`}>
+              <div className="cnct-kpi-icon"><StatIcon ma={s.ma} size={26} /></div>
+              <div className="cnct-kpi-label">{s.nhan}</div>
+              <div className="cnct-kpi-value">{s.gia_tri}{s.don_vi}</div>
+              <div className="cnct-kpi-sub">{s.muc_tieu}</div>
+              {s.tien_do != null
+                ? <div className="cnct-progress"><i style={{ width: `${num(s)}%` }} /></div>
+                : s.ghi_chu ? <div className="cnct-pass">✓ {s.ghi_chu}</div> : null}
+            </section>
+          ))}
+        </div>
+      </div>
+
+      {soLaMau && (
+        <p style={{ background: "#FFF8E8", color: "#6B5426", fontSize: 12.5,
+                    padding: "9px 13px", borderRadius: 10, lineHeight: 1.6 }}>
+          Các ô chỉ số đang hiển thị <strong>số liệu mẫu</strong> vì chưa có số thật.
+          Nhập số tại Quản trị → Nhập dữ liệu hàng loạt, nhóm Số liệu Dashboard,
+          hoặc nối bảng tính tại Nguồn dữ liệu Sheet.
+        </p>
+      )}
+
+      <div className="cnct-stats">
+        {small.map((s) => (
+          <section key={s.ma} className={`cnct-stat ${s.mau || ""}`}>
+            <div className="cnct-stat-icon"><StatIcon ma={s.ma} size={22} /></div>
+            <div className="cnct-stat-label">{s.nhan}</div>
+            <div className="cnct-stat-value">{s.gia_tri}{s.don_vi ? ` ${s.don_vi}` : ""}</div>
+            <div className="cnct-stat-sub">{s.ghi_chu || s.muc_tieu}</div>
+          </section>
+        ))}
+      </div>
+
+      <section className="cnct-apps">
+        <div className="cnct-apps-head">
+          <div className="cnct-apps-title">TRUNG TÂM ỨNG DỤNG</div>
+          <button className="cnct-apps-more" onClick={() => onGo("apps")}>Xem tất cả ›</button>
+        </div>
+        <div className="cnct-app-list">
+          {apps.map((a, i) => (
+            <a key={a.id || a.name} className="cnct-app"
+              href={a.url && a.url !== "#" ? a.url : "#"}
+              target={a.url && a.url !== "#" ? "_blank" : undefined} rel="noreferrer">
+              <div className="cnct-app-icon" style={{ color: [RED, "#09a7a1", "#7c4bdc", "#0f6cbd", "#0a9b55", "#5b5fc7", "#f28a14"][i % 7], overflow: "hidden" }}>
+                {a.icon_url ? <img src={a.icon_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "inherit" }} /> : (a.name?.[0] || "•")}
+              </div>
+              <div className="cnct-app-name">{a.name}</div>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <section className="cnct-panel">
+        <div className="cnct-panel-head">
+          <div className="cnct-panel-title"><Calendar size={17} /> LỊCH CÔNG TÁC HÔM NAY</div>
+          <span className="cnct-panel-note">
+            {home?.schedule_from_sheet ? "Nguồn: Google Sheet" : new Date().toLocaleDateString("vi-VN")}
+          </span>
+        </div>
+        {schedule.length === 0 ? (
+          <p className="cnct-empty">
+            Hôm nay chưa có lịch công tác. Quản trị viên nhập tại
+            Quản trị → Lịch công tác tuần.
+          </p>
+        ) : schedule.map((s, i) => <SchedRow key={i} s={s} />)}
+      </section>
+    </div>
+  );
+}
+
+
+
+/* ====================== KHUNG DÙNG CHUNG CHO CÁC CỬA SỔ XEM CHI TIẾT ====================== */
+
+/** Khung cửa sổ: đóng bằng nút, bấm ra ngoài, hoặc phím Esc. */
+function Sheet({ title, icon: Icon, onClose, children, rong }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    const cu = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = cu; };
+  }, [onClose]);
+
+  return (
+    <div className="sheet" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="card" style={{ width: rong ? "min(820px,100%)" : "min(620px,100%)",
+                                     maxHeight: "92vh", display: "flex", flexDirection: "column",
+                                     borderRadius: 16, overflow: "hidden" }}>
+        <div className="card-h">
+          <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
+            {Icon && <Icon size={16} style={{ color: RED, flexShrink: 0 }} />}
+            <span className="card-t" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {title}
+            </span>
+          </div>
+          <button className="btn btn-sm" onClick={onClose}><X size={15} /> Đóng</button>
+        </div>
+        <div style={{ overflowY: "auto", padding: 20 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Xem ảnh phóng to toàn màn hình. */
+function Lightbox({ src, caption, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(20,18,19,.93)", zIndex: 95,
+               display: "grid", placeItems: "center", cursor: "zoom-out", padding: 24 }}>
+      <div style={{ textAlign: "center", maxWidth: "100%", maxHeight: "100%" }}>
+        {src
+          ? <img src={src} alt="" style={{ maxWidth: "100%", maxHeight: "80vh", borderRadius: 10 }} />
+          : <div style={{ width: "min(560px,80vw)", height: "50vh", background: RED_DARK,
+                          borderRadius: 12, display: "grid", placeItems: "center" }}>
+              <ImageIcon size={54} color="#fff" />
+            </div>}
+        {caption && <p style={{ color: "#fff", marginTop: 14, fontSize: 14.5, fontWeight: 600 }}>{caption}</p>}
+        <p style={{ color: "rgba(255,255,255,.6)", marginTop: 6, fontSize: 12 }}>Bấm bất kỳ đâu để đóng</p>
+      </div>
+    </div>
+  );
+}
+
+/* ============================== TRANG ĐỌC BẢN TIN ============================== */
+
+/**
+ * Cửa sổ đọc bản tin đầy đủ: ảnh đại diện, nội dung, ảnh đính kèm.
+ * Mở bằng cách bấm vào bất kỳ thẻ tin nào ở trang chủ hoặc mục Truyền thông.
+ */
+export function NewsReader({ news, onClose }) {
+  const [anhLon, setAnhLon] = useState(null);
+
+  // Đóng bằng phím Esc, và khoá cuộn nền phía sau
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { if (anhLon) setAnhLon(null); else onClose(); }
+    };
+    document.addEventListener("keydown", onKey);
+    const cu = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = cu; };
+  }, [onClose, anhLon]);
+
+  if (!news) return null;
+  const gallery = Array.isArray(news.gallery) ? news.gallery : [];
+
+  return (
+    <div className="sheet" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="card" style={{ width: "min(820px,100%)", maxHeight: "92vh",
+                                     display: "flex", flexDirection: "column", borderRadius: 16, overflow: "hidden" }}>
+        <div className="card-h">
+          <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
+            <Megaphone size={16} style={{ color: RED, flexShrink: 0 }} />
+            <span className="card-t" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {news.tag || news.cat || "Bản tin"}
+            </span>
+          </div>
+          <button className="btn btn-sm" onClick={onClose}><X size={15} /> Đóng</button>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: 0 }}>
+          {news.cover_url && (
+            <img src={news.cover_url} alt="" style={{ width: "100%", maxHeight: 300, objectFit: "cover", display: "block" }} />
+          )}
+
+          <div style={{ padding: 22 }}>
+            <h1 style={{ fontSize: 23, fontWeight: 800, lineHeight: 1.3, letterSpacing: "-.02em" }}>
+              {news.title}
+            </h1>
+            <p className="muted mono" style={{ fontSize: 12, marginTop: 10 }}>
+              {[news.date, news.author, news.cat].filter(Boolean).join("  ·  ")}
+            </p>
+
+            {news.excerpt && (
+              <p className="dim" style={{ fontSize: 15, fontWeight: 500, marginTop: 16, lineHeight: 1.65,
+                                          paddingLeft: 14, borderLeft: `3px solid ${RED}` }}>
+                {news.excerpt}
+              </p>
+            )}
+
+            {news.body ? (
+              <div style={{ fontSize: 14.5, lineHeight: 1.8, marginTop: 18, whiteSpace: "pre-wrap" }}>
+                {news.body}
+              </div>
+            ) : (
+              <p className="muted" style={{ fontSize: 13.5, marginTop: 18, fontStyle: "italic" }}>
+                Bản tin này chưa có nội dung chi tiết. Người đăng bổ sung tại
+                Quản trị → Quản lý bản tin.
+              </p>
+            )}
+
+            {gallery.length > 0 && (
+              <>
+                <p className="eyebrow-grey" style={{ marginTop: 24, marginBottom: 10 }}>
+                  Ảnh đính kèm ({gallery.length})
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {gallery.map((url, i) => (
+                    <img key={url + i} src={url} alt="" onClick={() => setAnhLon(url)}
+                      style={{ width: "100%", height: 110, objectFit: "cover",
+                               borderRadius: 10, cursor: "zoom-in", border: "1px solid #E7E3E4" }} />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {anhLon && (
+        <div onClick={() => setAnhLon(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(20,18,19,.92)", zIndex: 90,
+                   display: "grid", placeItems: "center", cursor: "zoom-out", padding: 24 }}>
+          <img src={anhLon} alt="" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 10 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== TRUYỀN THÔNG ============================== */
+
+
+/**
+ * Album ảnh và video.
+ * Ảnh bấm vào phóng to ngay tại trang; video bấm vào mở tab mới.
+ */
+function AlbumCard() {
+  const [items] = useRemote("/api/media", null);
+  const [xem, setXem] = useState(null);
+  const [loc, setLoc] = useState("all");
+
+  const ds = items || [];
+  const hien = loc === "all" ? ds : ds.filter((m) => m.kind === loc);
+
+  const mo = (m) => {
+    if (m.kind === "video") {
+      if (m.url && m.url !== "#") window.open(m.url, "_blank", "noopener");
+      else window.alert("Video này chưa được gắn đường dẫn.\n\nQuản trị viên bổ sung tại Quản trị → Album ảnh và video.");
+      return;
+    }
+    setXem(m);
+  };
+
+  return (
+    <>
+      <Card title="Album ảnh và video" icon={ImageIcon} pad={false}
+        action={
+          <div className="flex gap-1.5">
+            {[["all", "Tất cả"], ["image", "Ảnh"], ["video", "Video"]].map(([v, l]) => (
+              <button key={v} className={`chip ${loc === v ? "on" : ""}`}
+                style={{ padding: "4px 10px", fontSize: 11.5 }} onClick={() => setLoc(v)}>
+                {l}
+              </button>
+            ))}
+          </div>
+        }>
+        {hien.length === 0 ? (
+          <Empty title="Chưa có ảnh hoặc video nào."
+            hint="Quản trị viên bổ sung tại Quản trị → Album ảnh và video." />
+        ) : (
+          <div className="grid grid-cols-2" style={{ padding: 12, gap: 10 }}>
+            {hien.map((m) => {
+              const anh = m.kind === "video" ? m.thumb_url : (m.url || m.thumb_url);
+              return (
+                <div key={m.id} onClick={() => mo(m)}
+                  style={{ borderRadius: 11, overflow: "hidden", cursor: "pointer" }}>
+                  <div style={{ height: 92, background: m.color || RED, display: "grid",
+                                placeItems: "center", position: "relative", borderRadius: 11,
+                                overflow: "hidden" }}>
+                    {anh
+                      ? <img src={anh} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : (m.kind === "video" ? <Video size={22} color="#fff" /> : <ImageIcon size={22} color="#fff" />)}
+                    {m.kind === "video" && (
+                      <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center",
+                                     background: "rgba(20,18,19,.35)" }}>
+                        <span style={{ width: 34, height: 34, borderRadius: "50%", background: "#fff",
+                                       display: "grid", placeItems: "center", color: RED, fontSize: 14 }}>▶</span>
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>{m.title}</p>
+                  <p className="muted" style={{ fontSize: 11 }}>
+                    {[m.author, m.album].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {xem && (
+        <Lightbox src={xem.url || xem.thumb_url}
+          caption={`${xem.title}${xem.author ? " — " + xem.author : ""}`}
+          onClose={() => setXem(null)} />
+      )}
+    </>
+  );
+}
+
+export function NewsView({ openId, onOpened }) {
+  const [NEWS] = useRemote("/api/news", D.NEWS_FB, adapt.news);
+  const cats = ["Tất cả", "Hoạt động", "Phong trào", "Gương điển hình", "Văn hoá", "Bản tin"];
+  const [cat, setCat] = useState("Tất cả");
+  const [doc, setDoc] = useState(null);   // bản tin đang mở để đọc
+
+  // Bấm tin từ trang chủ: mở đúng bản tin đó ngay khi danh sách tải xong
+  useEffect(() => {
+    if (openId && NEWS.length) {
+      const found = NEWS.find((n) => n.id === openId);
+      if (found) { setDoc(found); onOpened?.(); }
+    }
+  }, [openId, NEWS]);
+  const list = cat === "Tất cả" ? NEWS : NEWS.filter((n) => n.cat === cat);
+  const [f, ...rest] = list;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-2 scroll-x" style={{ paddingBottom: 2 }}>
+        {cats.map((c) => <button key={c} className={`chip ${cat === c ? "on" : ""}`} onClick={() => setCat(c)}>{c}</button>)}
+      </div>
+
+      {f && (
+        <article className="card" style={{ overflow: "hidden", cursor: "pointer" }} onClick={() => setDoc(f)}>
+          <div style={{ height: 190, background: f.cover_url ? "#fff" : `linear-gradient(115deg, ${RED} 0%, ${RED_DARK} 62%, #8E0518 100%)`, position: "relative" }}>
+            {f.cover_url && <img src={f.cover_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", padding: 22,
+                          background: f.cover_url ? "linear-gradient(transparent, rgba(140,10,30,.85))" : "none" }}>
+              <div>
+                <span className="tag" style={{ background: "rgba(255,255,255,.2)", color: "#fff" }}>{f.tag}</span>
+                <h2 style={{ color: "#fff", fontSize: 24, fontWeight: 800, letterSpacing: "-.02em", marginTop: 10, maxWidth: 640, lineHeight: 1.25 }}>{f.title}</h2>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: 18 }}>
+            <p className="dim" style={{ fontSize: 14 }}>{f.excerpt}</p>
+            <p className="muted mono" style={{ fontSize: 11.5, marginTop: 10 }}>{f.date} · {f.author}</p>
+          </div>
+        </article>
+      )}
+
+      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {rest.map((n) => (
+          <article key={n.id} className="card row-hover" style={{ padding: 16, cursor: "pointer" }} onClick={() => setDoc(n)}>
+            <span className="tag tag-grey">{n.tag}</span>
+            <h3 style={{ fontWeight: 700, fontSize: 15, marginTop: 9, letterSpacing: "-.01em", lineHeight: 1.35 }}>{n.title}</h3>
+            <p className="muted" style={{ fontSize: 13, marginTop: 6 }}>{n.excerpt}</p>
+            <p className="muted mono" style={{ fontSize: 11, marginTop: 10 }}>{n.date} · {n.author}</p>
+            <p className="link" style={{ fontSize: 12.5, marginTop: 8 }}>Đọc tiếp ›</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <AlbumCard />
+
+        <Card title="Bản tin hằng tuần" icon={FileText} pad={false}>
+          {[31, 30, 29, 28].map((s, i) => (
+            <div key={s} className="row-hover flex items-center gap-3" style={{ padding: "13px 16px", borderTop: i ? "1px solid #F1EEEF" : 0 }}>
+              <div className="thumb mono" style={{ width: 40, height: 40, background: i ? RED_DARK : RED, fontSize: 13 }}>{s}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontWeight: 600, fontSize: 13.5 }}>Bản tin nội bộ số {s}/2026</p>
+                <p className="muted" style={{ fontSize: 12 }}>PDF · 12 trang</p>
+              </div>
+              <button className="btn btn-sm"><Download size={13} /> Tải</button>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {doc && <NewsReader news={doc} onClose={() => setDoc(null)} />}
+    </div>
+  );
+}
+
+/* ============================== ỨNG DỤNG ============================== */
+
+export function AppsView() {
+  const [APPS] = useRemote("/api/apps", D.APPS_FB, adapt.apps);
+  const cats = ["Tất cả", ...Array.from(new Set(APPS.map((a) => a.cat)))];
+  const [cat, setCat] = useState("Tất cả");
+  const list = cat === "Tất cả" ? APPS : APPS.filter((a) => a.cat === cat);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="card flex items-center gap-3" style={{ padding: 14, borderLeft: `3px solid ${RED}` }}>
+        <Rocket size={18} style={{ color: RED }} />
+        <p className="dim" style={{ fontSize: 13.5 }}>
+          Một cú nhấp để mở ứng dụng công việc. Không phải nhớ từng đường dẫn.
+        </p>
+      </div>
+
+      <div className="flex gap-2 scroll-x">
+        {cats.map((c) => <button key={c} className={`chip ${cat === c ? "on" : ""}`} onClick={() => setCat(c)}>{c}</button>)}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+        {list.map((a) => (
+          <a key={a.id || a.name} href={a.url} target={a.url !== "#" ? "_blank" : undefined} rel="noreferrer"
+            className="card row-hover" style={{ padding: 16, textDecoration: "none", color: "inherit", display: "block" }}>
+            <div className="flex items-start justify-between">
+              <div className="thumb" style={{ width: 42, height: 42, background: a.color, fontSize: 16 }}>{a.name[0]}</div>
+              <ArrowUpRight size={16} className="muted" />
+            </div>
+            <h3 style={{ fontWeight: 700, fontSize: 14.5, marginTop: 12 }}>{a.name}</h3>
+            <p className="muted" style={{ fontSize: 12.5, marginTop: 4, minHeight: 34 }}>{a.description}</p>
+            <span className="tag tag-red" style={{ marginTop: 8 }}>{a.cat}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================== TÀI LIỆU ============================== */
+
+export function DocsView() {
+  const [DOCS] = useRemote("/api/documents", D.DOCS_FB, adapt.docs);
+  const [q, setQ] = useState("");
+  const [nhomTuMayChu] = useRemote("/api/document-categories", null);
+  const [cat, setCat] = useState("Tất cả");
+
+  // Chỉ hiện nhóm nào thật sự có tài liệu, để bộ lọc không đầy nhóm rỗng
+  const nhomCoTaiLieu = new Set(DOCS.map((d) => d.cat).filter(Boolean));
+  const cats = ["Tất cả", ...(nhomTuMayChu || []).filter((c) => nhomCoTaiLieu.has(c))];
+
+  const list = DOCS.filter((d) => {
+    const okCat = cat === "Tất cả" || d.cat === cat;
+    const t = norm(q).trim();
+    const okQ = !t || norm(`${d.title} ${d.body || ""} ${d.code}`).includes(t);
+    return okCat && okQ;
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="card" style={{ padding: 16 }}>
+        <div className="search-box">
+          <BookOpen size={18} style={{ color: RED }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Tìm toàn văn trong kho tài liệu — thử “xăng dầu”, “an toàn”, “PAKH”" />
+        </div>
+        <div className="flex gap-2 scroll-x" style={{ marginTop: 12 }}>
+          {cats.map((c) => <button key={c} className={`chip ${cat === c ? "on" : ""}`} onClick={() => setCat(c)}>{c}</button>)}
+        </div>
+      </div>
+
+      <Card title={`Tài liệu (${list.length})`} icon={BookOpen} pad={false}>
+        {list.length === 0
+          ? <Empty title="Chưa có tài liệu nào khớp." hint="Bỏ bớt từ khoá, hoặc chọn lại nhóm tài liệu." />
+          : list.map((d, i) => <DocRow key={d.id} d={d} dau={i === 0} />)}
+      </Card>
+    </div>
+  );
+}
+
+
+/**
+ * Một dòng tài liệu. Bấm vào đâu cũng mở được tệp.
+ * Tài liệu chưa gắn tệp thì báo rõ thay vì mở ra trang trắng.
+ */
+function DocRow({ d, dau }) {
+  const [nhac, setNhac] = useState(false);
+  const coTep = !!(d.file_url && d.file_url.trim() && d.file_url !== "#");
+
+  const moTaiLieu = () => {
+    if (!coTep) { setNhac(true); setTimeout(() => setNhac(false), 4000); return; }
+    // Ghi nhận lượt tải rồi mở tệp. Không chặn việc mở nếu ghi nhận lỗi.
+    api.post(`/api/documents/${d.id}/download`).catch(() => {});
+    window.open(d.file_url, "_blank", "noopener");
+  };
+
+  return (
+    <div className="row-hover" style={{ borderTop: dau ? 0 : "1px solid #F1EEEF" }}>
+      <div className="flex items-center gap-3" onClick={moTaiLieu}
+        style={{ padding: "13px 16px", cursor: "pointer" }}>
+        <FileText size={19} style={{ color: coTep ? RED : "#C6C1C2", flexShrink: 0 }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontWeight: 600, fontSize: 13.5 }}>{d.title}</p>
+          <p className="muted mono" style={{ fontSize: 11.5, marginTop: 3 }}>
+            {[d.code, d.cat, d.size, d.date && `Cập nhật ${d.date}`].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+        {coTep ? (
+          <span className="btn btn-sm"><Download size={13} /><span className="hidden sm:inline">Tải về</span></span>
+        ) : (
+          <span className="tag tag-grey">Chưa có tệp</span>
+        )}
+      </div>
+
+      {nhac && (
+        <p style={{ background: "#FFF8E8", color: "#6B5426", fontSize: 12.5,
+                    padding: "9px 16px", borderTop: "1px solid #F0DFB4" }}>
+          Tài liệu này chưa được gắn tệp. Quản trị viên vào
+          <strong> Quản trị → Quản lý tài liệu</strong>, sửa tài liệu và điền ô
+          “Đường dẫn tệp”.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ============================== DASHBOARD ============================== */
+
+/**
+ * DASHBOARD
+ *
+ * Số liệu lấy từ máy chủ theo thứ tự ưu tiên:
+ *   1. Google Sheet nếu đã cấu hình nguồn
+ *   2. Bảng số liệu trong cơ sở dữ liệu
+ *   3. Dữ liệu mẫu, chỉ khi hai nguồn trên đều trống
+ *
+ * Trạng thái nguồn hiện ngay trên biểu đồ để người xem biết con số đến từ đâu.
+ */
+
+// Bảy bảng số liệu, kèm cách vẽ và dữ liệu mẫu dùng khi chưa có số thật
+const BOARDS = {
+  KPI: {
+    nhan: "KPI", ma: "KPI", icon: BarChart3,
+    tieuDe: "Kế hoạch và thực hiện KPI theo tháng",
+    mau: D.D_KPI.map((r) => ({ name: r.m, "Kế hoạch": r.kh, "Thực hiện": r.th })),
+    ve: "cot-kep",
+  },
+  WO: {
+    nhan: "WO", ma: "WO", icon: Wrench,
+    tieuDe: "Work order: được giao và hoàn thành",
+    mau: D.D_WO.map((r) => ({ name: r.m, "Được giao": r.giao, "Hoàn thành": r.xong })),
+    ve: "cot-kep",
+  },
+  PAKH: {
+    nhan: "PAKH", ma: "PAKH", icon: MessageSquare,
+    tieuDe: "Phản ánh khách hàng: tiếp nhận và xử lý",
+    mau: D.D_PAKH.map((r) => ({ name: r.m, "Tiếp nhận": r.nhan, "Đã xử lý": r.xuly })),
+    ve: "vung",
+  },
+  FUEL: {
+    nhan: "Xăng dầu", ma: "FUEL", icon: TrendingUp,
+    tieuDe: "Nhiên liệu: định mức và thực chi theo đơn vị (lít)",
+    mau: D.D_FUEL.map((r) => ({ name: r.t, "Định mức": r.dm, "Thực chi": r.tt })),
+    ve: "cot-ngang",
+  },
+  HIRE: {
+    nhan: "Tuyển dụng", ma: "HIRE", icon: UserPlus,
+    tieuDe: "Tiến độ tuyển dụng",
+    mau: D.D_HIRE.map((r) => ({ name: r.b, "Số lượng": r.v })),
+    ve: "cot-don",
+  },
+  OUTPUT: {
+    nhan: "Sản lượng", ma: "OUTPUT", icon: TrendingUp,
+    tieuDe: "Sản lượng thực hiện (tỷ đồng)",
+    mau: D.D_OUT.map((r) => ({ name: r.m, "Sản lượng": r.v })),
+    ve: "duong",
+  },
+  NETWORK: {
+    nhan: "Chất lượng mạng", ma: "NETWORK", icon: Signal,
+    tieuDe: "Chất lượng mạng theo ngày",
+    mau: D.D_NET.map((r) => ({ name: r.m, "Availability": r.av, "Số sự cố": r.sc })),
+    ve: "cot-duong",
+  },
+};
+
+const MAU_VE = [RED, "#DCD7D8", "#F2A007", "#0E9C99", "#7C3AED"];
+
+/** Lấy tên các cột số liệu, bỏ cột nhãn. */
+function cotSoLieu(series) {
+  const keys = new Set();
+  series.forEach((r) => Object.keys(r).forEach((k) => k !== "name" && keys.add(k)));
+  return [...keys];
+}
+
+function BieuDo({ kieu, series }) {
+  const cot = cotSoLieu(series);
+  const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
+  const luoi = <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />;
+
+  if (kieu === "cot-ngang") {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <BarChart data={series} layout="vertical" margin={{ left: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" horizontal={false} />
+          <XAxis type="number" {...truc} />
+          <YAxis type="category" dataKey="name" width={110} {...truc} />
+          <Tooltip {...tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12.5 }} />
+          {cot.map((c, i) => (
+            <Bar key={c} dataKey={c} name={c} radius={[0, 4, 4, 0]} barSize={14}>
+              {series.map((r, j) => {
+                // Cột thực chi vượt định mức thì tô đỏ để nhìn ra ngay
+                const vuot = cot.length === 2 && i === 1 && r[cot[1]] > r[cot[0]];
+                return <Cell key={j} fill={i === 0 ? "#DCD7D8" : (vuot ? RED : "#0E9C99")} />;
+              })}
+            </Bar>
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  if (kieu === "vung") {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <AreaChart data={series}>
+          <defs>
+            <linearGradient id="gradDash" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={RED} stopOpacity={0.3} />
+              <stop offset="100%" stopColor={RED} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          {luoi}
+          <XAxis dataKey="name" {...truc} />
+          <YAxis {...truc} />
+          <Tooltip {...tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12.5 }} />
+          {cot.map((c, i) => (
+            <Area key={c} type="monotone" dataKey={c} name={c} strokeWidth={2.5}
+              stroke={i === 0 ? RED : "#0E9C99"} fill={i === 0 ? "url(#gradDash)" : "transparent"} />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  if (kieu === "duong") {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={series}>
+          {luoi}
+          <XAxis dataKey="name" {...truc} />
+          <YAxis {...truc} />
+          <Tooltip {...tooltipStyle} />
+          {cot.length > 1 && <Legend wrapperStyle={{ fontSize: 12.5 }} />}
+          {cot.map((c, i) => (
+            <Line key={c} type="monotone" dataKey={c} name={c}
+              stroke={MAU_VE[i % MAU_VE.length]} strokeWidth={3} dot={{ r: 4 }} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  if (kieu === "cot-duong" && cot.length >= 2) {
+    return (
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={series}>
+          {luoi}
+          <XAxis dataKey="name" {...truc} />
+          <YAxis yAxisId="l" {...truc} />
+          <YAxis yAxisId="r" orientation="right" {...truc} />
+          <Tooltip {...tooltipStyle} />
+          <Legend wrapperStyle={{ fontSize: 12.5 }} />
+          <Bar yAxisId="r" dataKey={cot[1]} name={cot[1]} fill="#DCD7D8" radius={[4, 4, 0, 0]} barSize={26} />
+          <Line yAxisId="l" type="monotone" dataKey={cot[0]} name={cot[0]} stroke={RED} strokeWidth={2.5} dot={{ r: 3 }} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  // Mặc định: cột, một hoặc nhiều nhóm
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={series}>
+        {luoi}
+        <XAxis dataKey="name" {...truc} />
+        <YAxis {...truc} />
+        <Tooltip {...tooltipStyle} />
+        {cot.length > 1 && <Legend wrapperStyle={{ fontSize: 12.5 }} />}
+        {cot.map((c, i) => (
+          <Bar key={c} dataKey={c} name={c} radius={[4, 4, 0, 0]} barSize={cot.length > 1 ? 22 : 44}
+            fill={cot.length === 1 ? RED : (i === 0 ? "#DCD7D8" : RED)} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function NhanNguon({ nguon }) {
+  const nhan = {
+    sheet: ["Nguồn: Google Sheet", "tag-green"],
+    database: ["Nguồn: dữ liệu trong hệ thống", "tag-grey"],
+    mau: ["Đang hiển thị số liệu mẫu", "tag-amber"],
+  }[nguon] || ["", "tag-grey"];
+  return <span className={`tag ${nhan[1]}`}>{nhan[0]}</span>;
+}
+
+export function DashView() {
+  const [ma, setMa] = useState("KPI");
+  const [duLieu, setDuLieu] = useState(null);
+  const [dangTai, setDangTai] = useState(true);
+  const [loi, setLoi] = useState("");
+
+  const board = BOARDS[ma];
+
+  useEffect(() => {
+    let con = true;
+    setDangTai(true); setLoi("");
+    api.get(`/api/dashboard/${ma}`)
+      .then((d) => { if (con) setDuLieu(d); })
+      .catch((e) => {
+        if (!con) return;
+        setDuLieu(null);
+        // 404 nghĩa là chưa có số liệu, không phải lỗi hệ thống
+        if (!/404|chưa có số liệu/i.test(e.message)) setLoi(e.message);
+      })
+      .finally(() => con && setDangTai(false));
+    return () => { con = false; };
+  }, [ma]);
+
+  const coSoThat = duLieu?.series?.length > 0;
+  const series = coSoThat ? duLieu.series : board.mau;
+  const nguon = coSoThat ? (duLieu.source || "database") : "mau";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-2 scroll-x">
+        {Object.values(BOARDS).map((b) => (
+          <button key={b.ma} className={`chip ${ma === b.ma ? "on" : ""}`} onClick={() => setMa(b.ma)}>
+            {b.nhan}
+          </button>
+        ))}
+      </div>
+
+      {loi && (
+        <div className="card" style={{ padding: 14, borderLeft: `3px solid ${RED}` }}>
+          <p style={{ fontSize: 13.5, color: RED_DARK }}>{loi}</p>
+        </div>
+      )}
+
+      <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+        {dangTai ? (
+          <p className="muted" style={{ fontSize: 13.5, padding: "40px 0", textAlign: "center" }}>
+            Đang tải số liệu…
+          </p>
+        ) : (
+          <>
+            <BieuDo kieu={board.ve} series={series} />
+
+            {nguon === "mau" && (
+              <p style={{ background: "#FFF8E8", color: "#6B5426", fontSize: 12.5,
+                          padding: "10px 13px", borderRadius: 9, marginTop: 12, lineHeight: 1.6 }}>
+                Chưa có số liệu thật cho bảng này nên đang hiển thị số liệu mẫu.
+                Nhập số tại <strong>Quản trị → Nhập dữ liệu hàng loạt</strong> chọn nhóm
+                Số liệu Dashboard, hoặc nối bảng tính tại <strong>Nguồn dữ liệu Sheet</strong>.
+              </p>
+            )}
+          </>
+        )}
+      </Card>
+
+      {coSoThat && (
+        <Card title="Số liệu chi tiết" icon={BarChart3} pad={false}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Kỳ / Đơn vị</th>
+                  {cotSoLieu(series).map((c) => <th key={c} style={{ textAlign: "right" }}>{c}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {series.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}>{r.name}</td>
+                    {cotSoLieu(series).map((c) => (
+                      <td key={c} className="mono" style={{ textAlign: "right" }}>
+                        {r[c] != null ? Number(r[c]).toLocaleString("vi-VN") : "—"}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ============================== SÁNG KIẾN ============================== */
+
+export function IdeasView() {
+  const [remote] = useRemote("/api/ideas", D.IDEAS_FB, adapt.ideas);
+  const [ideas, setIdeas] = useState(D.IDEAS_FB);
+  useEffect(() => setIdeas(remote), [remote]);
+
+  const [voted, setVoted] = useState({});
+  const [xem, setXem] = useState(null);      // sáng kiến đang xem chi tiết
+  const [form, setForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [benefit, setBenefit] = useState("");
+
+  const vote = (id) => {
+    if (voted[id]) return;
+    setVoted((v) => ({ ...v, [id]: true }));
+    setIdeas((l) => l.map((i) => (i.id === id ? { ...i, votes: i.votes + 1 } : i)));
+    api.post(`/api/ideas/${id}/vote`).catch(() => {});
+  };
+
+  const submit = () => {
+    if (!title.trim()) return;
+    setIdeas((l) => [{
+      id: Date.now(), title, author: "Bạn", dept: "Phòng VHKT", status: "Chờ duyệt",
+      votes: 0, saved: benefit || "Chưa ước tính", date: new Date().toLocaleDateString("vi-VN"),
+    }, ...l]);
+    api.post("/api/ideas", { title, benefit }).catch(() => {});
+    setTitle(""); setBenefit(""); setForm(false);
+  };
+
+  const tagOf = (s) => (s === "Đã áp dụng" ? "tag-green" : s === "Đang triển khai" ? "tag-amber" : "tag-grey");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="card flex items-center justify-between gap-4" style={{ padding: 16, flexWrap: "wrap", borderLeft: `3px solid ${RED}` }}>
+        <div className="flex items-center gap-3">
+          <Lightbulb size={20} style={{ color: RED }} />
+          <div>
+            <p style={{ fontWeight: 700, fontSize: 14.5 }}>Sáng kiến quý III/2026</p>
+            <p className="muted" style={{ fontSize: 12.5 }}>{ideas.length} sáng kiến · Hội đồng chấm ngày 26/08</p>
+          </div>
+        </div>
+        <button className="btn btn-red" onClick={() => setForm(true)}><Plus size={15} /> Đăng sáng kiến</button>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {ideas.map((i) => (
+          <div key={i.id} className="card row-hover" style={{ padding: 16, cursor: "pointer" }}
+            onClick={() => setXem(i)}>
+            <div className="flex items-start justify-between gap-3">
+              <span className={`tag ${tagOf(i.status)}`}>{i.status}</span>
+              <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); vote(i.id); }}
+                style={voted[i.id] ? { background: RED, borderColor: RED, color: "#fff" } : undefined}>
+                <ThumbsUp size={13} /> <span className="mono">{i.votes}</span>
+              </button>
+            </div>
+            <h3 style={{ fontWeight: 700, fontSize: 14.5, marginTop: 10, lineHeight: 1.35 }}>{i.title}</h3>
+            <p style={{ fontSize: 12.5, marginTop: 8, color: "#0A7A50", fontWeight: 600 }}>
+              <Check size={13} style={{ display: "inline", marginRight: 4 }} />{i.saved}
+            </p>
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>{i.author} · {i.dept} · {i.date}</p>
+            <p className="link" style={{ fontSize: 12.5, marginTop: 8 }}>Xem chi tiết ›</p>
+            <div className="bar-track" style={{ marginTop: 12 }}>
+              <div className="bar-fill" style={{ background: RED, width: i.status === "Đã áp dụng" ? "100%" : i.status === "Đang triển khai" ? "60%" : "25%" }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {xem && (
+        <Sheet rong title="Chi tiết sáng kiến" icon={Lightbulb} onClose={() => setXem(null)}>
+          <div className="flex items-center gap-2" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+            <span className={`tag ${tagOf(xem.status)}`}>{xem.status}</span>
+            <span className="tag tag-grey"><ThumbsUp size={11} /> {xem.votes} bình chọn</span>
+          </div>
+
+          <h2 style={{ fontSize: 19, fontWeight: 800, lineHeight: 1.35 }}>{xem.title}</h2>
+
+          <p style={{ fontSize: 14, marginTop: 12, color: "#0A7A50", fontWeight: 600 }}>
+            <Check size={14} style={{ display: "inline", marginRight: 5 }} />
+            Lợi ích: {xem.saved || xem.benefit || "Chưa ước tính"}
+          </p>
+
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+            Người đề xuất: {xem.author} · {xem.dept} · {xem.date}
+          </p>
+
+          {xem.body ? (
+            <div style={{ fontSize: 14.5, lineHeight: 1.8, marginTop: 18, whiteSpace: "pre-wrap",
+                          paddingTop: 16, borderTop: "1px solid #F1EEEF" }}>
+              {xem.body}
+            </div>
+          ) : (
+            <p className="muted" style={{ fontSize: 13.5, marginTop: 18, fontStyle: "italic",
+                                          paddingTop: 16, borderTop: "1px solid #F1EEEF" }}>
+              Sáng kiến này chưa có mô tả chi tiết.
+            </p>
+          )}
+
+          <div className="flex gap-2" style={{ marginTop: 22 }}>
+            <button className="btn btn-red" disabled={!!voted[xem.id]}
+              onClick={() => { vote(xem.id); setXem({ ...xem, votes: xem.votes + (voted[xem.id] ? 0 : 1) }); }}>
+              <ThumbsUp size={15} /> {voted[xem.id] ? "Đã bình chọn" : "Bình chọn"}
+            </button>
+          </div>
+        </Sheet>
+      )}
+
+      {form && (
+        <div className="sheet" onClick={(e) => e.target === e.currentTarget && setForm(false)}>
+          <div className="card" style={{ width: "min(520px,100%)", padding: 20, borderRadius: 16 }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
+              <h3 style={{ fontWeight: 800, fontSize: 17 }}>Đăng sáng kiến</h3>
+              <button className="btn btn-sm" onClick={() => setForm(false)}><X size={14} /></button>
+            </div>
+            <label className="field"><span>Tên sáng kiến</span>
+              <input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mô tả ngắn gọn cách làm mới" />
+            </label>
+            <label className="field"><span>Lợi ích mang lại</span>
+              <textarea className="inp" rows={3} value={benefit} onChange={(e) => setBenefit(e.target.value)}
+                placeholder="Ví dụ: rút ngắn 15 phút mỗi lượt kiểm tra trạm" />
+            </label>
+            <div className="flex gap-2">
+              <button className="btn" style={{ flex: 1, justifyContent: "center" }} onClick={() => setForm(false)}>Huỷ</button>
+              <button className="btn btn-red" style={{ flex: 1, justifyContent: "center" }} onClick={submit}>Gửi sáng kiến</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== VĂN HOÁ ============================== */
+
+
+/**
+ * Cuộc thi ảnh. Lấy ảnh từ album, chọn những mục thuộc album có chữ "thi ảnh".
+ * Bình chọn lưu tại máy người dùng, mỗi người chọn một tác phẩm.
+ */
+function ThiAnh() {
+  const [media] = useRemote("/api/media?kind=image", null);
+  const [chon, setChon] = useState(null);
+  const [xem, setXem] = useState(null);
+
+  const ds = (media || []).filter((m) => /thi ảnh|cuộc thi/i.test(m.album || ""));
+
+  if (!media) return null;
+
+  if (ds.length === 0) {
+    return (
+      <Card title="Cuộc thi ảnh" icon={Trophy}>
+        <Empty title="Chưa có cuộc thi ảnh nào đang diễn ra."
+          hint="Quản trị viên thêm ảnh tại Quản trị → Album ảnh và video, đặt tên album chứa chữ “thi ảnh”." />
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card title={`Cuộc thi ảnh: ${ds[0].album}`} icon={Trophy}
+        action={<span className="muted" style={{ fontSize: 12 }}>{ds.length} tác phẩm</span>}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {ds.map((m) => (
+            <div key={m.id}>
+              <div onClick={() => setXem(m)} title="Bấm để xem ảnh lớn"
+                style={{ height: 130, background: m.color || RED, borderRadius: 12,
+                         display: "grid", placeItems: "center", cursor: "zoom-in", overflow: "hidden" }}>
+                {m.url
+                  ? <img src={m.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <ImageIcon size={26} color="#fff" />}
+              </div>
+              <p style={{ fontWeight: 600, fontSize: 13, marginTop: 8 }}>{m.title}</p>
+              <p className="muted" style={{ fontSize: 12 }}>{m.author}</p>
+              <button className="btn btn-sm"
+                style={{ marginTop: 8, width: "100%", justifyContent: "center",
+                         ...(chon === m.id ? { background: RED, borderColor: RED, color: "#fff" } : {}) }}
+                onClick={() => setChon(m.id)}>
+                <Star size={13} /> {chon === m.id ? "Đã bình chọn" : "Bình chọn"}
+              </button>
+            </div>
+          ))}
+        </div>
+        {chon && (
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
+            Mỗi người bình chọn một tác phẩm.
+          </p>
+        )}
+      </Card>
+
+      {xem && <Lightbox src={xem.url} caption={`${xem.title} — ${xem.author || ""}`} onClose={() => setXem(null)} />}
+    </>
+  );
+}
+
+export function CultureView() {
+  const [birthdays] = useRemote("/api/birthdays", null);
+  const [events] = useRemote("/api/events", D.EVENTS_FB);
+  const [wishes, setWishes] = useState({});
+  const [anh, setAnh] = useState(null);        // ảnh đang xem phóng to
+  const [suKien, setSuKien] = useState(null);  // sự kiện đang xem chi tiết
+
+  const bdays = birthdays?.length ? birthdays : [];
+  const evts = events?.length ? events : D.EVENTS_FB;
+  const dm = (iso) => {
+    const d = new Date(iso);
+    return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card title="Sinh nhật trong tháng" icon={Cake} pad={false}>
+          {bdays.length === 0
+            ? <Empty title="Chưa có dữ liệu sinh nhật." hint="Quản trị viên nhập ngày sinh tại Quản trị → Quản lý nhân viên." />
+            : bdays.map((b, i) => (
+              <div key={i} className="flex items-center gap-3" style={{ padding: "12px 16px", borderTop: i ? "1px solid #F1EEEF" : 0 }}>
+                <Avatar name={b.name} color={b.color} size={40} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: 13.5 }}>{b.name}</p>
+                  <p className="muted" style={{ fontSize: 12 }}>{b.dept} · {b.day}</p>
+                </div>
+                <button className="btn btn-sm" onClick={() => setWishes((w) => ({ ...w, [b.name]: true }))}
+                  style={wishes[b.name] ? { background: RED, borderColor: RED, color: "#fff" } : undefined}>
+                  {wishes[b.name] ? <><Check size={13} /> Đã chúc</> : <><PartyPopper size={13} /> Chúc mừng</>}
+                </button>
+              </div>
+            ))}
+        </Card>
+
+        <Card title="Sự kiện sắp diễn ra" icon={Calendar} pad={false}>
+          {evts.length === 0
+            ? <Empty title="Chưa có sự kiện nào." hint="Quản trị viên thêm tại Quản trị → Góc văn hoá." />
+            : evts.map((e, i) => (
+              <div key={e.id || i} className="flex gap-3 row-hover" onClick={() => setSuKien(e)}
+                style={{ padding: "13px 16px", borderTop: i ? "1px solid #F1EEEF" : 0, cursor: "pointer" }}>
+                <div className="thumb mono" style={{ width: 46, height: 46, background: RED, fontSize: 12 }}>{dm(e.start_at)}</div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: 13.5 }}>{e.title}</p>
+                  <p className="muted flex items-center gap-3" style={{ fontSize: 12, marginTop: 3, flexWrap: "wrap" }}>
+                    {e.place && <span className="flex items-center gap-1"><MapPin size={12} />{e.place}</span>}
+                    {e.meeting_type && e.meeting_type !== "truc_tiep" && (
+                      <span className="flex items-center gap-1" style={{ color: RED, fontWeight: 700 }}>
+                        <Video size={12} /> Trực tuyến
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            ))}
+        </Card>
+      </div>
+
+      <ThiAnh />
+
+      <Card title="Văn hoá Viettel" icon={Award}>
+        <div className="grid md:grid-cols-2 gap-3">
+          {D.VALUES_8.map((v, i) => (
+            <div key={v} className="flex items-start gap-3" style={{ padding: "10px 12px", background: "#F8F6F6", borderRadius: 11 }}>
+              <span className="mono" style={{ fontWeight: 700, color: RED, fontSize: 13 }}>0{i + 1}</span>
+              <span style={{ fontSize: 13.5, fontWeight: 500 }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {anh && <Lightbox src={anh.url} caption={anh.title} onClose={() => setAnh(null)} />}
+
+      {suKien && (
+        <Sheet title="Chi tiết sự kiện" icon={Calendar} onClose={() => setSuKien(null)}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.35 }}>{suKien.title}</h2>
+          <p className="muted mono" style={{ fontSize: 12.5, marginTop: 8 }}>
+            {new Date(suKien.start_at).toLocaleString("vi-VN")}
+          </p>
+
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #F1EEEF" }}>
+            {suKien.place && (
+              <p style={{ fontSize: 13.5, marginBottom: 8 }}>
+                <MapPin size={13} style={{ display: "inline", marginRight: 6, color: RED }} />
+                Địa điểm: {suKien.place}
+              </p>
+            )}
+            {suKien.host && (
+              <p style={{ fontSize: 13.5, marginBottom: 8 }}>
+                <Users size={13} style={{ display: "inline", marginRight: 6, color: RED }} />
+                Đơn vị tổ chức: {suKien.host}
+              </p>
+            )}
+            {suKien.participants && (
+              <p style={{ fontSize: 13.5, marginBottom: 8 }}>
+                <Users size={13} style={{ display: "inline", marginRight: 6, color: RED }} />
+                Thành phần: {suKien.participants}
+              </p>
+            )}
+          </div>
+
+          {suKien.meeting_info && (
+            <div style={{ marginTop: 8 }}>
+              {(suKien.meeting_info || "").toLowerCase().startsWith("http")
+                ? <a className="btn btn-red" href={suKien.meeting_info} target="_blank" rel="noreferrer"
+                    style={{ textDecoration: "none" }}><Video size={15} /> Vào phòng họp</a>
+                : <p className="mono" style={{ fontSize: 13 }}>Điểm cầu: {suKien.meeting_info}</p>}
+            </div>
+          )}
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+/* ============================== TRAO ĐỔI ============================== */
+
+const CH_ICONS = { kt: Wrench, ht: Building2, hc: Users, tc: BarChart3, cd: MessageSquare };
+
+/** Cửa sổ xem một chủ đề thảo luận và trả lời. */
+function ThreadReader({ id, onClose, onReplied }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [tra, setTra] = useState("");
+  const [dangGui, setDangGui] = useState(false);
+
+  useEffect(() => {
+    api.get(`/api/threads/${id}`)
+      .then(setData)
+      .catch((e) => {
+        // "Not Found" là thông báo mặc định khi máy chủ chưa có đường dẫn này,
+        // khác hẳn với việc chủ đề bị xoá. Nói rõ để khỏi mất công tìm nhầm chỗ.
+        const thieuDuongDan = /not found|404/i.test(e.message);
+        setErr(thieuDuongDan
+          ? "MAY_CHU_CU"
+          : e.message);
+      });
+  }, [id]);
+
+  const guiTraLoi = async () => {
+    if (!tra.trim()) return;
+    setDangGui(true); setErr("");
+    try {
+      const r = await api.post(`/api/threads/${id}/replies`, { body: tra });
+      setData((d) => ({ ...d, replies: [...(d.replies || []), r] }));
+      setTra("");
+      onReplied?.();
+    } catch (e) { setErr(e.message); }
+    setDangGui(false);
+  };
+
+  const khiNao = (v) => {
+    if (!v) return "";
+    const p = Math.round((Date.now() - new Date(v).getTime()) / 60000);
+    if (p < 60) return `${Math.max(p, 1)} phút trước`;
+    if (p < 1440) return `${Math.round(p / 60)} giờ trước`;
+    return new Date(v).toLocaleDateString("vi-VN");
+  };
+
+  return (
+    <Sheet rong title={data?.channel || "Chủ đề thảo luận"} icon={MessageSquare} onClose={onClose}>
+      {!data && !err && <p className="muted">Đang tải…</p>}
+      {err === "MAY_CHU_CU" ? (
+        <div style={{ background: "#FFF8E8", border: "1px solid #F0DFB4", borderRadius: 10, padding: 14 }}>
+          <p style={{ fontWeight: 700, fontSize: 13.5, color: "#8A5A08" }}>
+            Máy chủ chưa hỗ trợ xem chi tiết chủ đề
+          </p>
+          <p style={{ fontSize: 12.5, color: "#6B5426", marginTop: 6, lineHeight: 1.6 }}>
+            Giao diện đã có chức năng này nhưng phần máy chủ đang chạy bản cũ hơn,
+            chưa có đường dẫn tương ứng. Cần triển khai lại phần máy chủ bằng bộ mã
+            nguồn mới nhất.
+          </p>
+          <p style={{ fontSize: 12.5, color: "#6B5426", marginTop: 8, lineHeight: 1.6 }}>
+            Cách kiểm tra nhanh: mở <strong>/api/health</strong> trên trình duyệt, xem
+            trường <strong>api_version</strong>. Giao diện này cần từ phiên bản 5 trở lên.
+          </p>
+        </div>
+      ) : err ? (
+        <p style={{ color: RED_DARK, fontSize: 13.5 }}>{err}</p>
+      ) : null}
+
+      {data && (
+        <>
+          {data.tag && <span className="tag tag-red">{data.tag}</span>}
+          {data.status === "pending" && (
+            <span className="tag tag-amber" style={{ marginLeft: 6 }}>Chờ duyệt — chỉ bạn và quản trị viên thấy</span>
+          )}
+          <h2 style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.4, marginTop: 10 }}>{data.title}</h2>
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+            {data.author} · {khiNao(data.created_at)}
+          </p>
+
+          <p className="eyebrow-grey" style={{ marginTop: 22, marginBottom: 10 }}>
+            Trả lời ({data.replies?.length || 0})
+          </p>
+
+          {(data.replies || []).length === 0 ? (
+            <p className="muted" style={{ fontSize: 13.5, fontStyle: "italic" }}>
+              Chưa có ai trả lời. Bạn trả lời đầu tiên nhé.
+            </p>
+          ) : data.replies.map((r) => (
+            <div key={r.id} className="flex gap-3" style={{ padding: "12px 0", borderTop: "1px solid #F1EEEF" }}>
+              <Avatar name={r.author} color={RED_DARK} size={32} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 700 }}>
+                  {r.author} <span className="muted" style={{ fontWeight: 400 }}>· {khiNao(r.created_at)}</span>
+                  {r.status === "pending" && <span className="tag tag-amber" style={{ marginLeft: 6 }}>Chờ duyệt</span>}
+                </p>
+                <p style={{ fontSize: 13.5, lineHeight: 1.7, marginTop: 4, whiteSpace: "pre-wrap" }}>{r.body}</p>
+              </div>
+            </div>
+          ))}
+
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #F1EEEF" }}>
+            <textarea className="inp" rows={3} value={tra} onChange={(e) => setTra(e.target.value)}
+              placeholder="Viết câu trả lời của bạn…" />
+            <div className="flex items-center justify-between" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+              <span className="muted" style={{ fontSize: 12 }}>Trả lời cần quản trị viên duyệt mới hiển thị công khai.</span>
+              <button className="btn btn-red" onClick={guiTraLoi} disabled={dangGui || !tra.trim()}>
+                <Send size={14} /> {dangGui ? "Đang gửi…" : "Gửi trả lời"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+export function ForumView() {
+  const [ch, setCh] = useState("kt");
+  const [msg, setMsg] = useState("");
+  const [extra, setExtra] = useState({});
+  const [chans] = useRemote("/api/channels", D.CHANNELS_FB, adapt.channels);
+  const [remoteThreads] = useRemote(`/api/channels/${ch}/threads`, null, adapt.threads);
+  const [moChuDe, setMoChuDe] = useState(null);   // chủ đề đang mở
+
+  const channels = chans.map((c) => ({ ...c, icon: CH_ICONS[c.id] || MessageSquare }));
+  const list = [...(extra[ch] || []), ...(remoteThreads || D.THREADS_FB[ch] || [])];
+
+  const post = async () => {
+    if (!msg.trim()) return;
+    const title = msg;
+    setMsg("");
+    try {
+      const row = await api.post(`/api/channels/${ch}/threads`, { title });
+      setExtra((e) => ({
+        ...e,
+        [ch]: [{ id: row.id, title, author: "Bạn", time: "Vừa xong", replies: 0, tag: "Mới", status: row.status || "pending" },
+          ...(e[ch] || [])],
+      }));
+    } catch { /* bỏ qua, giống hành vi cũ */ }
+  };
+
+  const active = channels.find((c) => c.id === ch);
+
+  return (
+    <div className="grid lg:grid-cols-4 gap-4">
+      <div className="card" style={{ padding: 10, alignSelf: "start" }}>
+        <p className="eyebrow-grey" style={{ padding: "6px 8px" }}>Kênh thảo luận</p>
+        {channels.map((c) => {
+          const I = c.icon;
+          return (
+            <button key={c.id} onClick={() => setCh(c.id)} className="flex items-center gap-2.5"
+              style={{
+                width: "100%", textAlign: "left", padding: "9px 10px", borderRadius: 9, border: 0,
+                cursor: "pointer", fontFamily: "inherit", fontSize: 13.5,
+                background: ch === c.id ? "#F6F1F2" : "transparent",
+                color: ch === c.id ? RED_DARK : "#4A3A40", fontWeight: ch === c.id ? 700 : 500,
+              }}>
+              <I size={15} />
+              <span style={{ flex: 1 }}>{c.name}</span>
+              <span className="mono muted" style={{ fontSize: 11.5 }}>{c.count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="lg:col-span-3 flex flex-col gap-4">
+        <Card title={active?.name || "Thảo luận"} icon={Hash}>
+          <textarea className="inp" rows={2} value={msg} onChange={(e) => setMsg(e.target.value)}
+            placeholder="Đặt câu hỏi kỹ thuật hoặc chia sẻ kinh nghiệm với đồng nghiệp…" />
+          <div className="flex items-center justify-between" style={{ marginTop: 10, gap: 10, flexWrap: "wrap" }}>
+            <span className="muted" style={{ fontSize: 12 }}>Bài đăng cần quản trị viên duyệt mới hiển thị công khai.</span>
+            <button className="btn btn-red" onClick={post}><Send size={14} /> Đăng bài</button>
+          </div>
+        </Card>
+
+        <Card title={`Chủ đề (${list.length})`} icon={MessageSquare} pad={false}>
+          {list.map((t, i) => (
+            <div key={t.id} className="row-hover" onClick={() => t.id && setMoChuDe(t.id)}
+              style={{ padding: "14px 16px", borderTop: i ? "1px solid #F1EEEF" : 0, cursor: "pointer" }}>
+              <div className="flex items-start gap-3">
+                <Avatar name={t.author} color={t.author === "Bạn" ? RED : RED_DARK} size={34} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.4 }}>{t.title}</p>
+                  <p className="muted flex items-center gap-3" style={{ fontSize: 12, marginTop: 5, flexWrap: "wrap" }}>
+                    <span>{t.author}</span>
+                    <span className="flex items-center gap-1"><Clock size={12} />{t.time}</span>
+                    <span className="flex items-center gap-1"><MessageSquare size={12} />{t.replies} trả lời</span>
+                  </p>
+                </div>
+                {t.status === "pending" && <span className="tag tag-amber">Chờ duyệt</span>}
+                <span className="tag tag-grey hidden sm:inline-flex">{t.tag}</span>
+              </div>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      {moChuDe && <ThreadReader id={moChuDe} onClose={() => setMoChuDe(null)} />}
+    </div>
+  );
+}

@@ -1,0 +1,33 @@
+CẤU HÌNH NHANH
+==============
+
+1. ĐỔI Ổ LƯU DỮ LIỆU
+   Mặc định dữ liệu nằm trong thư mục "data" cạnh thư mục "windows" (tức là
+   trong bộ mã nguồn). Muốn đổi sang ổ khác, mở file 2-KHOI-DONG.bat bằng
+   Notepad, sửa dòng:
+       set "DATA_DIR=%~dp0..\data"
+   thành ổ và thư mục bạn muốn, ví dụ:
+       set "DATA_DIR=E:\congthongtin"
+   Sửa y hệt trong file 3-SAO-LUU.bat và 4-QUEN-MAT-KHAU.bat.
+
+2. ĐỔI CỔNG (nếu cổng 8000 đang bị phần mềm khác chiếm)
+   Trong 2-KHOI-DONG.bat, sửa:
+       set "PORT=8000"
+   thành số khác, ví dụ 8080.
+
+3. CHO MÁY KHÁC TRONG MẠNG TRUY CẬP ĐƯỢC
+   Lần đầu chạy, Windows sẽ hỏi "Cho phép Python truy cập mạng?".
+   Chọn "Allow access" và tích vào "Private networks".
+
+   Nếu lỡ bấm nhầm, mở PowerShell bằng quyền Administrator và chạy:
+       New-NetFirewallRule -DisplayName "Cong thong tin noi bo" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
+
+4. TỰ CHẠY MỖI KHI BẬT MÁY
+   Nhấn Windows + R, gõ:  shell:startup
+   Kéo file 2-KHOI-DONG.bat vào thư mục vừa mở (tạo lối tắt).
+
+5. ĐỔI MẬT KHẨU TÀI KHOẢN MẪU
+   Dùng file 4-QUEN-MAT-KHAU.bat (không mất dữ liệu).
+   Hoặc nhờ người kỹ thuật sửa file backend\app\seed.py rồi xoá file
+   portal.db trong thư mục dữ liệu (mục 1) để hệ thống tạo lại từ đầu —
+   CHÚ Ý thao tác này xoá sạch toàn bộ dữ liệu đã nhập, chỉ dùng khi chắc chắn.

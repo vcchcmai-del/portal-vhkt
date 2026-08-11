@@ -1,0 +1,7 @@
+CNCT HCM PORTAL
+Build: STABLE-PG-ICONS-20260808
+Database: PostgreSQL production / SQLite fallback for local
+Persistent data: ./data
+Application icons: upload + URL
+
+APP_GROUPS_UPDATE=2026-08-08

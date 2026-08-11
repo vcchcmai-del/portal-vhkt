@@ -1,0 +1,76 @@
+# Triển khai trên máy chủ ảo (VPS) có tên miền thật.
+#
+# Khác với docker-compose.yml thường ở chỗ: thêm Caddy làm cổng vào duy nhất,
+# tự xin và tự gia hạn chứng chỉ HTTPS miễn phí từ Let's Encrypt.
+#
+# Chạy:  bash deploy-vps.sh
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: portal-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-portal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Chua dat POSTGRES_PASSWORD trong file .env}
+      POSTGRES_DB: ${POSTGRES_DB:-portal}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Không mở cổng ra ngoài: chỉ backend trong mạng nội bộ Docker gọi được
+    expose:
+      - "5432"
+
+  backend:
+    build: ./backend
+    container_name: portal-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATA_DIR: /app/data
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-portal}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-portal}
+      SECRET_KEY: ${SECRET_KEY:?Chua dat SECRET_KEY trong file .env}
+      CORS_ORIGINS: https://${SITE_DOMAIN}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    container_name: portal-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: portal-caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Chua dat SITE_DOMAIN trong file .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Chua dat ADMIN_EMAIL trong file .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

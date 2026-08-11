@@ -1,0 +1,17 @@
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      DATA_DIR: /app/data
+      SECRET_KEY: ${SECRET_KEY:-CHANGE-ME}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      DATABASE_URL: ${DATABASE_URL:-}
+      REQUIRE_POSTGRES: ${REQUIRE_POSTGRES:-1}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
