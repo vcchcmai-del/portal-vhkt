@@ -12,7 +12,7 @@ import os
 from typing import Dict, List, Optional, Union
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
@@ -459,6 +459,18 @@ class PersonIn(BaseModel):
     active: Optional[bool] = None
 
 
+def _csv_response(header: List[str], rows: List[list], filename: str) -> PlainTextResponse:
+    """Xuất CSV chuẩn Excel Việt Nam: BOM UTF-8, ngăn cách bằng dấu phẩy, giá trị trong ngoặc kép."""
+    lines = [",".join(header)]
+    for vals in rows:
+        lines.append(",".join('"' + str(v if v is not None else "").replace('"', '""') + '"' for v in vals))
+    content = "﻿" + "\n".join(lines) + "\n"
+    return PlainTextResponse(
+        content, media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def person_out(p: models.Person):
     return {"id": p.id, "full_name": p.full_name, "role": p.role, "dept": p.dept,
             "phone": p.phone, "email": p.email, "photo_url": p.photo_url,
@@ -468,6 +480,20 @@ def person_out(p: models.Person):
 @router.get("/people")
 def admin_list_people(db: Session = Depends(get_db), _=Depends(require_module("people", "view"))):
     return [person_out(p) for p in db.query(models.Person).order_by(models.Person.id).all()]
+
+
+@router.get("/people/export")
+def export_people_csv(db: Session = Depends(get_db), _=Depends(require_module("people", "view"))):
+    """Xuất danh sách nhân viên ra tệp CSV."""
+    rows = db.query(models.Person).order_by(models.Person.full_name).all()
+    header = ["Họ và tên", "Chức vụ", "Phòng ban", "Điện thoại", "Email", "Ngày sinh", "Đang công tác"]
+    vals = [
+        [p.full_name, p.role, p.dept, p.phone, p.email,
+         p.birthday.strftime("%d/%m/%Y") if p.birthday else "",
+         "Có" if p.active else "Không"]
+        for p in rows
+    ]
+    return _csv_response(header, vals, f"danh-sach-nhan-vien-{dt.date.today()}.csv")
 
 
 @router.post("/people")
@@ -571,6 +597,25 @@ def admin_list_events(kind: Optional[str] = None, db: Session = Depends(get_db),
     if kind:
         q = q.filter(models.Event.kind == kind)
     return [event_out(e) for e in q.order_by(models.Event.start_at).all()]
+
+
+@router.get("/events/export")
+def export_events_csv(kind: Optional[str] = None, db: Session = Depends(get_db),
+                      _=Depends(require_module("events", "view"))):
+    """Xuất lịch công tác (hoặc sự kiện văn hoá) ra tệp CSV."""
+    q = db.query(models.Event)
+    if kind:
+        q = q.filter(models.Event.kind == kind)
+    rows = q.order_by(models.Event.start_at).all()
+    header = ["Ngày giờ", "Nội dung", "Địa điểm", "Đơn vị chủ trì", "Thành phần tham gia",
+              "Hình thức họp", "Thông tin kết nối"]
+    vals = [
+        [e.start_at.strftime("%d/%m/%Y %H:%M") if e.start_at else "", e.title, e.place, e.host,
+         e.participants, MEETING_TYPES.get(e.meeting_type or "truc_tiep", {}).get("label", e.meeting_type), e.meeting_info]
+        for e in rows
+    ]
+    ten_tep = "lich-cong-tac-tuan" if (kind or "work") == "work" else f"su-kien-{kind}"
+    return _csv_response(header, vals, f"{ten_tep}-{dt.date.today()}.csv")
 
 
 @router.post("/events")
@@ -910,6 +955,21 @@ def check_password(pw: str):
 def admin_list_users(db: Session = Depends(get_db), _=Depends(require_admin)):
     rows = db.query(models.User).order_by(models.User.id).all()
     return [user_out(u) for u in rows]
+
+
+@router.get("/users/export")
+def export_users_csv(db: Session = Depends(get_db), _=Depends(require_admin)):
+    """Xuất danh sách tài khoản ra tệp CSV. Không xuất mật khẩu (chỉ lưu dạng băm, không có bản rõ)."""
+    rows = db.query(models.User).order_by(models.User.username).all()
+    header = ["Tên đăng nhập", "Họ và tên", "Quyền", "Gắn với nhân viên", "Ngày tạo", "Buộc đổi mật khẩu"]
+    vals = [
+        [u.username, u.full_name, ROLE_LABELS.get(u.role, u.role),
+         u.person.full_name if u.person else "",
+         u.created_at.strftime("%d/%m/%Y %H:%M") if u.created_at else "",
+         "Có" if u.must_change_password else "Không"]
+        for u in rows
+    ]
+    return _csv_response(header, vals, f"danh-sach-tai-khoan-{dt.date.today()}.csv")
 
 
 @router.get("/roles")

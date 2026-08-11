@@ -64,7 +64,7 @@ function useAdminList(path, deps = []) {
   return { rows, loading, error, reload, setRows };
 }
 
-function Toolbar({ title, hint, onAdd, addLabel = "Thêm mới", onReload }) {
+function Toolbar({ title, hint, onAdd, addLabel = "Thêm mới", onReload, onExport, exportLabel = "Xuất báo cáo" }) {
   return (
     <div className="card flex items-center justify-between gap-3" style={{ padding: 16, flexWrap: "wrap", borderLeft: `3px solid ${RED}` }}>
       <div>
@@ -73,6 +73,7 @@ function Toolbar({ title, hint, onAdd, addLabel = "Thêm mới", onReload }) {
       </div>
       <div className="flex gap-2">
         {onReload && <button className="btn btn-sm" onClick={onReload}><RefreshCw size={13} /> Tải lại</button>}
+        {onExport && <button className="btn btn-sm" onClick={onExport}><Download size={13} /> {exportLabel}</button>}
         {onAdd && <button className="btn btn-red" onClick={onAdd}><Plus size={15} /> {addLabel}</button>}
       </div>
     </div>
@@ -668,10 +669,21 @@ export function AdminPeople() {
     reload();
   };
 
+  const exportCsv = async () => {
+    try {
+      const { blob, filename } = await api.blob("/api/admin/people/export");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || "danh-sach-nhan-vien.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { window.alert(e.message); }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <Toolbar title="Quản lý nhân viên" onReload={reload} addLabel="Thêm nhân viên"
         onAdd={() => setEdit({ full_name: "", role: "", dept: "Phòng Vận hành khai thác", phone: "", email: "", birthday: "", color: RED, active: true })}
+        onExport={exportCsv}
         hint="Ngày sinh nhập ở đây sẽ tự hiện ở mục Sinh nhật trên trang chủ và Góc văn hoá." />
 
       <Card pad={false}>
@@ -1247,10 +1259,21 @@ export function AdminUsers() {
     catch (e) { window.alert(e.message); }
   };
 
+  const exportCsv = async () => {
+    try {
+      const { blob, filename } = await api.blob("/api/admin/users/export");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || "danh-sach-tai-khoan.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { window.alert(e.message); }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <Toolbar title="Quản lý tài khoản" onReload={reload} addLabel="Tạo tài khoản"
         onAdd={() => { setEdit({ ...blank }); setMsg(""); }}
+        onExport={exportCsv}
         hint="Tạo tài khoản cho cán bộ, nhân viên và phân quyền chi tiết theo từng module. Mật khẩu tối thiểu 8 ký tự." />
 
       <Card pad={false}>
@@ -2078,6 +2101,16 @@ export function AdminSchedule() {
     reload();
   };
 
+  const exportCsv = async () => {
+    try {
+      const { blob, filename } = await api.blob("/api/admin/events/export?kind=work");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || "lich-cong-tac-tuan.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { window.alert(e.message); }
+  };
+
   const toggleSelect = (id) => setSelected((s) => {
     const next = new Set(s);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -2120,6 +2153,7 @@ export function AdminSchedule() {
     <div className="flex flex-col gap-4">
       <Toolbar title="Lịch công tác tuần" onReload={reload} addLabel="Thêm lịch"
         onAdd={() => { setEdit({ ...blank }); setMsg(""); }}
+        onExport={exportCsv}
         hint="Lịch của ngày hôm nay tự hiện trên trang chủ. Cần nhập cả tuần một lần thì dùng Nhập dữ liệu hàng loạt." />
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
