@@ -1064,9 +1064,12 @@ export function AdminNotifications() {
 /* ==================================== QUẢN LÝ DASHBOARD — THÊM THỦ CÔNG */
 
 const DASHBOARD_BOARDS = [
-  { value: "PAKH", label: "PAKH — Phản ánh khách hàng" },
-  { value: "FUEL", label: "Xăng dầu" },
-  { value: "OUTPUT", label: "Sản lượng" },
+  { value: "PAKH", label: "Sự cố truyền dẫn (theo tỉnh)" },
+  { value: "PAKH_TARGET", label: "Chỉ tiêu/Target Sự cố truyền dẫn" },
+  { value: "FUEL", label: "Ksub*min (theo tỉnh)" },
+  { value: "FUEL_TARGET", label: "Chỉ tiêu/Target Ksub*min" },
+  { value: "OUTPUT", label: "GĐTT & Cell*h tổng (theo tỉnh)" },
+  { value: "OUTPUT_TARGET", label: "Chỉ tiêu/Target GĐTT & Cell*h" },
   { value: "NETWORK", label: "Chất lượng mạng" },
   { value: "VHKT", label: "KPI vận hành (Cell*h, ksubmin, TKM, XLSC...)" },
   { value: "VHKT_TARGET", label: "Chỉ tiêu/Target KPI vận hành" },

@@ -782,6 +782,12 @@ const BOARDS = {
     mau: [],
     ve: "cot-kep",
   },
+  HIRE: {
+    nhan: "Tuyển dụng", ma: "HIRE", icon: UserPlus,
+    tieuDe: "Tiến độ tuyển dụng",
+    mau: D.D_HIRE.map((r) => ({ name: r.b, "Số lượng": r.v })),
+    ve: "cot-don",
+  },
   WO: {
     nhan: "Rời mạng CĐBR", ma: "WO", icon: Users,
     tieuDe: "Tỷ lệ và số lượng khách hàng rời mạng CĐBR — theo tỉnh, trung tâm",
@@ -789,26 +795,20 @@ const BOARDS = {
     ve: "cot-kep",
   },
   PAKH: {
-    nhan: "PAKH", ma: "PAKH", icon: MessageSquare,
-    tieuDe: "Phản ánh khách hàng: tiếp nhận và xử lý",
+    nhan: "Sự cố truyền dẫn", ma: "PAKH", icon: AlertTriangle,
+    tieuDe: "Số sự cố truyền dẫn theo tháng — Bình Dương / Bà Rịa - Vũng Tàu",
     mau: D.D_PAKH.map((r) => ({ name: r.m, "Tiếp nhận": r.nhan, "Đã xử lý": r.xuly })),
     ve: "vung",
   },
   FUEL: {
-    nhan: "Xăng dầu", ma: "FUEL", icon: TrendingUp,
-    tieuDe: "Nhiên liệu: định mức và thực chi theo đơn vị (lít)",
+    nhan: "Ksub*min", ma: "FUEL", icon: Clock,
+    tieuDe: "Ksub*min theo tháng — Bình Dương / Bà Rịa - Vũng Tàu",
     mau: D.D_FUEL.map((r) => ({ name: r.t, "Định mức": r.dm, "Thực chi": r.tt })),
     ve: "cot-ngang",
   },
-  HIRE: {
-    nhan: "Tuyển dụng", ma: "HIRE", icon: UserPlus,
-    tieuDe: "Tiến độ tuyển dụng",
-    mau: D.D_HIRE.map((r) => ({ name: r.b, "Số lượng": r.v })),
-    ve: "cot-don",
-  },
   OUTPUT: {
-    nhan: "Sản lượng", ma: "OUTPUT", icon: TrendingUp,
-    tieuDe: "Sản lượng thực hiện (tỷ đồng)",
+    nhan: "GĐTT & Cell*h", ma: "OUTPUT", icon: Wrench,
+    tieuDe: "Gián đoạn thông tin (GĐTT) & Cell*h tổng theo tháng",
     mau: D.D_OUT.map((r) => ({ name: r.m, "Sản lượng": r.v })),
     ve: "duong",
   },
@@ -1032,6 +1032,42 @@ function SoLuongRoMangTheoTinh({ theoTinh }) {
           <Bar key={t.ten} dataKey={t.ten} name={t.ten} radius={[4, 4, 0, 0]} fill={MAU_VE[i % MAU_VE.length]} />
         ))}
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/**
+ * Biểu đồ xu thế một chỉ tiêu theo tháng, một đường mỗi tỉnh/đơn vị — dựng từ
+ * "compare" đã đối chiếu sẵn ở máy chủ. Dùng cho các bảng chi tiết theo tỉnh
+ * (Sự cố truyền dẫn, Ksub*min, GĐTT & Cell*h) — khác TrendChart ở chỗ so sánh
+ * NHIỀU đơn vị cùng lúc thay vì Target/năm nay/năm trước của một đơn vị.
+ */
+function BieuDoTheoTinh({ compare, chiTieu }) {
+  const rows = (compare || []).filter((c) => c.chi_tieu === chiTieu && c.don_vi);
+  if (!rows.length) return <Empty title="Chưa có số liệu đối chiếu." hint="Cần nhập số liệu kèm tên tỉnh/đơn vị." />;
+
+  const donVi = [...new Set(rows.map((r) => r.don_vi))].sort();
+  const ky = [...new Set(rows.map((r) => r.ky))].sort();
+  const truc = { tick: { fontSize: 11.5 }, stroke: "#A9A3A5" };
+  const data = ky.map((k) => {
+    const [nam, thang] = k.split("-");
+    const hang = { name: `T${parseInt(thang, 10)}/${nam.slice(2)}` };
+    donVi.forEach((dv) => { hang[dv] = rows.find((r) => r.ky === k && r.don_vi === dv)?.thuc_hien ?? null; });
+    return hang;
+  });
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
+        <XAxis dataKey="name" {...truc} interval={ky.length > 12 ? 1 : 0} />
+        <YAxis {...truc} />
+        <Tooltip {...tooltipStyle} />
+        <Legend wrapperStyle={{ fontSize: 12.5 }} />
+        {donVi.map((dv, i) => (
+          <Line key={dv} type="monotone" dataKey={dv} name={dv} stroke={MAU_VE[i % MAU_VE.length]} strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+        ))}
+      </LineChart>
     </ResponsiveContainer>
   );
 }
@@ -1283,6 +1319,10 @@ export function DashView() {
   const laKPI = ma === "KPI";     // Tiền phạt & Doanh thu — biểu đồ xu thế Target/năm nay/năm trước
   const laWO = ma === "WO";       // Rời mạng CĐBR — 2 biểu đồ: cột (số lượng) + xu thế (tỷ lệ)
   const laVHKT = ma === "VHKT";   // KPI vận hành — kèm cảnh báo trung tâm chưa đạt
+  const laPAKH = ma === "PAKH";   // Sự cố truyền dẫn — theo tỉnh
+  const laFUEL = ma === "FUEL";   // Ksub*min — theo tỉnh
+  const laOUTPUT = ma === "OUTPUT"; // GĐTT & Cell*h — theo tỉnh
+  const laTheoTinh = laPAKH || laFUEL || laOUTPUT;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1336,6 +1376,28 @@ export function DashView() {
           </Card>
           <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
         </>
+      ) : laPAKH ? (
+        <Card title="Số sự cố truyền dẫn theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+          <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Số sự cố truyền dẫn" />
+        </Card>
+      ) : laFUEL ? (
+        <Card title="Ksub*min theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+          <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Ksub*min" />
+        </Card>
+      ) : laOUTPUT ? (
+        <>
+          <Card title="Cell*h tổng theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Cell*h tổng" />
+          </Card>
+          <div className="grid lg:grid-cols-2 gap-4">
+            <Card title="GĐTT trạm thường" icon={board.icon}>
+              <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm thường" />
+            </Card>
+            <Card title="GĐTT trạm ưu tiên" icon={board.icon}>
+              <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm ưu tiên" />
+            </Card>
+          </div>
+        </>
       ) : (
         <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
           <BieuDo kieu={board.ve} series={series} />
@@ -1359,7 +1421,7 @@ export function DashView() {
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Kỳ</th><th>Chỉ tiêu</th><th style={{ textAlign: "right" }}>Thực hiện</th>
+                  <th>Kỳ</th><th>Chỉ tiêu</th><th>Đơn vị</th><th style={{ textAlign: "right" }}>Thực hiện</th>
                   <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>Đạt target</th>
                   <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th>
                 </tr>
@@ -1369,6 +1431,7 @@ export function DashView() {
                   <tr key={i}>
                     <td className="mono">{c.ky}</td>
                     <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
+                    <td className="muted">{c.don_vi || "—"}</td>
                     <td className="mono" style={{ textAlign: "right" }}>{c.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
                     <td className="mono muted" style={{ textAlign: "right" }}>{c.target?.toLocaleString("vi-VN") ?? "—"}</td>
                     <td className="mono" style={{ textAlign: "right", color: c.dat_target_phan_tram == null ? undefined : (c.dat_target_phan_tram >= 100 ? "#0A7A50" : RED) }}>
@@ -1386,7 +1449,7 @@ export function DashView() {
         </Card>
       )}
 
-      {coSoThat && (
+      {coSoThat && !laTheoTinh && (
         <Card title="Số liệu chi tiết" icon={BarChart3} pad={false}>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">

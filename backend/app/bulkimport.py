@@ -190,6 +190,9 @@ BOARDS = {
     # Target cho Tiền phạt & Doanh thu (KPI) và Rời mạng CĐBR (WO) — để trống
     # cột đơn vị trong bảng target thì áp dụng chung cho mọi trung tâm.
     "KPI_TARGET", "WO_TARGET",
+    # Target cho Sự cố truyền dẫn (PAKH), Ksub*min (FUEL), GĐTT & Cell*h (OUTPUT)
+    # — mỗi dòng kèm tên tỉnh (đơn vị) vì target khác nhau theo tỉnh.
+    "PAKH_TARGET", "FUEL_TARGET", "OUTPUT_TARGET",
     # Chi tiết nguyên nhân phạt theo nhóm VTT / VTNet — mỗi dòng là một nguyên
     # nhân (chi_tieu), giá trị đơn vị triệu đồng.
     "KPI_VTT", "KPI_VTNET",
