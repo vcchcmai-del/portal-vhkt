@@ -1299,6 +1299,25 @@ def admin_list_metrics(board: Optional[str] = None, db: Session = Depends(get_db
     return [metric_out(m) for m in rows]
 
 
+@router.get("/metrics/export")
+def export_metrics_csv(board: Optional[str] = None, db: Session = Depends(get_db),
+                       _=Depends(require_module("import", "view"))):
+    """
+    Xuất số liệu Dashboard ra CSV — dùng đúng tên cột của màn "Nhập từ Excel"
+    (bang, ky, chi_tieu, don_vi, gia_tri) nên tải xuống, sửa/lọc lại trong Excel
+    rồi nhập ngược lên là ghi đè đúng dòng cũ (không tạo bản trùng).
+    """
+    q = db.query(models.Metric)
+    ten_tep = "so-lieu-dashboard"
+    if board:
+        q = q.filter(models.Metric.board == board.strip().upper())
+        ten_tep = f"so-lieu-dashboard-{board.strip().upper()}"
+    rows = q.order_by(models.Metric.board, models.Metric.period).all()
+    header = ["bang", "ky", "chi_tieu", "don_vi", "gia_tri"]
+    vals = [[m.board, m.period, m.label, m.unit_name or "", m.value] for m in rows]
+    return _csv_response(header, vals, f"{ten_tep}-{dt.date.today()}.csv")
+
+
 @router.post("/metrics")
 def admin_create_metric(data: MetricIn, db: Session = Depends(get_db),
                         user=Depends(require_module("import", "create")), request: Request = None):

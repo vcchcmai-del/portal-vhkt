@@ -1140,11 +1140,24 @@ export function AdminMetrics() {
     reload();
   };
 
+  const exportCsv = async () => {
+    try {
+      const qs = filterBoard ? `?board=${encodeURIComponent(filterBoard)}` : "";
+      const { blob, filename } = await api.blob(`/api/admin/metrics/export${qs}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || "so-lieu-dashboard.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { window.alert(e.message); }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <Toolbar title="Số liệu Dashboard" onReload={reload} addLabel="Thêm chỉ số"
         onAdd={() => { setEdit({ ...blankMetric }); setMsg(""); }}
-        hint="Kỳ nhập dạng YYYY-MM, ví dụ 2026-08. Đặt cùng tên chỉ tiêu + cùng kỳ ở bảng Target thì Dashboard tự đối chiếu." />
+        onExport={exportCsv} exportLabel={filterBoard ? `Xuất "${boardLabel(filterBoard)}"` : "Xuất tất cả"}
+        hint="Kỳ nhập dạng YYYY-MM, ví dụ 2026-08. Đặt cùng tên chỉ tiêu + cùng kỳ ở bảng Target thì Dashboard tự đối chiếu.
+              Xuất báo cáo để lấy đúng khuôn cột nhập Excel — sửa/lọc trong Excel rồi nhập ngược lên sẽ ghi đè đúng dòng cũ." />
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <select className="inp" style={{ maxWidth: 260 }} value={filterBoard} onChange={(e) => setFilterBoard(e.target.value)}>
