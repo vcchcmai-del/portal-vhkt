@@ -193,6 +193,8 @@ BOARDS = {
     # Target cho Sự cố truyền dẫn (PAKH), Ksub*min (FUEL), GĐTT & Cell*h (OUTPUT)
     # — mỗi dòng kèm tên tỉnh (đơn vị) vì target khác nhau theo tỉnh.
     "PAKH_TARGET", "FUEL_TARGET", "OUTPUT_TARGET",
+    # Target cho XLSC (NETWORK/XLCS CĐBR) — chung toàn chi nhánh, không theo tỉnh.
+    "NETWORK_TARGET",
     # Chi tiết nguyên nhân phạt theo nhóm VTT / VTNet — mỗi dòng là một nguyên
     # nhân (chi_tieu), giá trị đơn vị triệu đồng.
     "KPI_VTT", "KPI_VTNET",

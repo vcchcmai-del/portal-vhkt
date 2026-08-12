@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-12.v31"
+PORTAL_BUILD = "2026-08-12.v32"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -241,6 +241,53 @@ def me(user: models.User = Depends(current_user)):
 
 # ------------------------------------------------------------------ Trang chủ
 
+def _lich_cong_tac(db: Session, ngay: dt.date):
+    """Lịch công tác của đúng một ngày — dùng chung cho trang chủ (hôm nay) và
+    khi người dùng bấm chuyển ngày để xem lịch ngày khác."""
+    schedule = (
+        db.query(models.Event)
+        .filter(models.Event.kind == "work", func.date(models.Event.start_at) == ngay)
+        .order_by(models.Event.start_at)
+        .all()
+    )
+
+    from .sheets import get_data
+    sheet_schedule = [
+        {"time": r.get("gio", ""), "title": r.get("noi_dung", ""),
+         "place": r.get("dia_diem", ""), "host": r.get("chu_tri", ""),
+         "participants": r.get("thanh_phan", ""),
+         "meeting_type": r.get("hinh_thuc", ""),
+         "meeting_info": r.get("thong_tin_hop", "")}
+        for r in get_data(db, "schedule", models)
+        if r.get("ngay") == ngay.isoformat()
+    ]
+
+    return {
+        "schedule": sheet_schedule if sheet_schedule else [
+            {"time": e.start_at.strftime("%H:%M"), "title": e.title,
+             "place": e.place, "host": e.host,
+             "participants": e.participants,
+             "meeting_type": e.meeting_type or "truc_tiep",
+             "meeting_info": e.meeting_info,
+             "meeting_id": e.meeting_id,
+             "meeting_pass": e.meeting_pass}
+            for e in schedule
+        ],
+        "schedule_from_sheet": bool(sheet_schedule),
+    }
+
+
+@app.get("/api/schedule-of-day", tags=["Trang chủ"])
+def schedule_of_day(ngay: str, db: Session = Depends(get_db)):
+    """Lịch công tác của một ngày bất kỳ (dd dạng YYYY-MM-DD) — cho phép người
+    dùng chuyển ngày trên khung "Lịch công tác" ở trang chủ."""
+    try:
+        ngay_dt = dt.date.fromisoformat(ngay)
+    except ValueError:
+        raise HTTPException(400, "Ngày không hợp lệ, cần dạng YYYY-MM-DD.")
+    return {"ngay": ngay_dt.isoformat(), **_lich_cong_tac(db, ngay_dt)}
+
+
 @app.get("/api/home", tags=["Trang chủ"])
 def home(db: Session = Depends(get_db)):
     """Gom mọi thứ trang chủ cần vào một lần gọi, để trang mở nhanh."""
@@ -264,24 +311,9 @@ def home(db: Session = Depends(get_db)):
         .order_by(models.Banner.order_no).all()
     )
     config = {c.key: c.value for c in db.query(models.SiteConfig).all()}
-    schedule = (
-        db.query(models.Event)
-        .filter(models.Event.kind == "work", func.date(models.Event.start_at) == today)
-        .order_by(models.Event.start_at)
-        .all()
-    )
+    lich_hom_nay = _lich_cong_tac(db, today)
 
-    # Lịch công tác lấy từ Google Sheet nếu đã cấu hình, lọc đúng ngày hôm nay
     from .sheets import get_data
-    sheet_schedule = [
-        {"time": r.get("gio", ""), "title": r.get("noi_dung", ""),
-         "place": r.get("dia_diem", ""), "host": r.get("chu_tri", ""),
-         "participants": r.get("thanh_phan", ""),
-         "meeting_type": r.get("hinh_thuc", ""),
-         "meeting_info": r.get("thong_tin_hop", "")}
-        for r in get_data(db, "schedule", models)
-        if r.get("ngay") == today.isoformat()
-    ]
 
     # Sáu ô chỉ số trang chủ.
     # Ưu tiên Google Sheet; chưa có thì tính từ bảng số liệu trong cơ sở dữ liệu.
@@ -310,17 +342,8 @@ def home(db: Session = Depends(get_db)):
              "link_url": b.link_url, "color": b.color} for b in banners
         ],
         "config": config,
-        "schedule": sheet_schedule if sheet_schedule else [
-            {"time": e.start_at.strftime("%H:%M"), "title": e.title,
-             "place": e.place, "host": e.host,
-             "participants": e.participants,
-             "meeting_type": e.meeting_type or "truc_tiep",
-             "meeting_info": e.meeting_info,
-             "meeting_id": e.meeting_id,
-             "meeting_pass": e.meeting_pass}
-            for e in schedule
-        ],
-        "schedule_from_sheet": bool(sheet_schedule),
+        "schedule": lich_hom_nay["schedule"],
+        "schedule_from_sheet": lich_hom_nay["schedule_from_sheet"],
         "home_stats": home_stats,
         "home_stats_source": ("sheet" if get_data(db, "home_stats", models)
                               else ("database" if home_stats else "none")),

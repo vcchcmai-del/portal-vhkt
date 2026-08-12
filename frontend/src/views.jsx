@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from "react";
 import {
   AlertTriangle, ArrowUpRight, Award, BarChart3, BookOpen, Building2, Cake, Calendar,
-  Check, ChevronRight, Clock, CloudRain, Download, Droplets, FileText, Hash,
+  Check, ChevronLeft, ChevronRight, Clock, CloudRain, Download, Droplets, FileText, Hash,
   Image as ImageIcon, Lightbulb, MapPin, Megaphone, MessageSquare, PartyPopper,
   Plus, Rocket, Send, Signal, Star, ThumbsUp, TrendingUp, Trophy, UserPlus, Users,
   Video, Wind, Wrench, X, Quote, Pin,
@@ -271,24 +271,70 @@ export function HomeView({ onGo, onOpenNews, config }) {
       </section>
 
       <div className="cnct-bottom-grid">
-        <section className="cnct-panel">
-          <div className="cnct-panel-head">
-            <div className="cnct-panel-title"><Calendar size={17} /> LỊCH CÔNG TÁC HÔM NAY</div>
-            <span className="cnct-panel-note">
-              {home?.schedule_from_sheet ? "Nguồn: Google Sheet" : new Date().toLocaleDateString("vi-VN")}
-            </span>
-          </div>
-          {schedule.length === 0 ? (
-            <p className="cnct-empty">
-              Hôm nay chưa có lịch công tác. Quản trị viên nhập tại
-              Quản trị → Lịch công tác tuần.
-            </p>
-          ) : schedule.map((s, i) => <SchedRow key={i} s={s} />)}
-        </section>
+        <LichCongTacPanel homeSchedule={schedule} homeFromSheet={!!home?.schedule_from_sheet} />
 
         <BirthdayPanel />
       </div>
     </div>
+  );
+}
+
+/** "YYYY-MM-DD" theo giờ địa phương — không dùng toISOString() vì nó quy đổi sang UTC,
+ * dễ lệch ngày với múi giờ Việt Nam (UTC+7) vào những giờ gần nửa đêm. */
+function ngayISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Lịch công tác — mặc định hiện hôm nay (dùng luôn dữ liệu đã có từ /api/home,
+ * không gọi thêm), cho phép bấm chuyển ngày trước/sau để xem lịch ngày khác.
+ */
+function LichCongTacPanel({ homeSchedule, homeFromSheet }) {
+  const [offset, setOffset] = useState(0);
+  const [duLieu, setDuLieu] = useState({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet });
+  const [dangTai, setDangTai] = useState(false);
+
+  const ngay = new Date();
+  ngay.setDate(ngay.getDate() + offset);
+  const ngayStr = ngayISO(ngay);
+
+  useEffect(() => {
+    if (offset === 0) { setDuLieu({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet }); return; }
+    let con = true;
+    setDangTai(true);
+    api.get(`/api/schedule-of-day?ngay=${ngayStr}`)
+      .then((d) => { if (con) setDuLieu(d); })
+      .catch(() => { if (con) setDuLieu({ schedule: [], schedule_from_sheet: false }); })
+      .finally(() => con && setDangTai(false));
+    return () => { con = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offset]);
+
+  const nhanNgay = offset === 0 ? "Hôm nay" : offset === 1 ? "Ngày mai" : offset === -1 ? "Hôm qua" : ngay.toLocaleDateString("vi-VN");
+  const schedule = duLieu.schedule || [];
+
+  return (
+    <section className="cnct-panel">
+      <div className="cnct-panel-head">
+        <div className="cnct-panel-title"><Calendar size={17} /> LỊCH CÔNG TÁC {nhanNgay.toUpperCase()}</div>
+        <div className="flex items-center gap-1.5">
+          <button className="btn btn-sm" onClick={() => setOffset((o) => o - 1)} aria-label="Xem ngày trước"><ChevronLeft size={14} /></button>
+          <span className="cnct-panel-note">{duLieu.schedule_from_sheet ? "Nguồn: Google Sheet" : ngay.toLocaleDateString("vi-VN")}</span>
+          <button className="btn btn-sm" onClick={() => setOffset((o) => o + 1)} aria-label="Xem ngày sau"><ChevronRight size={14} /></button>
+          {offset !== 0 && (
+            <button className="btn btn-sm" onClick={() => setOffset(0)}>Hôm nay</button>
+          )}
+        </div>
+      </div>
+      {dangTai ? (
+        <p className="cnct-empty">Đang tải…</p>
+      ) : schedule.length === 0 ? (
+        <p className="cnct-empty">
+          {offset === 0 ? "Hôm nay" : "Ngày này"} chưa có lịch công tác. Quản trị viên nhập tại
+          Quản trị → Lịch công tác tuần.
+        </p>
+      ) : schedule.map((s, i) => <SchedRow key={i} s={s} />)}
+    </section>
   );
 }
 
