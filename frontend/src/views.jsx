@@ -1411,7 +1411,7 @@ function BangChiTietPhat({ xuHuong, compare, nam }) {
  * Bảng đánh giá KPI theo mẫu chuẩn: TT | KPI | Đơn vị | Target | Thực hiện |
  * So target (Kết quả/Đánh giá) | Cùng kỳ (Kết quả/Đánh giá/Giá trị) — chỉ lấy
  * kỳ mới nhất. `huongTot`: "thap" (càng thấp càng tốt, mặc định — sự cố,
- * ksub*min, GĐTT, tiền phạt, rời mạng) hoặc "cao" (càng cao càng tốt — XLSC,
+ * ksub*min, GĐTT, tiền phạt, rời mạng) hoặc "cao" (càng cao càng tốt — XLCS,
  * KPI TKM).
  */
 function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }) {
@@ -1428,7 +1428,7 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
   // Kết quả luôn là chênh lệch thô (Thực hiện - Target)/Target: dương nghĩa là
   // thực hiện VƯỢT target. huongTot chỉ quyết định vượt là tốt hay xấu —
   // càng thấp càng tốt (sự cố, ksub*min, GĐTT, tiền phạt, rời mạng) thì vượt
-  // (dương) là chưa đạt/tồi đi; càng cao càng tốt (XLSC, KPI TKM) thì vượt là đạt.
+  // (dương) là chưa đạt/tồi đi; càng cao càng tốt (XLCS, KPI TKM) thì vượt là đạt.
   const soTarget = (r) => (r.target == null ? null : ((r.thuc_hien - r.target) / r.target) * 100);
 
   return (
@@ -1521,7 +1521,7 @@ export function DashView() {
   const laPAKH = ma === "PAKH";   // Sự cố truyền dẫn — theo tỉnh
   const laFUEL = ma === "FUEL";   // Ksub*min — theo tỉnh
   const laOUTPUT = ma === "OUTPUT"; // GĐTT & Cell*h — theo tỉnh
-  const laNETWORK = ma === "NETWORK"; // Chất lượng mạng — Số PA phát sinh + XLSC 3h/10h/24h
+  const laNETWORK = ma === "NETWORK"; // XLCS CĐBR — Số PA phát sinh + XLCS 3h/10h/24h
   const laTheoTinh = laPAKH || laFUEL || laOUTPUT;
   // Chiều "tốt" của bảng đang xem — dùng để tô màu/đánh giá đúng chiều ở bảng đối chiếu nhiều tháng bên dưới.
   const huongTotHienTai = (laPAKH || laFUEL || laOUTPUT || laWO || laKPI) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
@@ -1623,14 +1623,14 @@ export function DashView() {
             <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI} chiTieuList={["Số PA phát sinh trong tháng"]}
               dinhDang={(v) => v?.toLocaleString("vi-VN")} mauMap={{ "Số PA phát sinh trong tháng": "#4B5563" }} />
           </Card>
-          <Card title="Xử lý sự cố (XLSC) trong 3h / 10h / 1 ngày" icon={board.icon}>
+          <Card title="XLCS trong 3h / 10h / 24h" icon={board.icon}>
             <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
-              chiTieuList={["XLSC trong 3h", "XLSC trong 10h", "XLSC trong 1 ngày"]}
-              mauMap={{ "XLSC trong 3h": RED, "XLSC trong 10h": "#0E6CD6", "XLSC trong 1 ngày": "#0A7A50" }}
+              chiTieuList={["XLCS 3h", "XLCS 10h", "XLCS 24h"]}
+              mauMap={{ "XLCS 3h": RED, "XLCS 10h": "#0E6CD6", "XLCS 24h": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
           </Card>
           <BangDanhGiaKPI compare={duLieu?.compare} huongTot="cao"
-            chiTieuList={["XLSC trong 3h", "XLSC trong 10h", "XLSC trong 1 ngày"]} />
+            chiTieuList={["XLCS 3h", "XLCS 10h", "XLCS 24h"]} />
         </>
       ) : laVHKT ? (
         <>

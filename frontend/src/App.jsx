@@ -550,7 +550,7 @@ export default function Portal() {
               ? (adminGroup ? <AdminGroupPage pages={adminGroup.pages} /> : <adminPage.comp />)
               : <Card><p style={{ fontWeight: 600 }}>Bạn cần đăng nhập bằng tài khoản quản trị để vào mục này.</p></Card>)
             : view === "home"
-              ? <HomeView onGo={go} config={config}
+              ? <HomeView key={user ? "home-in" : "home-out"} onGo={go} config={config}
                   onOpenNews={(id) => { setOpenNewsId(id); go("news"); }} />
               : view === "news"
                 ? <NewsView openId={openNewsId} onOpened={() => setOpenNewsId(null)} />

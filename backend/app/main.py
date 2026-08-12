@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-12.v40"
+PORTAL_BUILD = "2026-08-12.v41"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -371,7 +371,8 @@ def home(db: Session = Depends(get_db),
 
 
 def _so_lieu_moi_nhat(db: Session, board: str, label: str):
-    """Lấy giá trị mới nhất của một chỉ tiêu trong bảng số liệu."""
+    """Lấy giá trị mới nhất của một chỉ tiêu trong bảng số liệu (chỉ tiêu chung,
+    đúng một dòng mỗi kỳ)."""
     row = (
         db.query(models.Metric)
         .filter(models.Metric.board == board, models.Metric.label == label)
@@ -379,6 +380,21 @@ def _so_lieu_moi_nhat(db: Session, board: str, label: str):
         .first()
     )
     return row.value if row else None
+
+
+def _tong_ky_gan_nhat(db: Session, board: str, label: str):
+    """Tổng giá trị của một chỉ tiêu tại kỳ gần nhất — dùng khi chỉ tiêu có
+    nhiều dòng theo tỉnh/đơn vị trong cùng một kỳ (khác _so_lieu_moi_nhat, vốn
+    chỉ đúng khi mỗi kỳ có đúng một dòng)."""
+    rows = (
+        db.query(models.Metric)
+        .filter(models.Metric.board == board, models.Metric.label == label)
+        .all()
+    )
+    if not rows:
+        return None
+    ky_gan_nhat = max(r.period for r in rows)
+    return sum(r.value or 0 for r in rows if r.period == ky_gan_nhat)
 
 
 def _so_viet(v, le=0):
@@ -391,7 +407,10 @@ def _so_viet(v, le=0):
 
 def tinh_chi_so_trang_chu(db: Session):
     """
-    Dựng sáu ô chỉ số trang chủ từ bảng số liệu trong cơ sở dữ liệu.
+    Dựng sáu ô chỉ số trang chủ từ bảng số liệu trong cơ sở dữ liệu — lấy đúng
+    tên chỉ tiêu thật đang dùng ở các tab Dashboard (không còn tham chiếu nhãn
+    "Kế hoạch/Thực hiện", "Được giao/Hoàn thành"... kiểu cũ, đã bị dọn khỏi CSDL
+    khi các tab đổi sang số liệu thật).
 
     Dùng khi chưa nối Google Sheet. Chỉ tiêu nào không có số thì bỏ qua ô đó,
     không bịa số. Không có ô nào thì trả về danh sách rỗng, giao diện sẽ hiện
@@ -399,57 +418,61 @@ def tinh_chi_so_trang_chu(db: Session):
     """
     out = []
 
-    kh = _so_lieu_moi_nhat(db, "KPI", "Kế hoạch")
-    th = _so_lieu_moi_nhat(db, "KPI", "Thực hiện")
-    if th is not None:
+    # Doanh thu: chưa có nguồn số liệu — nhập bảng KPI, chỉ tiêu "Doanh thu kế
+    # hoạch" / "Doanh thu thực hiện" (Quản trị → Quản lý dashboard) thì ô này
+    # tự xuất hiện, không cần sửa code thêm.
+    dt_kh = _so_lieu_moi_nhat(db, "KPI", "Doanh thu kế hoạch")
+    dt_th = _so_lieu_moi_nhat(db, "KPI", "Doanh thu thực hiện")
+    if dt_kh and dt_th is not None:
+        ty = round(dt_th / dt_kh * 100, 1)
         out.append({
-            "ma": "kpi", "nhan": "HOÀN THÀNH KPI THÁNG",
-            "gia_tri": _so_viet(th, 1), "don_vi": "%",
-            "muc_tieu": f"Mục tiêu: {_so_viet(kh or 100)}%",
-            "mau": "green", "tien_do": min(th, 100),
+            "ma": "kpi", "nhan": "HOÀN THÀNH DOANH THU THÁNG",
+            "gia_tri": _so_viet(ty, 1), "don_vi": "%",
+            "muc_tieu": "Mục tiêu: 100%", "mau": "green", "tien_do": min(ty, 100),
         })
 
-    giao = _so_lieu_moi_nhat(db, "WO", "Được giao")
-    xong = _so_lieu_moi_nhat(db, "WO", "Hoàn thành")
-    if giao and xong is not None:
-        ty = round(xong / giao * 100, 2)
+    ty_phat = _so_lieu_moi_nhat(db, "KPI", "Tiền phạt/Doanh thu")
+    if ty_phat is not None:
         out.append({
-            "ma": "wo_dung_han", "nhan": "WO ĐÚNG HẠN",
-            "gia_tri": _so_viet(ty, 2), "don_vi": "%",
-            "muc_tieu": f"{_so_viet(xong)}/{_so_viet(giao)} phiếu",
-            "ghi_chu": "Đạt" if ty >= 90 else "Chưa đạt",
+            "ma": "wo_dung_han", "nhan": "TỶ LỆ PHẠT/DOANH THU",
+            "gia_tri": _so_viet(ty_phat, 2), "don_vi": "%",
+            "muc_tieu": "Mục tiêu: ≤ 1%",
+            "ghi_chu": "Đạt" if ty_phat <= 1 else "Chưa đạt",
             "mau": "orange",
         })
 
-    phat = _so_lieu_moi_nhat(db, "FUEL", "Tiền phạt")
-    if phat is not None:
+    nhom_phat = _nhom_phat_vtt_vtnet(db)
+    if nhom_phat and nhom_phat["xu_huong"]:
+        ky_gan_nhat = nhom_phat["xu_huong"][-1]
+        tong_phat = round((ky_gan_nhat.get("VTT") or 0) + (ky_gan_nhat.get("VTNet") or 0), 1)
         out.append({
             "ma": "tien_phat", "nhan": "TIỀN PHẠT THÁNG",
-            "gia_tri": _so_viet(phat), "don_vi": "đ",
-            "muc_tieu": "Mục tiêu: 0 đ", "mau": "blue",
+            "gia_tri": _so_viet(tong_phat), "don_vi": "triệu đ",
+            "muc_tieu": "Tổng VTT + VTNet", "mau": "blue",
         })
 
-    sc = _so_lieu_moi_nhat(db, "NETWORK", "Số sự cố")
+    sc = _tong_ky_gan_nhat(db, "PAKH", "Số sự cố truyền dẫn")
     if sc is not None:
         out.append({
-            "ma": "su_co_ngay", "nhan": "SỰ CỐ NGÀY",
+            "ma": "su_co_ngay", "nhan": "SỰ CỐ TRUYỀN DẪN",
             "gia_tri": _so_viet(sc), "don_vi": "",
-            "ghi_chu": "Ngày gần nhất", "mau": "purple",
+            "ghi_chu": "Tháng gần nhất", "mau": "purple",
         })
 
-    if giao and xong is not None:
+    kh_roi_mang = _tong_ky_gan_nhat(db, "WO_TINH", "Số lượng KH rời mạng")
+    if kh_roi_mang is not None:
         out.append({
-            "ma": "wo_qua_han", "nhan": "WO QUÁ HẠN",
-            "gia_tri": _so_viet(giao - xong), "don_vi": "",
-            "ghi_chu": "Chưa hoàn thành", "mau": "orange",
+            "ma": "wo_qua_han", "nhan": "KH RỜI MẠNG CĐBR",
+            "gia_tri": _so_viet(kh_roi_mang), "don_vi": "",
+            "ghi_chu": "Tháng gần nhất", "mau": "orange",
         })
 
-    av = _so_lieu_moi_nhat(db, "NETWORK", "Availability")
-    if av is not None:
+    xlcs = _so_lieu_moi_nhat(db, "NETWORK", "XLCS 24h")
+    if xlcs is not None:
         out.append({
-            "ma": "an_toan", "nhan": "CHẤT LƯỢNG MẠNG",
-            "gia_tri": _so_viet(av, 2), "don_vi": "%",
-            "ghi_chu": "Availability", "mau": "teal",
+            "ma": "an_toan", "nhan": "XLCS 24H",
+            "gia_tri": _so_viet(xlcs, 2), "don_vi": "%",
+            "ghi_chu": "Đạt" if xlcs >= 100 else "Chưa đạt", "mau": "teal",
         })
 
     return out
@@ -808,7 +831,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
         })
 
     # Cảnh báo trung tâm chưa đạt — chỉ tính cho KPI vận hành (VHKT), nơi các
-    # chỉ tiêu (Cell*h, SCTD, TKM, XLSC...) càng thấp càng tốt, vượt target là chưa đạt.
+    # chỉ tiêu (Cell*h, SCTD, TKM, XLCS...) càng thấp càng tốt, vượt target là chưa đạt.
     canh_bao_trung_tam = []
     if board == "VHKT" and compare:
         ky_moi_nhat = max(r["ky"] for r in compare if r["ky"])

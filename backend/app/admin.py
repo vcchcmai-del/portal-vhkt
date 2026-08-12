@@ -1299,19 +1299,36 @@ def admin_list_metrics(board: Optional[str] = None, db: Session = Depends(get_db
     return [metric_out(m) for m in rows]
 
 
+def _slug(text: str) -> str:
+    """Bỏ dấu, chỉ giữ chữ/số/gạch ngang — dùng đặt tên tệp tải xuống."""
+    import unicodedata
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = "".join(ch if ch.isalnum() else "-" for ch in text)
+    while "--" in text:
+        text = text.replace("--", "-")
+    return text.strip("-") or "hang-muc"
+
+
 @router.get("/metrics/export")
-def export_metrics_csv(board: Optional[str] = None, db: Session = Depends(get_db),
+def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
+                       db: Session = Depends(get_db),
                        _=Depends(require_module("import", "view"))):
     """
     Xuất số liệu Dashboard ra CSV — dùng đúng tên cột của màn "Nhập từ Excel"
     (bang, ky, chi_tieu, don_vi, gia_tri) nên tải xuống, sửa/lọc lại trong Excel
     rồi nhập ngược lên là ghi đè đúng dòng cũ (không tạo bản trùng).
+
+    `board` nhận một hoặc nhiều mã bảng cách nhau bằng dấu phẩy (ví dụ
+    "KPI,KPI_TARGET,KPI_VTT,KPI_VTNET") để xuất gộp cả một hạng mục Dashboard
+    (một tab) trong một tệp. `nhom` chỉ dùng để đặt tên tệp cho dễ nhận biết.
     """
     q = db.query(models.Metric)
     ten_tep = "so-lieu-dashboard"
     if board:
-        q = q.filter(models.Metric.board == board.strip().upper())
-        ten_tep = f"so-lieu-dashboard-{board.strip().upper()}"
+        ma_bang = [b.strip().upper() for b in board.split(",") if b.strip()]
+        q = q.filter(models.Metric.board.in_(ma_bang))
+        ten_tep = f"so-lieu-dashboard-{_slug(nhom) if nhom else '-'.join(ma_bang)}"
     rows = q.order_by(models.Metric.board, models.Metric.period).all()
     header = ["bang", "ky", "chi_tieu", "don_vi", "gia_tri"]
     vals = [[m.board, m.period, m.label, m.unit_name or "", m.value] for m in rows]

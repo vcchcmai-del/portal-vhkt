@@ -1070,7 +1070,7 @@ const DASHBOARD_BOARDS = [
   { value: "FUEL_TARGET", label: "Chỉ tiêu/Target Ksub*min" },
   { value: "OUTPUT", label: "GĐTT & Cell*h tổng (theo tỉnh)" },
   { value: "OUTPUT_TARGET", label: "Chỉ tiêu/Target GĐTT & Cell*h" },
-  { value: "NETWORK", label: "XLCS CĐBR (Số PA phát sinh, XLSC 3h/10h/1 ngày)" },
+  { value: "NETWORK", label: "XLCS CĐBR (Số PA phát sinh, XLCS 3h/10h/24h)" },
   { value: "NETWORK_TARGET", label: "Chỉ tiêu/Target XLCS CĐBR" },
   { value: "VHKT", label: "TKM CĐBR (Triển khai mới, KPI TKM 3h/10h/24h)" },
   { value: "VHKT_TARGET", label: "Chỉ tiêu/Target TKM CĐBR" },
@@ -1106,18 +1106,22 @@ export function AdminMetrics() {
   const [edit, setEdit] = useState(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [filterTab, setFilterTab] = useState("");
   const [filterBoard, setFilterBoard] = useState("");
   const [search, setSearch] = useState("");
 
   const boardLabel = (v) => DASHBOARD_BOARDS.find((b) => b.value === v)?.label || v;
+  const tabOf = (id) => DASHBOARD_IMPORT_TABS.find((t) => t.id === id);
+  const tabBoardCodes = (id) => (tabOf(id)?.boards || []).map((b) => b.value);
 
   const filteredRows = useMemo(() => {
     let r = rows;
-    if (filterBoard) r = r.filter((x) => x.board === filterBoard);
+    if (filterTab) { const ma = tabBoardCodes(filterTab); r = r.filter((x) => ma.includes(x.board)); }
+    else if (filterBoard) r = r.filter((x) => x.board === filterBoard);
     const term = search.trim().toLowerCase();
     if (term) r = r.filter((x) => [x.period, x.label, x.unit_name].filter(Boolean).join(" ").toLowerCase().includes(term));
     return r;
-  }, [rows, filterBoard, search]);
+  }, [rows, filterTab, filterBoard, search]);
 
   const save = async () => {
     if (!edit.board) { setMsg("Chưa chọn bảng."); return; }
@@ -1142,7 +1146,13 @@ export function AdminMetrics() {
 
   const exportCsv = async () => {
     try {
-      const qs = filterBoard ? `?board=${encodeURIComponent(filterBoard)}` : "";
+      let qs = "";
+      if (filterTab) {
+        const tab = tabOf(filterTab);
+        qs = `?board=${encodeURIComponent(tabBoardCodes(filterTab).join(","))}&nhom=${encodeURIComponent(tab.label)}`;
+      } else if (filterBoard) {
+        qs = `?board=${encodeURIComponent(filterBoard)}`;
+      }
       const { blob, filename } = await api.blob(`/api/admin/metrics/export${qs}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1151,16 +1161,26 @@ export function AdminMetrics() {
     } catch (e) { window.alert(e.message); }
   };
 
+  const exportLabel = filterTab ? `Xuất "${tabOf(filterTab)?.label}"`
+    : filterBoard ? `Xuất "${boardLabel(filterBoard)}"` : "Xuất tất cả";
+
   return (
     <div className="flex flex-col gap-4">
       <Toolbar title="Số liệu Dashboard" onReload={reload} addLabel="Thêm chỉ số"
         onAdd={() => { setEdit({ ...blankMetric }); setMsg(""); }}
-        onExport={exportCsv} exportLabel={filterBoard ? `Xuất "${boardLabel(filterBoard)}"` : "Xuất tất cả"}
+        onExport={exportCsv} exportLabel={exportLabel}
         hint="Kỳ nhập dạng YYYY-MM, ví dụ 2026-08. Đặt cùng tên chỉ tiêu + cùng kỳ ở bảng Target thì Dashboard tự đối chiếu.
-              Xuất báo cáo để lấy đúng khuôn cột nhập Excel — sửa/lọc trong Excel rồi nhập ngược lên sẽ ghi đè đúng dòng cũ." />
+              Xuất báo cáo để lấy đúng khuôn cột nhập Excel — sửa/lọc trong Excel rồi nhập ngược lên sẽ ghi đè đúng dòng cũ.
+              Chọn Hạng mục dashboard để xuất gộp đúng các bảng của một tab (khớp tên tab trên Dashboard)." />
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-        <select className="inp" style={{ maxWidth: 260 }} value={filterBoard} onChange={(e) => setFilterBoard(e.target.value)}>
+        <select className="inp" style={{ maxWidth: 260 }} value={filterTab}
+          onChange={(e) => { setFilterTab(e.target.value); setFilterBoard(""); }}>
+          <option value="">Hạng mục dashboard (theo tab)…</option>
+          {DASHBOARD_IMPORT_TABS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+        <select className="inp" style={{ maxWidth: 260 }} value={filterBoard}
+          onChange={(e) => { setFilterBoard(e.target.value); setFilterTab(""); }}>
           <option value="">Tất cả các bảng</option>
           {DASHBOARD_BOARDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
         </select>

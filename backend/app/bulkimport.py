@@ -185,7 +185,7 @@ KINDS = {
 
 BOARDS = {
     "KPI", "WO", "PAKH", "FUEL", "HIRE", "OUTPUT", "NETWORK",
-    # KPI vận hành khai thác: Cell*h, sự cố truyền dẫn, ksubmin, TKM 3h/10h/24h, XLSC 3h/10h/24h...
+    # KPI vận hành khai thác: Cell*h, sự cố truyền dẫn, ksubmin, TKM 3h/10h/24h, XLCS 3h/10h/24h...
     "VHKT", "VHKT_TARGET",
     # Target cho Tiền phạt & Doanh thu (KPI) và Rời mạng CĐBR (WO) — để trống
     # cột đơn vị trong bảng target thì áp dụng chung cho mọi trung tâm.
@@ -193,7 +193,7 @@ BOARDS = {
     # Target cho Sự cố truyền dẫn (PAKH), Ksub*min (FUEL), GĐTT & Cell*h (OUTPUT)
     # — mỗi dòng kèm tên tỉnh (đơn vị) vì target khác nhau theo tỉnh.
     "PAKH_TARGET", "FUEL_TARGET", "OUTPUT_TARGET",
-    # Target cho XLSC (NETWORK/XLCS CĐBR) — chung toàn chi nhánh, không theo tỉnh.
+    # Target cho XLCS (NETWORK/XLCS CĐBR) — chung toàn chi nhánh, không theo tỉnh.
     "NETWORK_TARGET",
     # Chi tiết nguyên nhân phạt theo nhóm VTT / VTNet — mỗi dòng là một nguyên
     # nhân (chi_tieu), giá trị đơn vị triệu đồng.
