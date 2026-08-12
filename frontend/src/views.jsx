@@ -1518,6 +1518,8 @@ export function DashView() {
   const laOUTPUT = ma === "OUTPUT"; // GĐTT & Cell*h — theo tỉnh
   const laNETWORK = ma === "NETWORK"; // Chất lượng mạng — Số PA phát sinh + XLSC 3h/10h/24h
   const laTheoTinh = laPAKH || laFUEL || laOUTPUT;
+  // Chiều "tốt" của bảng đang xem — dùng để tô màu/đánh giá đúng chiều ở bảng đối chiếu nhiều tháng bên dưới.
+  const huongTotHienTai = (laPAKH || laFUEL || laOUTPUT) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1667,27 +1669,38 @@ export function DashView() {
               <thead>
                 <tr>
                   <th>Kỳ</th><th>Chỉ tiêu</th><th>Đơn vị</th><th style={{ textAlign: "right" }}>Thực hiện</th>
-                  <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>Đạt target</th>
-                  <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th>
+                  <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>So target</th><th>Đánh giá</th>
+                  <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
                 </tr>
               </thead>
               <tbody>
-                {[...duLieu.compare].sort((a, b) => b.ky.localeCompare(a.ky)).map((c, i) => (
-                  <tr key={i}>
-                    <td className="mono">{c.ky}</td>
-                    <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
-                    <td className="muted">{c.don_vi || "—"}</td>
-                    <td className="mono" style={{ textAlign: "right" }}>{c.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
-                    <td className="mono muted" style={{ textAlign: "right" }}>{c.target?.toLocaleString("vi-VN") ?? "—"}</td>
-                    <td className="mono" style={{ textAlign: "right", color: c.dat_target_phan_tram == null ? undefined : (c.dat_target_phan_tram >= 100 ? "#0A7A50" : RED) }}>
-                      {c.dat_target_phan_tram != null ? `${c.dat_target_phan_tram}%` : "—"}
-                    </td>
-                    <td className="mono muted" style={{ textAlign: "right" }}>{c.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
-                    <td className="mono" style={{ textAlign: "right", color: c.chenh_lech_cung_ky_phan_tram == null ? undefined : (c.chenh_lech_cung_ky_phan_tram >= 0 ? "#0A7A50" : RED) }}>
-                      {c.chenh_lech_cung_ky_phan_tram != null ? `${c.chenh_lech_cung_ky_phan_tram > 0 ? "+" : ""}${c.chenh_lech_cung_ky_phan_tram}%` : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {[...duLieu.compare].sort((a, b) => b.ky.localeCompare(a.ky)).map((c, i) => {
+                  // Chênh lệch thô: dương = thực hiện vượt target/cùng kỳ trước. huongTot quyết định
+                  // vượt là tốt (huongTot="cao") hay xấu (huongTot="thap", mặc định khi chưa rõ bảng).
+                  const hg = huongTotHienTai || "thap";
+                  const soTarget = c.target ? ((c.thuc_hien - c.target) / c.target) * 100 : null;
+                  const dat = soTarget == null ? null : (hg === "thap" ? soTarget <= 0 : soTarget >= 0);
+                  const kqCk = c.chenh_lech_cung_ky_phan_tram;
+                  const totCungKy = kqCk == null ? null : (hg === "thap" ? kqCk <= 0 : kqCk >= 0);
+                  return (
+                    <tr key={i}>
+                      <td className="mono">{c.ky}</td>
+                      <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
+                      <td className="muted">{c.don_vi || "—"}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{c.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
+                      <td className="mono muted" style={{ textAlign: "right" }}>{c.target?.toLocaleString("vi-VN") ?? "—"}</td>
+                      <td className="mono" style={{ textAlign: "right", color: dat == null ? undefined : (dat ? "#0A7A50" : RED) }}>
+                        {soTarget != null ? `${soTarget > 0 ? "+" : ""}${soTarget.toFixed(2)}%` : "—"}
+                      </td>
+                      <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt target" : "Không đạt target"}</span>}</td>
+                      <td className="mono muted" style={{ textAlign: "right" }}>{c.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
+                      <td className="mono" style={{ textAlign: "right", color: totCungKy == null ? undefined : (totCungKy ? "#0A7A50" : RED) }}>
+                        {kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}
+                      </td>
+                      <td>{totCungKy == null ? <span className="muted">—</span> : <span className={`tag ${totCungKy ? "tag-green" : "tag-red"}`}>{totCungKy ? "Cải thiện" : "Suy giảm"}</span>}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
