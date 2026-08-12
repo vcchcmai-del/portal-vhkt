@@ -1519,7 +1519,7 @@ export function DashView() {
   const laNETWORK = ma === "NETWORK"; // Chất lượng mạng — Số PA phát sinh + XLSC 3h/10h/24h
   const laTheoTinh = laPAKH || laFUEL || laOUTPUT;
   // Chiều "tốt" của bảng đang xem — dùng để tô màu/đánh giá đúng chiều ở bảng đối chiếu nhiều tháng bên dưới.
-  const huongTotHienTai = (laPAKH || laFUEL || laOUTPUT) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
+  const huongTotHienTai = (laPAKH || laFUEL || laOUTPUT || laWO) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1662,7 +1662,7 @@ export function DashView() {
 
       {laVHKT && <CanhBaoTrungTam danhSach={duLieu?.canh_bao_trung_tam} />}
 
-      {!laKPI && !laWO && duLieu?.compare?.length > 0 && (
+      {!laKPI && duLieu?.compare?.length > 0 && (
         <Card title="Đối chiếu chỉ tiêu & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
