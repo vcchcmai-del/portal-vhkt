@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-12.v27"
+PORTAL_BUILD = "2026-08-12.v28"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -737,35 +737,38 @@ def dashboard(board: str, db: Session = Depends(get_db)):
         buckets.setdefault(key, {"name": key})
         buckets[key][r["chi_tieu"]] = r["gia_tri"]
 
-    # Đối chiếu target + cùng kỳ năm trước, chỉ khi có bảng target tương ứng.
+    # Đối chiếu target (nếu có) + cùng kỳ năm trước — luôn dựng từ "rows" thật,
+    # target chỉ đơn giản là None khi chưa có bảng "{board}_TARGET" hay chưa nhập
+    # target cho đúng kỳ/chỉ tiêu đó (trước đây bỏ qua toàn bộ "compare" khi
+    # KHÔNG có target_rows, khiến những bảng chưa có target — như tỷ lệ phạt,
+    # chất lượng mạng, KPI vận hành — không lên biểu đồ dù đã có số liệu thật).
     # Khoá đối chiếu gồm cả đơn vị/trung tâm — 2 trung tâm nhập cùng chỉ tiêu,
     # cùng kỳ thì KHÔNG được đè lên nhau (đây là lỗi đã sửa so với bản đầu).
-    compare = []
     target_rows, _ = _flat_metric_rows(f"{board}_TARGET", db)
-    if target_rows:
-        target_map = {(r["ky"], r["chi_tieu"], r["don_vi"]): r["gia_tri"] for r in target_rows}
-        # Target không kèm đơn vị (đơn_vi=None) coi là target chung áp cho mọi trung tâm.
-        target_chung = {(r["ky"], r["chi_tieu"]): r["gia_tri"] for r in target_rows if not r["don_vi"]}
-        actual_map = {(r["ky"], r["chi_tieu"], r["don_vi"]): r["gia_tri"] for r in rows}
+    target_map = {(r["ky"], r["chi_tieu"], r["don_vi"]): r["gia_tri"] for r in target_rows}
+    # Target không kèm đơn vị (đơn_vi=None) coi là target chung áp cho mọi trung tâm.
+    target_chung = {(r["ky"], r["chi_tieu"]): r["gia_tri"] for r in target_rows if not r["don_vi"]}
+    actual_map = {(r["ky"], r["chi_tieu"], r["don_vi"]): r["gia_tri"] for r in rows}
 
-        def _target_cua(ky, chi_tieu, don_vi):
-            return target_map.get((ky, chi_tieu, don_vi)) or target_chung.get((ky, chi_tieu))
+    def _target_cua(ky, chi_tieu, don_vi):
+        return target_map.get((ky, chi_tieu, don_vi)) or target_chung.get((ky, chi_tieu))
 
-        for r in rows:
-            ky, chi_tieu, don_vi, gia_tri = r["ky"], r["chi_tieu"], r["don_vi"], r["gia_tri"]
-            target = _target_cua(ky, chi_tieu, don_vi)
-            ky_truoc = _ky_cung_ky_truoc(ky)
-            gia_tri_ky_truoc = actual_map.get((ky_truoc, chi_tieu, don_vi)) if ky_truoc else None
-            compare.append({
-                "ky": ky, "chi_tieu": chi_tieu, "don_vi": don_vi, "thuc_hien": gia_tri,
-                "target": target,
-                "dat_target_phan_tram": round(gia_tri / target * 100, 1) if target else None,
-                "cung_ky_truoc": gia_tri_ky_truoc,
-                "chenh_lech_cung_ky_phan_tram": (
-                    round((gia_tri - gia_tri_ky_truoc) / gia_tri_ky_truoc * 100, 1)
-                    if gia_tri_ky_truoc else None
-                ),
-            })
+    compare = []
+    for r in rows:
+        ky, chi_tieu, don_vi, gia_tri = r["ky"], r["chi_tieu"], r["don_vi"], r["gia_tri"]
+        target = _target_cua(ky, chi_tieu, don_vi)
+        ky_truoc = _ky_cung_ky_truoc(ky)
+        gia_tri_ky_truoc = actual_map.get((ky_truoc, chi_tieu, don_vi)) if ky_truoc else None
+        compare.append({
+            "ky": ky, "chi_tieu": chi_tieu, "don_vi": don_vi, "thuc_hien": gia_tri,
+            "target": target,
+            "dat_target_phan_tram": round(gia_tri / target * 100, 1) if target else None,
+            "cung_ky_truoc": gia_tri_ky_truoc,
+            "chenh_lech_cung_ky_phan_tram": (
+                round((gia_tri - gia_tri_ky_truoc) / gia_tri_ky_truoc * 100, 1)
+                if gia_tri_ky_truoc else None
+            ),
+        })
 
     # Cảnh báo trung tâm chưa đạt — chỉ tính cho KPI vận hành (VHKT), nơi các
     # chỉ tiêu (Cell*h, SCTD, TKM, XLSC...) càng thấp càng tốt, vượt target là chưa đạt.
