@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-12.v41"
+PORTAL_BUILD = "2026-08-12.v42"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -79,19 +79,27 @@ app.add_middleware(
 @app.middleware("http")
 async def no_cache_html(request: Request, call_next):
     """
-    Hai việc:
+    Ba việc:
 
     1. Không cho trình duyệt lưu index.html. Cần thiết vì tên tệp giao diện có
        kèm mã băm; giữ lại index.html cũ sẽ trỏ tới tệp không còn tồn tại và
        trang mất hết tương tác.
 
-    2. Gắn dấu hiệu bản dựng vào tiêu đề mọi phản hồi. Nhờ vậy kiểm tra được
+    2. Không cho lưu bất kỳ phản hồi /api/* nào. Nhiều API trả nội dung khác
+       nhau tuỳ đã đăng nhập hay chưa (ví dụ /api/home — lịch họp bị khoá với
+       người chưa đăng nhập, xem current_user_optional). Nếu trình duyệt lưu
+       tạm phản hồi lúc còn đăng nhập, người dùng bấm tải lại sau khi đăng
+       xuất vẫn có thể thấy lại đúng nội dung cũ đã lưu — không phải gọi lại
+       máy chủ. Chặn lưu ở đây để loại hẳn khả năng đó, không lệ thuộc từng
+       route có nhớ đặt header hay không.
+
+    3. Gắn dấu hiệu bản dựng vào tiêu đề mọi phản hồi. Nhờ vậy kiểm tra được
        đang chạy bản nào mà không cần mở trang, và phát hiện được trường hợp
        nền tảng chạy song song nhiều bản khác nhau.
     """
     response = await call_next(request)
     response.headers["X-Portal-Build"] = PORTAL_BUILD
-    if request.url.path == "/" or request.url.path.endswith("/index.html"):
+    if request.url.path == "/" or request.url.path.endswith("/index.html") or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
     return response

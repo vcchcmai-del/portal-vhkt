@@ -73,7 +73,7 @@ async function request(path, options = {}) {
 
   let res;
   try {
-    res = await fetch(BASE + path, { ...options, headers });
+    res = await fetch(BASE + path, { cache: "no-store", ...options, headers });
   } catch {
     throw new Error("Không gọi được máy chủ. Kiểm tra kết nối mạng hoặc phần xử lý dữ liệu đã chạy chưa.");
   }
