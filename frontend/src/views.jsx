@@ -1772,7 +1772,7 @@ function DashRecruitmentPanel() {
           <table className="tbl">
             <thead><tr><th>Trung tâm</th><th style={{ textAlign: "right" }}>Thiếu OFT</th><th style={{ textAlign: "right" }}>Thiếu FT</th><th style={{ textAlign: "right" }}>Tổng thiếu</th></tr></thead>
             <tbody>
-              {s.staffing.centers.slice(0, 6).map((c) => (
+              {s.staffing.centers.map((c) => (
                 <tr key={c.center}>
                   <td>{c.center}</td>
                   <td className="mono" style={{ textAlign: "right" }}>{c.oft_gap}</td>
