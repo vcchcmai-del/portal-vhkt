@@ -813,14 +813,14 @@ const BOARDS = {
     ve: "duong",
   },
   NETWORK: {
-    nhan: "Chất lượng mạng", ma: "NETWORK", icon: Signal,
-    tieuDe: "Chất lượng mạng theo ngày",
+    nhan: "XLCS CĐBR", ma: "NETWORK", icon: Signal,
+    tieuDe: "Xử lý sự cố CĐBR theo tháng",
     mau: D.D_NET.map((r) => ({ name: r.m, "Availability": r.av, "Số sự cố": r.sc })),
     ve: "cot-duong",
   },
   VHKT: {
-    nhan: "KPI vận hành", ma: "VHKT", icon: Activity,
-    tieuDe: "KPI vận hành khai thác theo tháng (Cell*h, ksubmin, TKM, XLSC...)",
+    nhan: "TKM CĐBR", ma: "VHKT", icon: Activity,
+    tieuDe: "Triển khai mới CĐBR theo tháng (dây mới/dây sẵn, KPI TKM 3h/10h/24h)",
     mau: [],
     ve: "duong",
   },
@@ -836,35 +836,46 @@ function mauTinh(ten, idx) { return MAU_THEO_TINH[ten] || MAU_VE[idx % MAU_VE.le
 const dinhDangPhanTram = (v) => (v == null ? "" : `${Number(v).toFixed(2)}%`);
 
 /** Danh sách năm (giảm dần) xuất hiện trong một tập kỳ "YYYY-MM". */
-function dsNamTuKy(dsKy) {
-  return [...new Set((dsKy || []).map((k) => k.split("-")[0]))].sort((a, b) => b.localeCompare(a));
-}
-
-/** Hàng chip chọn năm — ưu tiên năm mới nhất, có thể xem "Tất cả" nếu bật `choTatCa`. */
-function BoLocNam({ dsNam, nam, onChon, choTatCa }) {
-  if (!dsNam?.length || dsNam.length < 2) return null;
+/**
+ * Danh sách biểu đồ nhỏ xếp dọc, mỗi biểu đồ vẽ đúng một chuỗi số liệu — dùng khi
+ * gộp nhiều chuỗi vào chung một biểu đồ sẽ khiến nhãn số chồng lên nhau, khó đọc
+ * (ví dụ 3 mức KPI TKM 3h/10h/24h giá trị sát nhau). Mỗi biểu đồ vẫn hiện số tại
+ * từng điểm mốc.
+ */
+function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) => (v == null ? "" : `${v}`) }) {
+  const truc = { tick: { fontSize: 11 }, stroke: "#A9A3A5" };
   return (
-    <div className="flex gap-1.5" style={{ marginBottom: 12 }}>
-      {dsNam.map((n) => (
-        <button key={n} className={`chip ${nam === n ? "on" : ""}`} onClick={() => onChon(n)}>{n}</button>
-      ))}
-      {choTatCa && <button className={`chip ${nam === "all" ? "on" : ""}`} onClick={() => onChon("all")}>Tất cả</button>}
+    <div className="flex flex-col gap-4">
+      {dsChuoi.map((chuoi, i) => {
+        const mau = (mauMap && mauMap[chuoi]) || MAU_VE[i % MAU_VE.length];
+        return (
+          <div key={chuoi}>
+            <p style={{ fontSize: 12.5, fontWeight: 700, color: "#57494B", marginBottom: 2 }}>{nhanChuoi?.[chuoi] || chuoi}</p>
+            <ResponsiveContainer width="100%" height={165}>
+              <LineChart data={data} margin={{ top: 18, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
+                <XAxis dataKey="name" {...truc} />
+                <YAxis {...truc} width={40} />
+                <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
+                <Line type="monotone" dataKey={chuoi} name={nhanChuoi?.[chuoi] || chuoi} stroke={mau} strokeWidth={2.5} dot={{ r: 3 }} connectNulls>
+                  <LabelList dataKey={chuoi} position="top" fontSize={10} formatter={dinhDang} fill={mau} />
+                </Line>
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-/**
- * Biểu đồ xu thế nhiều chỉ tiêu cùng lúc (một đường mỗi chỉ tiêu) trong một năm,
- * dựng từ "compare". Dùng cho các bảng gồm nhiều chỉ tiêu cùng bản chất/đơn vị
- * đo (ví dụ 3 tỷ lệ phạt Tổng/VTT/VTNet, hay 3 mức XLSC 3h/10h/24h).
- */
+/** Dựng dữ liệu {name, [chuoi]: giá trị} từ "compare", lọc theo danh sách chỉ tiêu và năm. */
 function BieuDoNhieuChiTieu({ compare, chiTieuList, nhanChiTieu, nam, dinhDang = (v) => (v == null ? "" : `${v}`), mauMap }) {
   const rows = (compare || []).filter((c) => chiTieuList.includes(c.chi_tieu) && (!nam || nam === "all" || c.ky?.startsWith(nam)));
   if (!rows.length) return <Empty title="Chưa có số liệu." />;
 
   const kyList = [...new Set(rows.map((r) => r.ky))].sort();
   const laTatCaNam = nam === "all";
-  const truc = { tick: { fontSize: 12 }, stroke: "#A9A3A5" };
   const data = kyList.map((k) => {
     const [namK, thangK] = k.split("-");
     const hang = { name: `T${parseInt(thangK, 10)}${laTatCaNam ? `/${namK.slice(2)}` : ""}` };
@@ -872,23 +883,7 @@ function BieuDoNhieuChiTieu({ compare, chiTieuList, nhanChiTieu, nam, dinhDang =
     return hang;
   });
 
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data} margin={{ top: 22, right: 12, left: 4, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
-        <XAxis dataKey="name" {...truc} interval={kyList.length > 12 ? 1 : 0} />
-        <YAxis {...truc} />
-        <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
-        <Legend wrapperStyle={{ fontSize: 12.5 }} formatter={(v) => (nhanChiTieu?.[v] || v)} />
-        {chiTieuList.map((ct, i) => (
-          <Line key={ct} type="monotone" dataKey={ct} name={ct} connectNulls
-            stroke={(mauMap && mauMap[ct]) || MAU_VE[i % MAU_VE.length]} strokeWidth={2.5} dot={{ r: 3 }}>
-            <LabelList dataKey={ct} position="top" fontSize={10} formatter={dinhDang} fill={(mauMap && mauMap[ct]) || MAU_VE[i % MAU_VE.length]} />
-          </Line>
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
-  );
+  return <DanhSachBieuDoDoc data={data} dsChuoi={chiTieuList} nhanChuoi={nhanChiTieu} mauMap={mauMap} dinhDang={dinhDang} />;
 }
 
 /** Lấy tên các cột số liệu, bỏ cột nhãn. */
@@ -1115,30 +1110,15 @@ function BieuDoTheoTinh({ compare, chiTieu, nam }) {
   const donVi = [...new Set(rows.map((r) => r.don_vi))].sort();
   const ky = [...new Set(rows.map((r) => r.ky))].sort();
   const laTatCaNam = nam === "all";
-  const truc = { tick: { fontSize: 11.5 }, stroke: "#A9A3A5" };
   const data = ky.map((k) => {
     const [namK, thang] = k.split("-");
     const hang = { name: `T${parseInt(thang, 10)}${laTatCaNam ? `/${namK.slice(2)}` : ""}` };
     donVi.forEach((dv) => { hang[dv] = rows.find((r) => r.ky === k && r.don_vi === dv)?.thuc_hien ?? null; });
     return hang;
   });
+  const mauMap = Object.fromEntries(donVi.map((dv, i) => [dv, mauTinh(dv, i)]));
 
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data} margin={{ top: 20, right: 12, left: 4, bottom: 4 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
-        <XAxis dataKey="name" {...truc} interval={ky.length > 12 ? 1 : 0} />
-        <YAxis {...truc} />
-        <Tooltip {...tooltipStyle} />
-        <Legend wrapperStyle={{ fontSize: 12.5 }} />
-        {donVi.map((dv, i) => (
-          <Line key={dv} type="monotone" dataKey={dv} name={dv} stroke={mauTinh(dv, i)} strokeWidth={2.5} dot={{ r: 3 }} connectNulls>
-            <LabelList dataKey={dv} position="top" fontSize={9.5} formatter={(v) => v?.toLocaleString("vi-VN")} fill={mauTinh(dv, i)} />
-          </Line>
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
-  );
+  return <DanhSachBieuDoDoc data={data} dsChuoi={donVi} mauMap={mauMap} dinhDang={(v) => v?.toLocaleString("vi-VN")} />;
 }
 
 /** Bảng chi tiết rời mạng theo huyện, gộp nhóm theo tỉnh — kèm thuê bao FTTH và bình quân. */
@@ -1368,16 +1348,17 @@ function NhanNguon({ nguon }) {
   return <span className={`tag ${nhan[1]}`}>{nhan[0]}</span>;
 }
 
+// So sánh cùng kỳ trên toàn Dashboard luôn lấy năm 2026 làm năm hiện tại (đối
+// chiếu với 2025) — không cho chọn năm khác để tránh rối, theo yêu cầu người dùng.
+const NAM_HIEN_TAI = "2026";
+
 export function DashView() {
   const [ma, setMa] = useState("KPI");
   const [duLieu, setDuLieu] = useState(null);
   const [dangTai, setDangTai] = useState(true);
   const [loi, setLoi] = useState("");
-  const [nam, setNam] = useState(null); // null = dùng năm mới nhất có số liệu (ưu tiên 2026)
 
   const board = BOARDS[ma];
-
-  useEffect(() => { setNam(null); }, [ma]);
 
   useEffect(() => {
     let con = true;
@@ -1406,12 +1387,6 @@ export function DashView() {
   const laNETWORK = ma === "NETWORK"; // Chất lượng mạng — Số PA phát sinh + XLSC 3h/10h/24h
   const laTheoTinh = laPAKH || laFUEL || laOUTPUT;
 
-  // Bộ lọc năm dùng chung cho mọi tab — ưu tiên năm mới nhất có số liệu (2026),
-  // cho phép chọn năm khác hoặc "Tất cả" để xem hết lịch sử.
-  const dsNamTab = dsNamTuKy((duLieu?.compare || []).map((c) => c.ky));
-  const namHieuLuc = nam || dsNamTab[0] || String(new Date().getFullYear());
-  const namHienTaiSo = namHieuLuc === "all" ? undefined : parseInt(namHieuLuc, 10);
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex gap-2 scroll-x">
@@ -1436,12 +1411,11 @@ export function DashView() {
         </Card>
       ) : laKPI ? (
         <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
           <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <TrendChart compare={duLieu?.compare} chiTieu="Tiền phạt/Doanh thu" namHienTai={namHienTaiSo} />
+            <TrendChart compare={duLieu?.compare} chiTieu="Tiền phạt/Doanh thu" namHienTai={2026} />
           </Card>
           <Card title="Tỷ lệ phạt/doanh thu — Tổng / VTT / VTNet" icon={board.icon}>
-            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={namHieuLuc}
+            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
               chiTieuList={["Tiền phạt/Doanh thu", "Tỷ lệ phạt/DT VTNet", "Tỷ lệ phạt/DT VTT"]}
               nhanChiTieu={{ "Tiền phạt/Doanh thu": "Tổng", "Tỷ lệ phạt/DT VTNet": "VTNet", "Tỷ lệ phạt/DT VTT": "VTT" }}
               mauMap={{ "Tiền phạt/Doanh thu": "#4B5563", "Tỷ lệ phạt/DT VTNet": "#0E6CD6", "Tỷ lệ phạt/DT VTT": "#F2A007" }}
@@ -1450,67 +1424,56 @@ export function DashView() {
           {duLieu?.nhom_phat && (
             <>
               <Card title="Nhóm nguyên nhân phạt Tổng / VTT / VTNet — tiền phạt theo tháng" icon={board.icon}>
-                <NhomPhatTrend xuHuong={duLieu.nhom_phat.xu_huong} nam={namHieuLuc} />
+                <NhomPhatTrend xuHuong={duLieu.nhom_phat.xu_huong} nam={NAM_HIEN_TAI} />
               </Card>
               <div className="grid lg:grid-cols-2 gap-4">
                 <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" coCau={duLieu.nhom_phat.co_cau_vtnet} ky={duLieu.nhom_phat.ky_vtnet} />
                 <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" coCau={duLieu.nhom_phat.co_cau_vtt} ky={duLieu.nhom_phat.ky_vtt} />
               </div>
-              <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} nam={namHieuLuc} />
+              <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} nam={NAM_HIEN_TAI} />
             </>
           )}
         </>
       ) : laWO ? (
         <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
           <Card title="Số lượng KH rời mạng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
             {duLieu?.dia_ban?.tinh?.length > 0
               ? <SoLuongRoMangTheoTinh theoTinh={duLieu.dia_ban.tinh} />
               : <BieuDo kieu="cot-don" series={seriesMotChiTieu(series, "Số lượng KH rời mạng")} />}
           </Card>
           <Card title="Tỷ lệ rời mạng CĐBR" icon={board.icon}>
-            <TrendChart compare={duLieu?.compare} chiTieu="Tỷ lệ rời mạng CĐBR" namHienTai={namHienTaiSo} />
+            <TrendChart compare={duLieu?.compare} chiTieu="Tỷ lệ rời mạng CĐBR" namHienTai={2026} />
           </Card>
           <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
         </>
       ) : laPAKH ? (
-        <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
-          <Card title="Số sự cố truyền dẫn theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Số sự cố truyền dẫn" nam={namHieuLuc} />
-          </Card>
-        </>
+        <Card title="Số sự cố truyền dẫn theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+          <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Số sự cố truyền dẫn" nam={NAM_HIEN_TAI} />
+        </Card>
       ) : laFUEL ? (
-        <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
-          <Card title="Ksub*min theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Ksub*min" nam={namHieuLuc} />
-          </Card>
-        </>
+        <Card title="Ksub*min theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+          <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Ksub*min" nam={NAM_HIEN_TAI} />
+        </Card>
       ) : laOUTPUT ? (
         <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
           <Card title="Cell*h tổng theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Cell*h tổng" nam={namHieuLuc} />
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Cell*h tổng" nam={NAM_HIEN_TAI} />
           </Card>
-          <div className="grid lg:grid-cols-2 gap-4">
-            <Card title="GĐTT trạm thường" icon={board.icon}>
-              <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm thường" nam={namHieuLuc} />
-            </Card>
-            <Card title="GĐTT trạm ưu tiên" icon={board.icon}>
-              <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm ưu tiên" nam={namHieuLuc} />
-            </Card>
-          </div>
+          <Card title="GĐTT trạm thường" icon={board.icon}>
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm thường" nam={NAM_HIEN_TAI} />
+          </Card>
+          <Card title="GĐTT trạm ưu tiên" icon={board.icon}>
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm ưu tiên" nam={NAM_HIEN_TAI} />
+          </Card>
         </>
       ) : laNETWORK ? (
         <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
           <Card title="Số phản ánh phát sinh trong tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={namHieuLuc} chiTieuList={["Số PA phát sinh trong tháng"]}
+            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI} chiTieuList={["Số PA phát sinh trong tháng"]}
               dinhDang={(v) => v?.toLocaleString("vi-VN")} mauMap={{ "Số PA phát sinh trong tháng": "#4B5563" }} />
           </Card>
           <Card title="Xử lý sự cố (XLSC) trong 3h / 10h / 1 ngày" icon={board.icon}>
-            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={namHieuLuc}
+            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
               chiTieuList={["XLSC trong 3h", "XLSC trong 10h", "XLSC trong 1 ngày"]}
               mauMap={{ "XLSC trong 3h": RED, "XLSC trong 10h": "#0E6CD6", "XLSC trong 1 ngày": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
@@ -1518,16 +1481,15 @@ export function DashView() {
         </>
       ) : laVHKT ? (
         <>
-          <BoLocNam dsNam={dsNamTab} nam={namHieuLuc} onChon={setNam} choTatCa />
           <Card title="Triển khai mới CĐBR — dây mới / dây sẵn" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={namHieuLuc}
+            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
               chiTieuList={["Triển khai đã NT dây mới", "Triển khai đã NT dây sẵn"]}
               nhanChiTieu={{ "Triển khai đã NT dây mới": "Dây mới", "Triển khai đã NT dây sẵn": "Dây sẵn" }}
               mauMap={{ "Triển khai đã NT dây mới": "#0E6CD6", "Triển khai đã NT dây sẵn": "#4B5563" }}
               dinhDang={(v) => v?.toLocaleString("vi-VN")} />
           </Card>
           <Card title="KPI TKM 3h / 10h / 24h">
-            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={namHieuLuc}
+            <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
               chiTieuList={["KPI TKM 3H", "KPI TKM 10H", "KPI TKM 24H"]}
               mauMap={{ "KPI TKM 3H": RED, "KPI TKM 10H": "#0E6CD6", "KPI TKM 24H": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
