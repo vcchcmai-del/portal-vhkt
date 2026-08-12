@@ -848,6 +848,7 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
     <div className="flex flex-col gap-4">
       {dsChuoi.map((chuoi, i) => {
         const mau = (mauMap && mauMap[chuoi]) || MAU_VE[i % MAU_VE.length];
+        const coTarget = data.some((r) => r[`${chuoi}__target`] != null);
         return (
           <div key={chuoi}>
             <p style={{ fontSize: 12.5, fontWeight: 700, color: "#57494B", marginBottom: 2 }}>{nhanChuoi?.[chuoi] || chuoi}</p>
@@ -857,6 +858,11 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
                 <XAxis dataKey="name" {...truc} />
                 <YAxis {...truc} width={40} />
                 <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
+                {coTarget && <Legend wrapperStyle={{ fontSize: 11 }} height={20} />}
+                {coTarget && (
+                  <Line type="monotone" dataKey={`${chuoi}__target`} name="Target" stroke="#A9A3A5"
+                    strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
+                )}
                 <Line type="monotone" dataKey={chuoi} name={nhanChuoi?.[chuoi] || chuoi} stroke={mau} strokeWidth={2.5} dot={{ r: 3 }} connectNulls>
                   <LabelList dataKey={chuoi} position="top" fontSize={10} formatter={dinhDang} fill={mau} />
                 </Line>
@@ -869,7 +875,7 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
   );
 }
 
-/** Dựng dữ liệu {name, [chuoi]: giá trị} từ "compare", lọc theo danh sách chỉ tiêu và năm. */
+/** Dựng dữ liệu {name, [chuoi]: giá trị, [chuoi]__target: target} từ "compare", lọc theo danh sách chỉ tiêu và năm. */
 function BieuDoNhieuChiTieu({ compare, chiTieuList, nhanChiTieu, nam, dinhDang = (v) => (v == null ? "" : `${v}`), mauMap }) {
   const rows = (compare || []).filter((c) => chiTieuList.includes(c.chi_tieu) && (!nam || nam === "all" || c.ky?.startsWith(nam)));
   if (!rows.length) return <Empty title="Chưa có số liệu." />;
@@ -879,7 +885,11 @@ function BieuDoNhieuChiTieu({ compare, chiTieuList, nhanChiTieu, nam, dinhDang =
   const data = kyList.map((k) => {
     const [namK, thangK] = k.split("-");
     const hang = { name: `T${parseInt(thangK, 10)}${laTatCaNam ? `/${namK.slice(2)}` : ""}` };
-    chiTieuList.forEach((ct) => { hang[ct] = rows.find((r) => r.ky === k && r.chi_tieu === ct)?.thuc_hien ?? null; });
+    chiTieuList.forEach((ct) => {
+      const r = rows.find((r) => r.ky === k && r.chi_tieu === ct);
+      hang[ct] = r?.thuc_hien ?? null;
+      hang[`${ct}__target`] = r?.target ?? null;
+    });
     return hang;
   });
 
@@ -1113,7 +1123,11 @@ function BieuDoTheoTinh({ compare, chiTieu, nam }) {
   const data = ky.map((k) => {
     const [namK, thang] = k.split("-");
     const hang = { name: `T${parseInt(thang, 10)}${laTatCaNam ? `/${namK.slice(2)}` : ""}` };
-    donVi.forEach((dv) => { hang[dv] = rows.find((r) => r.ky === k && r.don_vi === dv)?.thuc_hien ?? null; });
+    donVi.forEach((dv) => {
+      const r = rows.find((r) => r.ky === k && r.don_vi === dv);
+      hang[dv] = r?.thuc_hien ?? null;
+      hang[`${dv}__target`] = r?.target ?? null;
+    });
     return hang;
   });
   const mauMap = Object.fromEntries(donVi.map((dv, i) => [dv, mauTinh(dv, i)]));
@@ -1342,6 +1356,70 @@ function BangChiTietPhat({ xuHuong, compare, nam }) {
   );
 }
 
+/**
+ * Bảng đánh giá KPI theo mẫu chuẩn: TT | KPI | Đơn vị | Target | Thực hiện |
+ * So target (Kết quả/Đánh giá) | Cùng kỳ (Kết quả/Đánh giá/Giá trị) — chỉ lấy
+ * kỳ mới nhất. `huongTot`: "thap" (càng thấp càng tốt, mặc định — sự cố,
+ * ksub*min, GĐTT, tiền phạt, rời mạng) hoặc "cao" (càng cao càng tốt — XLSC,
+ * KPI TKM).
+ */
+function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }) {
+  const rowsCa = (compare || []).filter((c) => chiTieuList.includes(c.chi_tieu));
+  if (!rowsCa.length) return null;
+  const kyMoiNhat = rowsCa.reduce((max, r) => (r.ky > max ? r.ky : max), rowsCa[0].ky);
+  const rows = rowsCa.filter((r) => r.ky === kyMoiNhat);
+  if (!rows.length) return null;
+
+  const nhom = chiTieuList
+    .map((ct) => ({ chiTieu: ct, hang: rows.filter((r) => r.chi_tieu === ct).sort((a, b) => (a.don_vi || "").localeCompare(b.don_vi || "")) }))
+    .filter((n) => n.hang.length > 0);
+
+  const soTarget = (r) => {
+    if (r.target == null) return null;
+    return huongTot === "thap" ? ((r.target - r.thuc_hien) / r.target) * 100 : ((r.thuc_hien - r.target) / r.target) * 100;
+  };
+
+  return (
+    <Card title={`Đánh giá KPI so với target & cùng kỳ — kỳ ${kyMoiNhat}`} icon={ShieldCheck} pad={false}>
+      <div style={{ overflowX: "auto" }}>
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>TT</th><th>KPI</th><th>Đơn vị</th>
+              <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>Thực hiện</th>
+              <th style={{ textAlign: "right" }}>So target — Kết quả</th><th>So target — Đánh giá</th>
+              <th style={{ textAlign: "right" }}>Cùng kỳ — Kết quả</th><th>Cùng kỳ — Đánh giá</th>
+              <th style={{ textAlign: "right" }}>Cùng kỳ — Giá trị</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nhom.map((n, idx) => n.hang.map((r, j) => {
+              const kq = soTarget(r);
+              const dat = kq == null ? null : kq >= 0;
+              const kqCk = r.chenh_lech_cung_ky_phan_tram;
+              const tang = kqCk == null ? null : kqCk >= 0;
+              return (
+                <tr key={`${n.chiTieu}-${r.don_vi || j}`}>
+                  {j === 0 && <td className="mono" rowSpan={n.hang.length} style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>}
+                  {j === 0 && <td rowSpan={n.hang.length} style={{ fontWeight: 700 }}>{nhanChiTieu?.[n.chiTieu] || n.chiTieu}</td>}
+                  <td className="muted">{r.don_vi || "Chi nhánh"}</td>
+                  <td className="mono muted" style={{ textAlign: "right" }}>{r.target?.toLocaleString("vi-VN") ?? "—"}</td>
+                  <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{r.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
+                  <td className="mono" style={{ textAlign: "right" }}>{kq != null ? `${kq.toFixed(2)}%` : "—"}</td>
+                  <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt" : "Chưa đạt"}</span>}</td>
+                  <td className="mono" style={{ textAlign: "right" }}>{kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}</td>
+                  <td>{tang == null ? <span className="muted">—</span> : <span className={`tag ${tang ? "tag-green" : "tag-amber"}`}>{tang ? "Tăng trưởng" : "Suy giảm"}</span>}</td>
+                  <td className="mono muted" style={{ textAlign: "right" }}>{r.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
+                </tr>
+              );
+            }))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 function NhanNguon({ nguon }) {
   const nhan = {
     sheet: ["Nguồn: Google Sheet", "tag-green"],
@@ -1436,6 +1514,9 @@ export function DashView() {
               <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} nam={NAM_HIEN_TAI} />
             </>
           )}
+          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="thap"
+            chiTieuList={["Tiền phạt/Doanh thu", "Tỷ lệ phạt/DT VTNet", "Tỷ lệ phạt/DT VTT"]}
+            nhanChiTieu={{ "Tiền phạt/Doanh thu": "Tổng", "Tỷ lệ phạt/DT VTNet": "VTNet", "Tỷ lệ phạt/DT VTT": "VTT" }} />
         </>
       ) : laWO ? (
         <>
@@ -1447,16 +1528,23 @@ export function DashView() {
           <Card title="Tỷ lệ rời mạng CĐBR" icon={board.icon}>
             <TrendChart compare={duLieu?.compare} chiTieu="Tỷ lệ rời mạng CĐBR" namHienTai={2026} />
           </Card>
+          <BangDanhGiaKPI compare={duLieu?.compare} chiTieuList={["Tỷ lệ rời mạng CĐBR"]} huongTot="thap" />
           <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
         </>
       ) : laPAKH ? (
-        <Card title="Số sự cố truyền dẫn theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-          <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Số sự cố truyền dẫn" nam={NAM_HIEN_TAI} />
-        </Card>
+        <>
+          <Card title="Số sự cố truyền dẫn theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Số sự cố truyền dẫn" nam={NAM_HIEN_TAI} />
+          </Card>
+          <BangDanhGiaKPI compare={duLieu?.compare} chiTieuList={["Số sự cố truyền dẫn"]} huongTot="thap" />
+        </>
       ) : laFUEL ? (
-        <Card title="Ksub*min theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-          <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Ksub*min" nam={NAM_HIEN_TAI} />
-        </Card>
+        <>
+          <Card title="Ksub*min theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Ksub*min" nam={NAM_HIEN_TAI} />
+          </Card>
+          <BangDanhGiaKPI compare={duLieu?.compare} chiTieuList={["Ksub*min"]} huongTot="thap" />
+        </>
       ) : laOUTPUT ? (
         <>
           <Card title="Cell*h tổng theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
@@ -1468,6 +1556,8 @@ export function DashView() {
           <Card title="GĐTT trạm ưu tiên" icon={board.icon}>
             <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm ưu tiên" nam={NAM_HIEN_TAI} />
           </Card>
+          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="thap"
+            chiTieuList={["Cell*h tổng", "GĐTT trạm thường", "GĐTT trạm ưu tiên"]} />
         </>
       ) : laNETWORK ? (
         <>
@@ -1481,6 +1571,8 @@ export function DashView() {
               mauMap={{ "XLSC trong 3h": RED, "XLSC trong 10h": "#0E6CD6", "XLSC trong 1 ngày": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
           </Card>
+          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="cao"
+            chiTieuList={["XLSC trong 3h", "XLSC trong 10h", "XLSC trong 1 ngày"]} />
         </>
       ) : laVHKT ? (
         <>
@@ -1497,6 +1589,8 @@ export function DashView() {
               mauMap={{ "KPI TKM 3H": RED, "KPI TKM 10H": "#0E6CD6", "KPI TKM 24H": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
           </Card>
+          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="cao"
+            chiTieuList={["KPI TKM 3H", "KPI TKM 10H", "KPI TKM 24H"]} />
         </>
       ) : (
         <Card title={board.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
