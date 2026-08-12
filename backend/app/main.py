@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-12.v39"
+PORTAL_BUILD = "2026-08-12.v40"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -277,19 +277,32 @@ def _lich_cong_tac(db: Session, ngay: dt.date):
     }
 
 
+def _lich_cong_tac_theo_quyen(db: Session, ngay: dt.date, user: "models.User | None"):
+    """Che thông tin lịch họp (thành phần, hình thức, link/mã/mật khẩu Zoom...)
+    với người chưa đăng nhập — chỉ tài khoản đã đăng nhập mới xem được lịch họp,
+    tránh lộ link họp ra bên ngoài."""
+    lich = _lich_cong_tac(db, ngay)
+    if user is not None:
+        return {**lich, "schedule_locked": False}
+    return {"schedule": [], "schedule_from_sheet": lich["schedule_from_sheet"], "schedule_locked": True}
+
+
 @app.get("/api/schedule-of-day", tags=["Trang chủ"])
-def schedule_of_day(ngay: str, db: Session = Depends(get_db)):
+def schedule_of_day(ngay: str, db: Session = Depends(get_db),
+                     user: Optional[models.User] = Depends(current_user_optional)):
     """Lịch công tác của một ngày bất kỳ (dd dạng YYYY-MM-DD) — cho phép người
-    dùng chuyển ngày trên khung "Lịch công tác" ở trang chủ."""
+    dùng chuyển ngày trên khung "Lịch công tác" ở trang chủ. Chỉ trả nội dung
+    đầy đủ cho tài khoản đã đăng nhập."""
     try:
         ngay_dt = dt.date.fromisoformat(ngay)
     except ValueError:
         raise HTTPException(400, "Ngày không hợp lệ, cần dạng YYYY-MM-DD.")
-    return {"ngay": ngay_dt.isoformat(), **_lich_cong_tac(db, ngay_dt)}
+    return {"ngay": ngay_dt.isoformat(), **_lich_cong_tac_theo_quyen(db, ngay_dt, user)}
 
 
 @app.get("/api/home", tags=["Trang chủ"])
-def home(db: Session = Depends(get_db)):
+def home(db: Session = Depends(get_db),
+         user: Optional[models.User] = Depends(current_user_optional)):
     """Gom mọi thứ trang chủ cần vào một lần gọi, để trang mở nhanh."""
     today = dt.date.today()
     notice = (
@@ -311,7 +324,7 @@ def home(db: Session = Depends(get_db)):
         .order_by(models.Banner.order_no).all()
     )
     config = {c.key: c.value for c in db.query(models.SiteConfig).all()}
-    lich_hom_nay = _lich_cong_tac(db, today)
+    lich_hom_nay = _lich_cong_tac_theo_quyen(db, today, user)
 
     from .sheets import get_data
 
@@ -344,6 +357,7 @@ def home(db: Session = Depends(get_db)):
         "config": config,
         "schedule": lich_hom_nay["schedule"],
         "schedule_from_sheet": lich_hom_nay["schedule_from_sheet"],
+        "schedule_locked": lich_hom_nay["schedule_locked"],
         "home_stats": home_stats,
         "home_stats_source": ("sheet" if get_data(db, "home_stats", models)
                               else ("database" if home_stats else "none")),
@@ -1029,7 +1043,13 @@ def public_config(db: Session = Depends(get_db)):
 
 
 @app.get("/api/events", tags=["Góc văn hoá"])
-def public_events(kind: str = "culture", db: Session = Depends(get_db)):
+def public_events(kind: str = "culture", db: Session = Depends(get_db),
+                   user: Optional[models.User] = Depends(current_user_optional)):
+    """Sự kiện góc văn hoá — công khai. Lịch công tác (kind="work") chứa thông
+    tin họp/Zoom nên chỉ trả cho tài khoản đã đăng nhập, chặn việc dùng
+    ?kind=work để lách qua khoá đã áp dụng ở /api/home, /api/schedule-of-day."""
+    if kind == "work" and user is None:
+        return []
     rows = (db.query(models.Event).filter(models.Event.kind == kind)
             .order_by(models.Event.start_at).all())
     return [{"id": e.id, "title": e.title, "start_at": e.start_at,

@@ -6,7 +6,7 @@ import React, { useEffect, useState } from "react";
 import {
   AlertTriangle, ArrowUpRight, Award, BarChart3, BookOpen, Building2, Cake, Calendar,
   Check, ChevronLeft, ChevronRight, Clock, CloudRain, Download, Droplets, FileText, Hash,
-  Image as ImageIcon, Lightbulb, MapPin, Megaphone, MessageSquare, PartyPopper,
+  Image as ImageIcon, Lightbulb, Lock, MapPin, Megaphone, MessageSquare, PartyPopper,
   Plus, Rocket, Send, Signal, Star, ThumbsUp, TrendingUp, Trophy, UserPlus, Users,
   Video, Wind, Wrench, X, Quote, Pin,
   Activity, CalendarDays, ClipboardList, Coins, ShieldCheck,
@@ -271,7 +271,7 @@ export function HomeView({ onGo, onOpenNews, config }) {
       </section>
 
       <div className="cnct-bottom-grid">
-        <LichCongTacPanel homeSchedule={schedule} homeFromSheet={!!home?.schedule_from_sheet} />
+        <LichCongTacPanel homeSchedule={schedule} homeFromSheet={!!home?.schedule_from_sheet} homeScheduleLocked={!!home?.schedule_locked} />
 
         <BirthdayPanel />
       </div>
@@ -289,9 +289,9 @@ function ngayISO(d) {
  * Lịch công tác — mặc định hiện hôm nay (dùng luôn dữ liệu đã có từ /api/home,
  * không gọi thêm), cho phép bấm chuyển ngày trước/sau để xem lịch ngày khác.
  */
-function LichCongTacPanel({ homeSchedule, homeFromSheet }) {
+function LichCongTacPanel({ homeSchedule, homeFromSheet, homeScheduleLocked }) {
   const [offset, setOffset] = useState(0);
-  const [duLieu, setDuLieu] = useState({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet });
+  const [duLieu, setDuLieu] = useState({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet, schedule_locked: homeScheduleLocked });
   const [dangTai, setDangTai] = useState(false);
 
   const ngay = new Date();
@@ -299,12 +299,12 @@ function LichCongTacPanel({ homeSchedule, homeFromSheet }) {
   const ngayStr = ngayISO(ngay);
 
   useEffect(() => {
-    if (offset === 0) { setDuLieu({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet }); return; }
+    if (offset === 0) { setDuLieu({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet, schedule_locked: homeScheduleLocked }); return; }
     let con = true;
     setDangTai(true);
     api.get(`/api/schedule-of-day?ngay=${ngayStr}`)
       .then((d) => { if (con) setDuLieu(d); })
-      .catch(() => { if (con) setDuLieu({ schedule: [], schedule_from_sheet: false }); })
+      .catch(() => { if (con) setDuLieu({ schedule: [], schedule_from_sheet: false, schedule_locked: homeScheduleLocked }); })
       .finally(() => con && setDangTai(false));
     return () => { con = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,6 +328,11 @@ function LichCongTacPanel({ homeSchedule, homeFromSheet }) {
       </div>
       {dangTai ? (
         <p className="cnct-empty">Đang tải…</p>
+      ) : duLieu.schedule_locked ? (
+        <p className="cnct-empty">
+          <Lock size={14} style={{ verticalAlign: -2, marginRight: 5 }} />
+          Đăng nhập để xem lịch công tác — nội dung có thể chứa thông tin họp, link/mã Zoom.
+        </p>
       ) : schedule.length === 0 ? (
         <p className="cnct-empty">
           {offset === 0 ? "Hôm nay" : "Ngày này"} chưa có lịch công tác. Quản trị viên nhập tại
