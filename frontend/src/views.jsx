@@ -1124,8 +1124,9 @@ function BieuDoTheoTinh({ compare, chiTieu, nam }) {
 /** Bảng chi tiết rời mạng theo huyện, gộp nhóm theo tỉnh — kèm thuê bao FTTH và bình quân. */
 function BangRoMangTheoHuyen({ diaBan }) {
   if (!diaBan?.tinh?.length && !diaBan?.huyen?.length) return null;
-  const kyTinh = [...new Set((diaBan.tinh || []).flatMap((t) => t.theo_thang.map((r) => r.ky)))].sort();
-  const kyHuyen = [...new Set((diaBan.huyen || []).flatMap((h) => h.tl_theo_thang.map((r) => r.ky)))].sort();
+  // Cột tháng xếp mới nhất trước, cũ dần về sau (yêu cầu người dùng).
+  const kyTinh = [...new Set((diaBan.tinh || []).flatMap((t) => t.theo_thang.map((r) => r.ky)))].sort().reverse();
+  const kyHuyen = [...new Set((diaBan.huyen || []).flatMap((h) => h.tl_theo_thang.map((r) => r.ky)))].sort().reverse();
   const theoThang = (thang, ky) => (thang || []).find((r) => r.ky === ky)?.gia_tri;
   const nhomTheoTinh = {};
   (diaBan.huyen || []).forEach((h) => { (nhomTheoTinh[h.tinh] ||= []).push(h); });
@@ -1290,6 +1291,8 @@ function BangChiTietPhat({ xuHuong, compare, nam }) {
   let luyKe = 0;
   let tongTiLe = 0;
   let soThangCoTiLe = 0;
+  // Lũy kế phải cộng dồn theo thứ tự thời gian tăng dần, nên tính trước rồi mới
+  // đảo lại để HIỂN THỊ tháng mới nhất lên đầu (yêu cầu người dùng).
   const hang = [...loc].sort((a, b) => a.name.localeCompare(b.name)).map((r) => {
     const tong = (r.VTT || 0) + (r.VTNet || 0);
     luyKe += tong;
@@ -1300,7 +1303,7 @@ function BangChiTietPhat({ xuHuong, compare, nam }) {
       vtt: r.VTT || 0, vtnet: r.VTNet || 0, tong, luyKe, tiLe,
       tiLeTbLuyKe: soThangCoTiLe ? tongTiLe / soThangCoTiLe : null,
     };
-  });
+  }).reverse();
 
   return (
     <Card title="Số liệu chi tiết phạt theo tháng" icon={ClipboardList} pad={false}>
@@ -1333,7 +1336,7 @@ function BangChiTietPhat({ xuHuong, compare, nam }) {
         </table>
       </div>
       <div style={{ padding: "0 18px 16px" }}>
-        <GhiChuLuyKe kyGanNhat={hang[hang.length - 1]?.ky} />
+        <GhiChuLuyKe kyGanNhat={hang[0]?.ky} />
       </div>
     </Card>
   );
@@ -1524,7 +1527,7 @@ export function DashView() {
                 </tr>
               </thead>
               <tbody>
-                {duLieu.compare.map((c, i) => (
+                {[...duLieu.compare].sort((a, b) => b.ky.localeCompare(a.ky)).map((c, i) => (
                   <tr key={i}>
                     <td className="mono">{c.ky}</td>
                     <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
@@ -1557,7 +1560,7 @@ export function DashView() {
                 </tr>
               </thead>
               <tbody>
-                {series.map((r, i) => (
+                {[...series].sort((a, b) => String(b.name).localeCompare(String(a.name))).map((r, i) => (
                   <tr key={i}>
                     <td style={{ fontWeight: 600 }}>{r.name}</td>
                     {cotSoLieu(series).map((c) => (
