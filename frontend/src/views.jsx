@@ -1420,10 +1420,11 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
     .map((ct) => ({ chiTieu: ct, hang: rows.filter((r) => r.chi_tieu === ct).sort((a, b) => (a.don_vi || "").localeCompare(b.don_vi || "")) }))
     .filter((n) => n.hang.length > 0);
 
-  const soTarget = (r) => {
-    if (r.target == null) return null;
-    return huongTot === "thap" ? ((r.target - r.thuc_hien) / r.target) * 100 : ((r.thuc_hien - r.target) / r.target) * 100;
-  };
+  // Kết quả luôn là chênh lệch thô (Thực hiện - Target)/Target: dương nghĩa là
+  // thực hiện VƯỢT target. huongTot chỉ quyết định vượt là tốt hay xấu —
+  // càng thấp càng tốt (sự cố, ksub*min, GĐTT, tiền phạt, rời mạng) thì vượt
+  // (dương) là chưa đạt/tồi đi; càng cao càng tốt (XLSC, KPI TKM) thì vượt là đạt.
+  const soTarget = (r) => (r.target == null ? null : ((r.thuc_hien - r.target) / r.target) * 100);
 
   return (
     <Card title={`Đánh giá KPI so với target & cùng kỳ — kỳ ${kyMoiNhat}`} icon={ShieldCheck} pad={false}>
@@ -1441,9 +1442,13 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
           <tbody>
             {nhom.map((n, idx) => n.hang.map((r, j) => {
               const kq = soTarget(r);
-              const dat = kq == null ? null : kq >= 0;
+              // "thap": vượt target (kq dương) là chưa đạt. "cao": vượt target (kq dương) là đạt.
+              const dat = kq == null ? null : (huongTot === "thap" ? kq <= 0 : kq >= 0);
               const kqCk = r.chenh_lech_cung_ky_phan_tram;
-              const tang = kqCk == null ? null : kqCk >= 0;
+              const totCungKy = kqCk == null ? null : (huongTot === "thap" ? kqCk <= 0 : kqCk >= 0);
+              const nhanCungKy = huongTot === "thap"
+                ? (totCungKy ? "Cải thiện" : "Kém đi")
+                : (totCungKy ? "Tăng trưởng" : "Suy giảm");
               return (
                 <tr key={`${n.chiTieu}-${r.don_vi || j}`}>
                   {j === 0 && <td className="mono" rowSpan={n.hang.length} style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>}
@@ -1451,10 +1456,10 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
                   <td className="muted">{r.don_vi || "Chi nhánh"}</td>
                   <td className="mono muted" style={{ textAlign: "right" }}>{r.target?.toLocaleString("vi-VN") ?? "—"}</td>
                   <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{r.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
-                  <td className="mono" style={{ textAlign: "right" }}>{kq != null ? `${kq.toFixed(2)}%` : "—"}</td>
+                  <td className="mono" style={{ textAlign: "right" }}>{kq != null ? `${kq > 0 ? "+" : ""}${kq.toFixed(2)}%` : "—"}</td>
                   <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt" : "Chưa đạt"}</span>}</td>
                   <td className="mono" style={{ textAlign: "right" }}>{kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}</td>
-                  <td>{tang == null ? <span className="muted">—</span> : <span className={`tag ${tang ? "tag-green" : "tag-amber"}`}>{tang ? "Tăng trưởng" : "Suy giảm"}</span>}</td>
+                  <td>{totCungKy == null ? <span className="muted">—</span> : <span className={`tag ${totCungKy ? "tag-green" : "tag-amber"}`}>{nhanCungKy}</span>}</td>
                   <td className="mono muted" style={{ textAlign: "right" }}>{r.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
                 </tr>
               );

@@ -25,7 +25,7 @@ const STATUS = {
   loi: { label: "Lỗi", cls: "tag-red" },
 };
 
-export function AdminImport({ fixedKind } = {}) {
+export function AdminImport({ fixedKind, boardScope } = {}) {
   const [kinds, setKinds] = useState([]);
   const [kind, setKind] = useState(fixedKind || "people");
   const [text, setText] = useState("");
@@ -107,6 +107,16 @@ export function AdminImport({ fixedKind } = {}) {
   const coTheGhi = t && (t.them_moi > 0 || t.cap_nhat > 0);
   const coDuLieu = text.trim() || pendingFile;
 
+  // Dòng nào có cột "bang" nằm ngoài phạm vi màn này — cảnh báo sớm, không chặn
+  // (máy chủ vẫn là nơi quyết định đúng/sai cuối cùng lúc xem trước).
+  const maBangNgoaiPham = boardScope && text.trim()
+    ? [...new Set(
+        text.trim().split(/\r?\n/).slice(1)
+          .map((dong) => dong.split(/\t|,|;/)[0]?.trim().toUpperCase())
+          .filter((ma) => ma && !boardScope.some((b) => b.value === ma))
+      )]
+    : [];
+
   return (
     <div className="flex flex-col gap-4">
       <div className="card flex items-start gap-3" style={{ padding: 16, borderLeft: `3px solid ${RED}` }}>
@@ -119,6 +129,28 @@ export function AdminImport({ fixedKind } = {}) {
           </p>
         </div>
       </div>
+
+      {boardScope && (
+        <div className="card" style={{ padding: 14, borderLeft: "3px solid #0E6CD6" }}>
+          <p style={{ fontWeight: 700, fontSize: 13.5 }}>Mã bảng dùng ở màn này</p>
+          <div className="flex gap-2" style={{ flexWrap: "wrap", marginTop: 8 }}>
+            {boardScope.map((b) => (
+              <span key={b.value} className="tag tag-grey mono" style={{ fontSize: 12 }}>{b.value} — {b.label}</span>
+            ))}
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            Cột "bang" trong dữ liệu dán/tải lên chỉ nên dùng đúng các mã ở trên. Nhập cho bảng khác thì dùng đúng
+            màn "Nhập từ Excel" của tab đó, tránh nhầm dữ liệu giữa các tab.
+          </p>
+          {maBangNgoaiPham.length > 0 && (
+            <p style={{ background: "#FFF8E8", color: "#8A5A08", padding: "9px 12px",
+                        borderRadius: 9, fontSize: 12.5, marginTop: 10 }}>
+              Dữ liệu đang dán có mã bảng lạ với màn này: <strong>{maBangNgoaiPham.join(", ")}</strong>.
+              Kiểm tra lại — có thể bạn cần dán vào đúng màn của tab khác.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Bước 1: chọn nhóm dữ liệu (bỏ qua nếu đã gắn cố định một nhóm) */}
       <Card title={fixedKind ? "Cột dữ liệu cần có" : "Bước 1 — Chọn nhóm dữ liệu"} icon={FileSpreadsheet}>

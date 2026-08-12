@@ -21,7 +21,7 @@ import { AdminForum } from "./forum";
 import { AdminDutyRoster, AdminHandovers, AdminOperations, AdminWorkOrders } from "./operations";
 import { AdminCandidates, AdminStaffing } from "./recruitment";
 import { GalleryPicker, ImagePicker } from "./imagepicker";
-import { Card, Check as CheckBox, Empty, Field, RED, RED_DARK, SwitchRow } from "./ui";
+import { Card, Check as CheckBox, Empty, Field, norm, RED, RED_DARK, SwitchRow } from "./ui";
 
 /* --------------------------------------------------------------- Tiện ích */
 
@@ -1085,6 +1085,20 @@ const DASHBOARD_BOARDS = [
   { value: "WO_HUYEN_BRVT", label: "Rời mạng CĐBR — theo huyện (Bà Rịa - Vũng Tàu)" },
 ];
 
+const boardsOf = (...ma) => DASHBOARD_BOARDS.filter((b) => ma.includes(b.value));
+
+// Mỗi tab Dashboard có màn "Nhập từ Excel" riêng, chỉ gồm đúng các bảng của tab đó
+// — tách biệt để tránh nhầm dữ liệu giữa các tab khi nhập hàng loạt.
+const DASHBOARD_IMPORT_TABS = [
+  { id: "kpi", label: "Tiền phạt & Doanh thu", boards: boardsOf("KPI", "KPI_TARGET", "KPI_VTNET", "KPI_VTT") },
+  { id: "wo", label: "Rời mạng CĐBR", boards: boardsOf("WO", "WO_TARGET", "WO_TINH", "WO_HUYEN_BD", "WO_HUYEN_BRVT") },
+  { id: "pakh", label: "Sự cố truyền dẫn", boards: boardsOf("PAKH", "PAKH_TARGET") },
+  { id: "fuel", label: "Ksub*min", boards: boardsOf("FUEL", "FUEL_TARGET") },
+  { id: "output", label: "GĐTT & Cell*h", boards: boardsOf("OUTPUT", "OUTPUT_TARGET") },
+  { id: "network", label: "XLCS CĐBR", boards: boardsOf("NETWORK", "NETWORK_TARGET") },
+  { id: "vhkt", label: "TKM CĐBR", boards: boardsOf("VHKT", "VHKT_TARGET") },
+];
+
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };
 
 export function AdminMetrics() {
@@ -1234,8 +1248,11 @@ export const ADMIN_PAGES = [
     group: "schedule", groupLabel: "Lịch công tác tuần", groupIcon: CalendarClock },
   { id: "adm-dashboard-manual", label: "Thêm thủ công", icon: Table2, comp: AdminMetrics, module: "import",
     group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2 },
-  { id: "adm-dashboard-import", label: "Nhập từ Excel", icon: Upload, comp: () => <AdminImport fixedKind="metrics" />, module: "import",
-    group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2 },
+  ...DASHBOARD_IMPORT_TABS.map((tab) => ({
+    id: `adm-dashboard-import-${tab.id}`, label: `Nhập Excel — ${tab.label}`, icon: Upload,
+    comp: () => <AdminImport fixedKind="metrics" boardScope={tab.boards} />, module: "import",
+    group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2,
+  })),
   { id: "adm-sheets", label: "Nguồn dữ liệu Sheet", icon: Database, comp: AdminSheets, module: "sheets",
     group: "sysconfig", groupLabel: "Cấu hình website", groupIcon: Settings },
   { id: "adm-users", label: "Danh sách tài khoản", icon: UserCog, comp: AdminUsers, adminOnly: true,
@@ -1328,6 +1345,13 @@ export function AdminUsers() {
   const [newPw, setNewPw] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [search, setSearch] = useState("");
+
+  const filteredRows = useMemo(() => {
+    const term = norm(search.trim());
+    if (!term) return rows;
+    return rows.filter((r) => norm([r.username, r.full_name, r.role_label, r.person_name].filter(Boolean).join(" ")).includes(term));
+  }, [rows, search]);
 
   useEffect(() => {
     api.get("/api/admin/permissions/modules").then(setModInfo).catch(() => {});
@@ -1404,9 +1428,13 @@ export function AdminUsers() {
         onExport={exportCsv}
         hint="Tạo tài khoản cho cán bộ, nhân viên và phân quyền chi tiết theo từng module. Mật khẩu tối thiểu 8 ký tự." />
 
+      <input className="inp" style={{ maxWidth: 320 }} placeholder="🔎 Tìm theo tài khoản / họ tên / quyền / nhân viên…"
+        value={search} onChange={(e) => setSearch(e.target.value)} />
+
       <Card pad={false}>
-        <Status loading={loading} error={error} empty={!loading && !error && rows.length === 0} />
-        {rows.length > 0 && (
+        <Status loading={loading} error={error} empty={!loading && !error && filteredRows.length === 0}
+          emptyHint={rows.length > 0 && filteredRows.length === 0 ? "Không tìm thấy tài khoản phù hợp." : undefined} />
+        {filteredRows.length > 0 && (
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead>
@@ -1416,7 +1444,7 @@ export function AdminUsers() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {filteredRows.map((r) => (
                   <tr key={r.id}>
                     <td className="mono" style={{ fontWeight: 600 }}>{r.username}</td>
                     <td>{r.full_name}</td>
