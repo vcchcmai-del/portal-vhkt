@@ -1674,17 +1674,23 @@ export function DashView() {
                 </tr>
               </thead>
               <tbody>
-                {[...duLieu.compare].sort((a, b) => b.ky.localeCompare(a.ky)).map((c, i) => {
-                  // Chênh lệch thô: dương = thực hiện vượt target/cùng kỳ trước. huongTot quyết định
-                  // vượt là tốt (huongTot="cao") hay xấu (huongTot="thap", mặc định khi chưa rõ bảng).
-                  const hg = huongTotHienTai || "thap";
-                  const soTarget = c.target ? ((c.thuc_hien - c.target) / c.target) * 100 : null;
-                  const dat = soTarget == null ? null : (hg === "thap" ? soTarget <= 0 : soTarget >= 0);
-                  const kqCk = c.chenh_lech_cung_ky_phan_tram;
-                  const totCungKy = kqCk == null ? null : (hg === "thap" ? kqCk <= 0 : kqCk >= 0);
-                  return (
+                {(() => {
+                  const hang = [...duLieu.compare].sort((a, b) => b.ky.localeCompare(a.ky));
+                  // Gộp ô "Kỳ" cho các dòng liên tiếp cùng tháng (rowSpan), giống mẫu báo cáo.
+                  const soDongTheoKy = hang.map((c, i) => i === 0 || hang[i - 1].ky !== c.ky ? hang.filter((x) => x.ky === c.ky).length : 0);
+                  return hang.map((c, i) => {
+                    // Chênh lệch thô: dương = thực hiện vượt target/cùng kỳ trước. huongTot quyết định
+                    // vượt là tốt (huongTot="cao") hay xấu (huongTot="thap", mặc định khi chưa rõ bảng).
+                    const hg = huongTotHienTai || "thap";
+                    const soTarget = c.target ? ((c.thuc_hien - c.target) / c.target) * 100 : null;
+                    const dat = soTarget == null ? null : (hg === "thap" ? soTarget <= 0 : soTarget >= 0);
+                    const kqCk = c.chenh_lech_cung_ky_phan_tram;
+                    const totCungKy = kqCk == null ? null : (hg === "thap" ? kqCk <= 0 : kqCk >= 0);
+                    return (
                     <tr key={i}>
-                      <td className="mono">{c.ky}</td>
+                      {soDongTheoKy[i] > 0 && (
+                        <td className="mono" rowSpan={soDongTheoKy[i]} style={{ verticalAlign: "top", borderRight: "1px solid #EEE" }}>{c.ky}</td>
+                      )}
                       <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
                       <td className="muted">{c.don_vi || "—"}</td>
                       <td className="mono" style={{ textAlign: "right" }}>{c.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
@@ -1699,8 +1705,9 @@ export function DashView() {
                       </td>
                       <td>{totCungKy == null ? <span className="muted">—</span> : <span className={`tag ${totCungKy ? "tag-green" : "tag-red"}`}>{totCungKy ? "Cải thiện" : "Suy giảm"}</span>}</td>
                     </tr>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>
