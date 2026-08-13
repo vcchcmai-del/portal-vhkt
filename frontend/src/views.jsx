@@ -299,6 +299,10 @@ function LichCongTacPanel({ homeSchedule, homeFromSheet, homeScheduleLocked }) {
   const ngayStr = ngayISO(ngay);
 
   useEffect(() => {
+    // Đồng bộ lại mỗi khi kết quả /api/home mới trả về (đến sau, không đồng
+    // bộ với lúc mount) — nếu chỉ phụ thuộc "offset" thì lần đầu component
+    // dựng lên trước khi /api/home trả lời xong sẽ kẹt mãi ở dữ liệu mẫu lúc
+    // khởi tạo, kể cả sau khi máy chủ đã trả lời đúng lịch thật/khoá đăng nhập.
     if (offset === 0) { setDuLieu({ schedule: homeSchedule, schedule_from_sheet: homeFromSheet, schedule_locked: homeScheduleLocked }); return; }
     let con = true;
     setDangTai(true);
@@ -308,7 +312,7 @@ function LichCongTacPanel({ homeSchedule, homeFromSheet, homeScheduleLocked }) {
       .finally(() => con && setDangTai(false));
     return () => { con = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offset]);
+  }, [offset, homeSchedule, homeFromSheet, homeScheduleLocked]);
 
   const nhanNgay = offset === 0 ? "Hôm nay" : offset === 1 ? "Ngày mai" : offset === -1 ? "Hôm qua" : ngay.toLocaleDateString("vi-VN");
   const schedule = duLieu.schedule || [];
