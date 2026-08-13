@@ -356,6 +356,24 @@ export default function Portal() {
 
   const logout = () => { clearToken(); setUser(null); setView("home"); };
 
+  // Tự động đăng xuất nếu không thao tác gì trong 1 giờ — tránh phiên đăng
+  // nhập bị bỏ quên mở mãi trên máy dùng chung. Đếm giờ bằng biến thường
+  // (không phải state) để mỗi cử động chuột không làm render lại cả trang.
+  useEffect(() => {
+    if (!user) return;
+    const GIOI_HAN_KHONG_THAO_TAC_MS = 60 * 60 * 1000;
+    let hetHan = Date.now() + GIOI_HAN_KHONG_THAO_TAC_MS;
+    const datLaiDongHo = () => { hetHan = Date.now() + GIOI_HAN_KHONG_THAO_TAC_MS; };
+    const cacSuKien = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    cacSuKien.forEach((tk) => window.addEventListener(tk, datLaiDongHo, { passive: true }));
+    const hen = setInterval(() => { if (Date.now() >= hetHan) logout(); }, 30 * 1000);
+    return () => {
+      cacSuKien.forEach((tk) => window.removeEventListener(tk, datLaiDongHo));
+      clearInterval(hen);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const adminPage = adminPages.find((p) => p.id === view);
   const adminGroup = groupedAdminNav.find((g) => g.isGroup && g.id === view);
   const current = adminPage || adminGroup || NAV.find((n) => n.id === view) || NAV[0];
