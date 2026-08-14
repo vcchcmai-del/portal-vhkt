@@ -27,6 +27,13 @@ frontend/dist/
 backend-local.log
 .smoke-data*/
 
+# Tệp tạm chứa token/thông tin đăng nhập khi thao tác trực tiếp qua API —
+# TUYỆT ĐỐI không commit (từng bị lỡ commit token quản trị, xem nhật ký sửa).
+*_tmp.json
+*_tmp.txt
+token_tmp*
+login_tmp*
+
 # IDE / hệ điều hành / công cụ trợ lý cục bộ
 .DS_Store
 Thumbs.db
