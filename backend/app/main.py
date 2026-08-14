@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-14.v45"
+PORTAL_BUILD = "2026-08-14.v46"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -680,8 +680,9 @@ def _hire_series_that(db: Session):
 def _nhom_phat_vtt_vtnet(db: Session):
     """
     Tổng tiền phạt theo tháng cho 2 nhóm VTT/VTNet (bảng KPI_VTT/KPI_VTNET),
-    và cơ cấu nguyên nhân phạt của kỳ gần nhất mỗi nhóm — dùng cho biểu đồ
-    xu thế 2 đường và 2 biểu đồ tròn trên tab Tiền phạt & Doanh thu.
+    và cơ cấu nguyên nhân phạt theo TỪNG kỳ + luỹ kế 6 tháng gần nhất của mỗi
+    nhóm — dùng cho biểu đồ xu thế 2 đường và 2 biểu đồ tròn (có bộ lọc theo
+    tháng/luỹ kế) trên tab Tiền phạt & Doanh thu.
     """
     vtt_rows, _ = _flat_metric_rows("KPI_VTT", db)
     vtnet_rows, _ = _flat_metric_rows("KPI_VTNET", db)
@@ -697,22 +698,30 @@ def _nhom_phat_vtt_vtnet(db: Session):
         tong_theo_ky[r["ky"]]["VTNet"] += r["gia_tri"] or 0
     xu_huong = [tong_theo_ky[k] for k in sorted(tong_theo_ky)]
 
-    def _co_cau(rows):
-        if not rows:
-            return [], None
-        ky_gan_nhat = max(r["ky"] for r in rows)
-        return (
-            [{"name": r["chi_tieu"], "value": r["gia_tri"]} for r in rows if r["ky"] == ky_gan_nhat and r["gia_tri"]],
-            ky_gan_nhat,
-        )
-
-    co_cau_vtt, ky_vtt = _co_cau(vtt_rows)
-    co_cau_vtnet, ky_vtnet = _co_cau(vtnet_rows)
+    def _co_cau_theo_ky(rows):
+        theo_ky: dict = {}
+        for r in rows:
+            if not r["gia_tri"]:
+                continue
+            nhom = theo_ky.setdefault(r["ky"], {})
+            nhom[r["chi_tieu"]] = nhom.get(r["chi_tieu"], 0) + r["gia_tri"]
+        ky_list = sorted(theo_ky)
+        theo_ky_out = {k: [{"name": n, "value": v} for n, v in theo_ky[k].items()] for k in ky_list}
+        # Luỹ kế 6 kỳ gần nhất — cộng dồn theo đúng nguyên nhân (chi_tieu)
+        luy_ke: dict = {}
+        for k in ky_list[-6:]:
+            for n, v in theo_ky[k].items():
+                luy_ke[n] = luy_ke.get(n, 0) + v
+        return {
+            "theo_ky": theo_ky_out,
+            "ky_list": ky_list,
+            "luy_ke_6_thang": [{"name": n, "value": v} for n, v in luy_ke.items()],
+        }
 
     return {
         "xu_huong": xu_huong,
-        "co_cau_vtt": co_cau_vtt, "ky_vtt": ky_vtt,
-        "co_cau_vtnet": co_cau_vtnet, "ky_vtnet": ky_vtnet,
+        "vtt": _co_cau_theo_ky(vtt_rows),
+        "vtnet": _co_cau_theo_ky(vtnet_rows),
     }
 
 

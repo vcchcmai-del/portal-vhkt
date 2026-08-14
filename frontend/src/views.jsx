@@ -1313,35 +1313,57 @@ function NhomPhatTrend({ xuHuong, nam }) {
 }
 
 /**
- * Biểu đồ tròn cơ cấu nguyên nhân phạt của một nhóm (VTT hoặc VTNet), kỳ gần nhất.
- * Sắp xếp giảm dần, chú giải riêng bên dưới (giãn dòng) thay vì nhãn chồng nhau trên lát cắt
- * — nhóm có tới 14-15 nguyên nhân nên nhãn trực tiếp trên biểu đồ tròn rất dễ đè lên nhau.
+ * Biểu đồ tròn cơ cấu nguyên nhân phạt của một nhóm (VTT hoặc VTNet) — chọn
+ * được đúng một tháng hoặc luỹ kế 6 tháng gần nhất qua ô lọc, mặc định mở ra
+ * ở tháng mới nhất. Sắp xếp giảm dần, chú giải riêng bên dưới (giãn dòng)
+ * thay vì nhãn chồng nhau trên lát cắt — nhóm có tới 14-15 nguyên nhân nên
+ * nhãn trực tiếp trên biểu đồ tròn rất dễ đè lên nhau.
  */
-function NhomPhatPie({ title, coCau, ky }) {
-  if (!coCau?.length) return null;
+function NhomPhatPie({ title, nhom }) {
+  const kyList = nhom?.ky_list || [];
+  const [locTheo, setLocTheo] = useState(kyList.length ? kyList[kyList.length - 1] : "luy_ke_6t");
+  useEffect(() => {
+    if (kyList.length) setLocTheo(kyList[kyList.length - 1]);
+  }, [kyList.length ? kyList[kyList.length - 1] : null]);
+
+  if (!kyList.length) return null;
+  const coCau = locTheo === "luy_ke_6t" ? (nhom.luy_ke_6_thang || []) : (nhom.theo_ky?.[locTheo] || []);
   const sapXep = [...coCau].sort((a, b) => b.value - a.value);
   const tong = sapXep.reduce((s, x) => s + x.value, 0);
+  const soKyLuyKe = Math.min(kyList.length, 6);
+  const nhanBoLoc = locTheo === "luy_ke_6t" ? `Luỹ kế ${soKyLuyKe} tháng gần nhất` : `Kỳ ${locTheo}`;
   return (
-    <Card title={`${title}${ky ? ` — kỳ ${ky}` : ""}`} pad={false}>
-      <div style={{ padding: "8px 18px 18px" }}>
-        <ResponsiveContainer width="100%" height={300}>
-          <PieChart>
-            <Pie data={sapXep} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={100} paddingAngle={1.5}>
-              {sapXep.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
-            </Pie>
-            <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu (${Math.round((v / tong) * 100)}%)`} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "9px 16px", marginTop: 10 }}>
-          {sapXep.map((x, i) => (
-            <div key={x.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: MAU_TRON[i % MAU_TRON.length], flexShrink: 0 }} />
-              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
-              <b className="mono">{Math.round((x.value / tong) * 100)}%</b>
-            </div>
-          ))}
+    <Card title={title} pad={false}
+      action={
+        <select className="inp" value={locTheo} onChange={(e) => setLocTheo(e.target.value)}
+          style={{ maxWidth: 190, fontSize: 12.5, padding: "5px 9px" }}>
+          {[...kyList].reverse().map((k) => <option key={k} value={k}>Kỳ {k}</option>)}
+          <option value="luy_ke_6t">Luỹ kế {soKyLuyKe} tháng gần nhất</option>
+        </select>
+      }>
+      {!sapXep.length ? (
+        <p className="muted" style={{ padding: "16px 18px" }}>Chưa có số liệu cho {nhanBoLoc.toLowerCase()}.</p>
+      ) : (
+        <div style={{ padding: "8px 18px 18px" }}>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie data={sapXep} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={100} paddingAngle={1.5}>
+                {sapXep.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
+              </Pie>
+              <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu (${Math.round((v / tong) * 100)}%)`} />
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "9px 16px", marginTop: 10 }}>
+            {sapXep.map((x, i) => (
+              <div key={x.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: MAU_TRON[i % MAU_TRON.length], flexShrink: 0 }} />
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
+                <b className="mono">{Math.round((x.value / tong) * 100)}%</b>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </Card>
   );
 }
@@ -1570,8 +1592,8 @@ export function DashView() {
                 <NhomPhatTrend xuHuong={duLieu.nhom_phat.xu_huong} nam={NAM_HIEN_TAI} />
               </Card>
               <div className="grid lg:grid-cols-2 gap-4">
-                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" coCau={duLieu.nhom_phat.co_cau_vtnet} ky={duLieu.nhom_phat.ky_vtnet} />
-                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" coCau={duLieu.nhom_phat.co_cau_vtt} ky={duLieu.nhom_phat.ky_vtt} />
+                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" nhom={duLieu.nhom_phat.vtnet} />
+                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" nhom={duLieu.nhom_phat.vtt} />
               </div>
               <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} nam={NAM_HIEN_TAI} />
             </>
