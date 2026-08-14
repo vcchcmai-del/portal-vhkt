@@ -1279,11 +1279,11 @@ export const ADMIN_PAGES = [
     group: "schedule", groupLabel: "Lịch công tác tuần", groupIcon: CalendarClock },
   { id: "adm-schedule-import", label: "Nhập từ Excel", icon: Upload, comp: () => <AdminImport fixedKind="schedule" />, module: "events",
     group: "schedule", groupLabel: "Lịch công tác tuần", groupIcon: CalendarClock },
-  { id: "adm-dashboard-manual", label: "Thêm thủ công", icon: Table2, comp: AdminMetrics, module: "import",
+  { id: "adm-dashboard-manual", label: "Thêm thủ công", icon: Table2, comp: AdminMetrics, module: "dashboard",
     group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2 },
   ...DASHBOARD_IMPORT_TABS.map((tab) => ({
     id: `adm-dashboard-import-${tab.id}`, label: `Nhập Excel — ${tab.label}`, icon: Upload,
-    comp: () => <AdminImport fixedKind="metrics" boardScope={tab.boards} />, module: "import",
+    comp: () => <AdminImport fixedKind="metrics" boardScope={tab.boards} />, module: "dashboard",
     group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2,
   })),
   { id: "adm-sheets", label: "Nguồn dữ liệu Sheet", icon: Database, comp: AdminSheets, module: "sheets",

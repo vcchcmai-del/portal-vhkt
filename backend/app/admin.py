@@ -27,8 +27,9 @@ from .auditlog import log_action
 from .auth import current_user
 from .database import engine, get_db
 from .permissions import (
-    ADMIN_ONLY_MODULES, ALL_MODULE_LABELS, MODULES, MODULE_LABELS, ROLE_DEFAULT_PERMISSIONS,
-    dump_permissions, effective_permission_matrix, effective_permissions_list, get_permissions,
+    ADMIN_ONLY_MODULES, ALL_MODULE_LABELS, IMPORT_KIND_MODULE, MODULES, MODULE_LABELS,
+    ROLE_DEFAULT_PERMISSIONS, check_import_kind_permission, dump_permissions,
+    effective_permission_matrix, effective_permissions_list, get_permissions,
     parse_permissions, require_module,
 )
 
@@ -1291,7 +1292,7 @@ class MetricIn(BaseModel):
 
 @router.get("/metrics")
 def admin_list_metrics(board: Optional[str] = None, db: Session = Depends(get_db),
-                       _=Depends(require_module("import", "view"))):
+                       _=Depends(require_module("dashboard", "view"))):
     q = db.query(models.Metric)
     if board:
         q = q.filter(models.Metric.board == board.strip().upper())
@@ -1313,7 +1314,7 @@ def _slug(text: str) -> str:
 @router.get("/metrics/export")
 def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
                        db: Session = Depends(get_db),
-                       _=Depends(require_module("import", "view"))):
+                       _=Depends(require_module("dashboard", "view"))):
     """
     Xuất số liệu Dashboard ra CSV — dùng đúng tên cột của màn "Nhập từ Excel"
     (bang, ky, chi_tieu, don_vi, gia_tri) nên tải xuống, sửa/lọc lại trong Excel
@@ -1337,7 +1338,7 @@ def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
 
 @router.post("/metrics")
 def admin_create_metric(data: MetricIn, db: Session = Depends(get_db),
-                        user=Depends(require_module("import", "create")), request: Request = None):
+                        user=Depends(require_module("dashboard", "create")), request: Request = None):
     if not (data.board or "").strip():
         raise HTTPException(400, "Chưa chọn bảng.")
     if not (data.period or "").strip():
@@ -1351,13 +1352,13 @@ def admin_create_metric(data: MetricIn, db: Session = Depends(get_db),
         unit_name=(data.unit_name or "").strip() or None, value=data.value,
     )
     db.add(row); db.commit(); db.refresh(row)
-    log_action(db, user, "create", "import", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
+    log_action(db, user, "create", "dashboard", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
     return metric_out(row)
 
 
 @router.put("/metrics/{item_id}")
 def admin_update_metric(item_id: int, data: MetricIn, db: Session = Depends(get_db),
-                        user=Depends(require_module("import", "update")), request: Request = None):
+                        user=Depends(require_module("dashboard", "update")), request: Request = None):
     row = db.get(models.Metric, item_id)
     if not row:
         raise HTTPException(404, "Không tìm thấy chỉ số.")
@@ -1368,19 +1369,19 @@ def admin_update_metric(item_id: int, data: MetricIn, db: Session = Depends(get_
         if v is not None and hasattr(row, k):
             setattr(row, k, v)
     db.commit(); db.refresh(row)
-    log_action(db, user, "update", "import", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
+    log_action(db, user, "update", "dashboard", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
     return metric_out(row)
 
 
 @router.delete("/metrics/{item_id}")
 def admin_delete_metric(item_id: int, db: Session = Depends(get_db),
-                        user=Depends(require_module("import", "delete")), request: Request = None):
+                        user=Depends(require_module("dashboard", "delete")), request: Request = None):
     row = db.get(models.Metric, item_id)
     if not row:
         raise HTTPException(404, "Không tìm thấy chỉ số.")
     nhan = f"{row.board}/{row.period}/{row.label}"
     db.delete(row); db.commit()
-    log_action(db, user, "delete", "import", item_id, nhan, request=request)
+    log_action(db, user, "delete", "dashboard", item_id, nhan, request=request)
     return {"deleted": item_id}
 
 
@@ -1399,8 +1400,12 @@ class ImportIn(BaseModel):
 
 
 @router.get("/import/kinds")
-def import_kinds(_=Depends(require_module("import", "view"))):
-    """Danh sách nhóm dữ liệu nhập được, kèm mô tả từng cột."""
+def import_kinds(kind: Optional[str] = None, user: models.User = Depends(current_user)):
+    """Danh sách nhóm dữ liệu nhập được, kèm mô tả từng cột. Chỉ thuần mô tả
+    cột (không phải dữ liệu thật) nên khi không truyền `kind` chỉ cần đăng
+    nhập là xem được; truyền đúng `kind` thì kiểm tra đúng quyền của kind đó."""
+    if kind is not None:
+        check_import_kind_permission(user, kind, "view")
     return [
         {
             "kind": k,
@@ -1416,10 +1421,11 @@ def import_kinds(_=Depends(require_module("import", "view"))):
 
 
 @router.get("/import/template-xlsx/{kind}")
-def import_template_xlsx(kind: str, _=Depends(require_module("import", "view"))):
+def import_template_xlsx(kind: str, user: models.User = Depends(current_user)):
     """Tải tệp mẫu Excel: có dòng tiêu đề chuẩn, dòng ví dụ và trang hướng dẫn."""
     if kind not in bi.KINDS:
         raise HTTPException(404, "Không có nhóm dữ liệu này.")
+    check_import_kind_permission(user, kind, "view")
     try:
         content = bi.build_template_xlsx(kind)
     except ImportError:
@@ -1437,10 +1443,11 @@ def import_template_xlsx(kind: str, _=Depends(require_module("import", "view")))
 
 
 @router.get("/import/template/{kind}")
-def import_template(kind: str, _=Depends(require_module("import", "view"))):
+def import_template(kind: str, user: models.User = Depends(current_user)):
     """Tải tệp mẫu CSV có sẵn dòng tiêu đề đúng và một dòng ví dụ."""
     if kind not in bi.KINDS:
         raise HTTPException(404, "Không có nhóm dữ liệu này.")
+    check_import_kind_permission(user, kind, "view")
     return PlainTextResponse(
         bi.build_template(kind),
         media_type="text/csv; charset=utf-8",
@@ -1468,7 +1475,7 @@ def _run_import(kind, header, rows, mode, commit, db, admin_user, request=None):
         r.pop("_item", None)
 
     if commit:
-        log_action(db, admin_user, "import", "import", None, kind,
+        log_action(db, admin_user, "import", IMPORT_KIND_MODULE.get(kind) or "users", None, kind,
                   detail=f"Thêm mới {created}, cập nhật {updated}, tổng {len(results)} dòng.",
                   request=request)
 
@@ -1481,13 +1488,12 @@ def _run_import(kind, header, rows, mode, commit, db, admin_user, request=None):
 
 
 @router.post("/import/text")
-def import_from_text(data: ImportIn, db: Session = Depends(get_db), user=Depends(require_module("import", "create")),
+def import_from_text(data: ImportIn, db: Session = Depends(get_db), user: models.User = Depends(current_user),
                      request: Request = None):
     """Nhập từ dữ liệu dán trực tiếp (sao chép từ Excel rồi dán vào ô nhập)."""
     if data.kind not in bi.KINDS:
         raise HTTPException(400, "Nhóm dữ liệu không hợp lệ.")
-    if data.kind == "users" and user.role != "admin":
-        raise HTTPException(403, "Chỉ quản trị viên được nhập tài khoản hàng loạt.")
+    check_import_kind_permission(user, data.kind, "create")
     try:
         header, rows = bi.read_text_table(data.text or "")
         return _run_import(data.kind, header, rows, data.mode, data.commit, db, user, request)
@@ -1502,14 +1508,13 @@ async def import_from_file(
     commit: bool = False,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user=Depends(require_module("import", "create")),
+    user: models.User = Depends(current_user),
     request: Request = None,
 ):
     """Nhập từ tệp CSV hoặc Excel tải lên."""
     if kind not in bi.KINDS:
         raise HTTPException(400, "Nhóm dữ liệu không hợp lệ.")
-    if kind == "users" and user.role != "admin":
-        raise HTTPException(403, "Chỉ quản trị viên được nhập tài khoản hàng loạt.")
+    check_import_kind_permission(user, kind, "create")
 
     content = await file.read(6 * 1024 * 1024 + 1)
     if len(content) > 6 * 1024 * 1024:

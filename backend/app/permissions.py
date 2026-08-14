@@ -26,7 +26,7 @@ MODULES = [
     ("events", "Góc văn hoá & Lịch công tác"),
     ("media", "Album ảnh và video"),
     ("sheets", "Nguồn dữ liệu Sheet"),
-    ("import", "Nhập dữ liệu hàng loạt"),
+    ("dashboard", "Quản lý dữ liệu dashboard"),
     ("uploads", "Tải ảnh/tệp lên"),
     ("operations", "Sự cố, WO & bàn giao ca"),
     ("duty_roster", "Lịch trực vận hành"),
@@ -34,6 +34,23 @@ MODULES = [
 ]
 MODULE_IDS = {m[0] for m in MODULES}
 MODULE_LABELS = dict(MODULES)
+
+# Mỗi nhóm dữ liệu nhập hàng loạt (bulkimport.KINDS) đi theo đúng quyền của
+# module quản lý nội dung đó — không còn một quyền "import" chung áp cho mọi
+# loại dữ liệu, để cấp quyền nhập số liệu dashboard không kéo theo quyền nhập
+# tài khoản/nhân viên và ngược lại. "users" luôn chỉ quản trị viên (không có
+# module riêng cho tài khoản trong danh sách gán được).
+IMPORT_KIND_MODULE = {
+    "users": None,           # chỉ quản trị viên — kiểm tra riêng, không qua module
+    "people": "people",
+    "schedule": "events",
+    "metrics": "dashboard",
+    "candidates": "recruitment",
+    "center_staffing": "recruitment",
+    "incidents": "operations",
+    "work_orders": "operations",
+    "handovers": "operations",
+}
 
 # Các module chỉ quản trị viên mới vào được, không gán riêng cho tài khoản khác.
 ADMIN_ONLY_MODULES = [
@@ -144,3 +161,25 @@ def require_module(module_id: str, action: str = "view"):
         return user
 
     return checker
+
+
+def check_import_kind_permission(user: User, kind: str, action: str = "view") -> None:
+    """Kiểm tra quyền nhập/xem một nhóm dữ liệu Excel theo đúng module quản lý
+    nội dung đó (xem IMPORT_KIND_MODULE) — dùng trong thân hàm xử lý vì `kind`
+    thường nằm trong nội dung gửi lên (body), không lấy được qua Depends().
+    """
+    module_id = IMPORT_KIND_MODULE.get(kind)
+    if module_id is None:
+        # "users" (không có module riêng) hoặc kind lạ — chỉ quản trị viên.
+        if user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail="Chỉ quản trị viên được thao tác với nhóm dữ liệu này.",
+            )
+        return
+    if action not in effective_permission_matrix(user).get(module_id, []):
+        raise HTTPException(
+            status_code=403,
+            detail=(f"Tài khoản không có quyền {ACTION_LABELS[action]} "
+                    f"ở mục “{MODULE_LABELS[module_id]}”."),
+        )
