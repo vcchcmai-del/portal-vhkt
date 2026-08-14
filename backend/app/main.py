@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-14.v47"
+PORTAL_BUILD = "2026-08-14.v48"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -475,12 +475,49 @@ def tinh_chi_so_trang_chu(db: Session):
             "ghi_chu": "Tháng gần nhất", "mau": "orange",
         })
 
-    xlcs = _so_lieu_moi_nhat(db, "NETWORK", "XLCS 24h")
-    if xlcs is not None:
+    xlcs_24h = _so_lieu_moi_nhat(db, "NETWORK", "XLCS 24h")
+    if xlcs_24h is not None:
         out.append({
             "ma": "an_toan", "nhan": "XLCS 24H",
-            "gia_tri": _so_viet(xlcs, 2), "don_vi": "%",
-            "ghi_chu": "Đạt" if xlcs >= 100 else "Chưa đạt", "mau": "teal",
+            "gia_tri": _so_viet(xlcs_24h, 2), "don_vi": "%",
+            "ghi_chu": "Đạt" if xlcs_24h >= 100 else "Chưa đạt", "mau": "teal",
+        })
+
+    xlcs_3h = _so_lieu_moi_nhat(db, "NETWORK", "XLCS 3h")
+    if xlcs_3h is not None:
+        out.append({
+            "ma": "xlcs_3h", "nhan": "XLCS 3H",
+            "gia_tri": _so_viet(xlcs_3h, 2), "don_vi": "%",
+            "ghi_chu": "Tháng gần nhất", "mau": "teal",
+        })
+
+    for ma, label_bang, ten_hien in (
+        ("kpi_tkm_3h", "KPI TKM 3H", "KPI TKM 3H"),
+        ("kpi_tkm_10h", "KPI TKM 10H", "KPI TKM 10H"),
+        ("kpi_tkm_24h", "KPI TKM 24H", "KPI TKM 24H"),
+    ):
+        gt = _so_lieu_moi_nhat(db, "VHKT", label_bang)
+        if gt is not None:
+            out.append({
+                "ma": ma, "nhan": ten_hien,
+                "gia_tri": _so_viet(gt, 2), "don_vi": "%",
+                "ghi_chu": "Tháng gần nhất", "mau": "blue",
+            })
+
+    cell_h = _tong_ky_gan_nhat(db, "OUTPUT", "Cell*h tổng")
+    if cell_h is not None:
+        out.append({
+            "ma": "cell_h_tong", "nhan": "CELL*H TỔNG",
+            "gia_tri": _so_viet(cell_h, 1), "don_vi": "",
+            "ghi_chu": "Tháng gần nhất", "mau": "purple",
+        })
+
+    ksub_min = _tong_ky_gan_nhat(db, "FUEL", "Ksub*min")
+    if ksub_min is not None:
+        out.append({
+            "ma": "ksub_min", "nhan": "KSUB*MIN",
+            "gia_tri": _so_viet(ksub_min, 1), "don_vi": "",
+            "ghi_chu": "Tháng gần nhất", "mau": "orange",
         })
 
     return out

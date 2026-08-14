@@ -80,6 +80,8 @@ const STAT_FB = [
 const STAT_ICONS = {
   kpi: TrendingUp, wo_dung_han: ClipboardList, tien_phat: Coins,
   su_co_ngay: CalendarDays, wo_qua_han: Wrench, an_toan: ShieldCheck,
+  xlcs_3h: Signal, kpi_tkm_3h: Activity, kpi_tkm_10h: Activity, kpi_tkm_24h: Activity,
+  cell_h_tong: Wrench, ksub_min: Clock,
 };
 
 function StatIcon({ ma, size = 26 }) {
@@ -173,7 +175,7 @@ export function HomeView({ onGo, onOpenNews, config }) {
   const stats = home?.home_stats?.length ? home.home_stats : STAT_FB;
   const soLaMau = !!home && !home.home_stats?.length;
   const big = stats.slice(0, 2);
-  const small = stats.slice(2, 6);
+  const small = stats.slice(2);
 
   // Khi máy chủ đã trả lời mà không có lịch, hiện đúng là trống.
   // Chỉ dùng lịch mẫu lúc chưa gọi được máy chủ, để trang không rỗng khi xem thử.

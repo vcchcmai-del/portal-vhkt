@@ -1108,20 +1108,33 @@ export function AdminMetrics() {
   const [msg, setMsg] = useState("");
   const [filterTab, setFilterTab] = useState("");
   const [filterBoard, setFilterBoard] = useState("");
+  const [filterLabel, setFilterLabel] = useState("");
   const [search, setSearch] = useState("");
 
   const boardLabel = (v) => DASHBOARD_BOARDS.find((b) => b.value === v)?.label || v;
   const tabOf = (id) => DASHBOARD_IMPORT_TABS.find((t) => t.id === id);
   const tabBoardCodes = (id) => (tabOf(id)?.boards || []).map((b) => b.value);
 
+  // Lọc theo bảng/hạng mục trước, RỒI mới tính danh sách chỉ tiêu để chọn —
+  // để ô "Chỉ tiêu" chỉ liệt kê đúng những chỉ tiêu có trong phạm vi đã lọc.
+  const rowsTheoBangHoacHangMuc = useMemo(() => {
+    if (filterTab) { const ma = tabBoardCodes(filterTab); return rows.filter((x) => ma.includes(x.board)); }
+    if (filterBoard) return rows.filter((x) => x.board === filterBoard);
+    return rows;
+  }, [rows, filterTab, filterBoard]);
+
+  const nhanChiTieuCoSan = useMemo(
+    () => [...new Set(rowsTheoBangHoacHangMuc.map((x) => x.label).filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi")),
+    [rowsTheoBangHoacHangMuc],
+  );
+
   const filteredRows = useMemo(() => {
-    let r = rows;
-    if (filterTab) { const ma = tabBoardCodes(filterTab); r = r.filter((x) => ma.includes(x.board)); }
-    else if (filterBoard) r = r.filter((x) => x.board === filterBoard);
+    let r = rowsTheoBangHoacHangMuc;
+    if (filterLabel) r = r.filter((x) => x.label === filterLabel);
     const term = search.trim().toLowerCase();
     if (term) r = r.filter((x) => [x.period, x.label, x.unit_name].filter(Boolean).join(" ").toLowerCase().includes(term));
     return r;
-  }, [rows, filterTab, filterBoard, search]);
+  }, [rowsTheoBangHoacHangMuc, filterLabel, search]);
 
   const save = async () => {
     if (!edit.board) { setMsg("Chưa chọn bảng."); return; }
@@ -1174,16 +1187,23 @@ export function AdminMetrics() {
               Chọn Hạng mục dashboard để xuất gộp đúng các bảng của một tab (khớp tên tab trên Dashboard)." />
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-        <select className="inp" style={{ maxWidth: 260 }} value={filterTab}
-          onChange={(e) => { setFilterTab(e.target.value); setFilterBoard(""); }}>
+        <select className="inp" style={{ maxWidth: 320 }} value={filterTab}
+          onChange={(e) => { setFilterTab(e.target.value); setFilterBoard(""); setFilterLabel(""); }}>
           <option value="">Hạng mục dashboard (theo tab)…</option>
           {DASHBOARD_IMPORT_TABS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
-        <select className="inp" style={{ maxWidth: 260 }} value={filterBoard}
-          onChange={(e) => { setFilterBoard(e.target.value); setFilterTab(""); }}>
+        <select className="inp" style={{ maxWidth: 320 }} value={filterBoard}
+          onChange={(e) => { setFilterBoard(e.target.value); setFilterTab(""); setFilterLabel(""); }}>
           <option value="">Tất cả các bảng</option>
           {DASHBOARD_BOARDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
         </select>
+        {(filterTab || filterBoard) && nhanChiTieuCoSan.length > 0 && (
+          <select className="inp" style={{ maxWidth: 260 }} value={filterLabel}
+            onChange={(e) => setFilterLabel(e.target.value)}>
+            <option value="">Tất cả chỉ tiêu trong mục này</option>
+            {nhanChiTieuCoSan.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        )}
         <input className="inp" style={{ maxWidth: 260 }} placeholder="🔎 Tìm theo kỳ / chỉ tiêu / đơn vị…"
           value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
