@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-14.v48"
+PORTAL_BUILD = "2026-08-14.v49"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -413,6 +413,56 @@ def _so_viet(v, le=0):
     return s.replace(",", "\u0000").replace(".", ",").replace("\u0000", ".")
 
 
+def _ky_hien_thi(ky):
+    """"2026-06" -> "T06/2026"."""
+    try:
+        nam, thang = ky.split("-")
+        return f"T{thang}/{nam}"
+    except (ValueError, AttributeError):
+        return ky
+
+
+def _chi_so_home(db: Session, board: str, chi_tieu: str, huong_tot: str = "thap"):
+    """
+    Một chỉ số trang chủ đầy đủ: giá trị + kỳ mới nhất (cộng dồn nếu chỉ tiêu
+    có nhiều dòng theo tỉnh/đơn vị cùng kỳ), có đạt target hay không (đối
+    chiếu bảng "{board}_TARGET" cùng chỉ tiêu, cùng kỳ) và so với cùng kỳ năm
+    trước là cải thiện hay suy giảm — dùng chung đúng quy ước huong_tot
+    ("thap"/"cao" càng tốt) đã áp dụng cho bảng đối chiếu chỉ tiêu ở Dashboard.
+    """
+    rows = (
+        db.query(models.Metric)
+        .filter(models.Metric.board == board, models.Metric.label == chi_tieu)
+        .all()
+    )
+    if not rows:
+        return None
+    ky = max(r.period for r in rows)
+    gia_tri = sum(r.value or 0 for r in rows if r.period == ky)
+
+    target_rows = (
+        db.query(models.Metric)
+        .filter(models.Metric.board == f"{board}_TARGET", models.Metric.label == chi_tieu,
+                models.Metric.period == ky)
+        .all()
+    )
+    target = sum(r.value or 0 for r in target_rows) if target_rows else None
+    so_target = ((gia_tri - target) / target * 100) if target else None
+    dat = None if so_target is None else (so_target <= 0 if huong_tot == "thap" else so_target >= 0)
+
+    ky_truoc = _ky_cung_ky_truoc(ky)
+    cung_ky_rows = (
+        db.query(models.Metric)
+        .filter(models.Metric.board == board, models.Metric.label == chi_tieu, models.Metric.period == ky_truoc)
+        .all()
+    ) if ky_truoc else []
+    cung_ky_gt = sum(r.value or 0 for r in cung_ky_rows) if cung_ky_rows else None
+    chenh_ck = ((gia_tri - cung_ky_gt) / cung_ky_gt * 100) if cung_ky_gt else None
+    cai_thien = None if chenh_ck is None else (chenh_ck <= 0 if huong_tot == "thap" else chenh_ck >= 0)
+
+    return {"gia_tri": gia_tri, "ky": ky, "target": target, "dat": dat, "cai_thien": cai_thien}
+
+
 def tinh_chi_so_trang_chu(db: Session):
     """
     Dựng sáu ô chỉ số trang chủ từ bảng số liệu trong cơ sở dữ liệu — lấy đúng
@@ -425,6 +475,17 @@ def tinh_chi_so_trang_chu(db: Session):
     số liệu mẫu kèm ghi chú rõ ràng.
     """
     out = []
+
+    def _them(ma, nhan, board, chi_tieu, don_vi, mau, huong_tot="thap", le=2):
+        kq = _chi_so_home(db, board, chi_tieu, huong_tot)
+        if kq is None:
+            return
+        out.append({
+            "ma": ma, "nhan": nhan,
+            "gia_tri": _so_viet(kq["gia_tri"], le), "don_vi": don_vi, "mau": mau,
+            "ky": kq["ky"], "ky_nhan": _ky_hien_thi(kq["ky"]),
+            "dat": kq["dat"], "cai_thien": kq["cai_thien"],
+        })
 
     # Doanh thu: chưa có nguồn số liệu — nhập bảng KPI, chỉ tiêu "Doanh thu kế
     # hoạch" / "Doanh thu thực hiện" (Quản trị → Quản lý dashboard) thì ô này
@@ -439,15 +500,7 @@ def tinh_chi_so_trang_chu(db: Session):
             "muc_tieu": "Mục tiêu: 100%", "mau": "green", "tien_do": min(ty, 100),
         })
 
-    ty_phat = _so_lieu_moi_nhat(db, "KPI", "Tiền phạt/Doanh thu")
-    if ty_phat is not None:
-        out.append({
-            "ma": "wo_dung_han", "nhan": "TỶ LỆ PHẠT/DOANH THU",
-            "gia_tri": _so_viet(ty_phat, 2), "don_vi": "%",
-            "muc_tieu": "Mục tiêu: ≤ 1%",
-            "ghi_chu": "Đạt" if ty_phat <= 1 else "Chưa đạt",
-            "mau": "orange",
-        })
+    _them("wo_dung_han", "TỶ LỆ PHẠT/DOANH THU", "KPI", "Tiền phạt/Doanh thu", "%", "orange")
 
     nhom_phat = _nhom_phat_vtt_vtnet(db)
     if nhom_phat and nhom_phat["xu_huong"]:
@@ -457,68 +510,21 @@ def tinh_chi_so_trang_chu(db: Session):
             "ma": "tien_phat", "nhan": "TIỀN PHẠT THÁNG",
             "gia_tri": _so_viet(tong_phat), "don_vi": "triệu đ",
             "muc_tieu": "Tổng VTT + VTNet", "mau": "blue",
+            "ky_nhan": _ky_hien_thi(ky_gan_nhat["name"]),
         })
 
-    sc = _tong_ky_gan_nhat(db, "PAKH", "Số sự cố truyền dẫn")
-    if sc is not None:
-        out.append({
-            "ma": "su_co_ngay", "nhan": "SỰ CỐ TRUYỀN DẪN",
-            "gia_tri": _so_viet(sc), "don_vi": "",
-            "ghi_chu": "Tháng gần nhất", "mau": "purple",
-        })
-
-    kh_roi_mang = _tong_ky_gan_nhat(db, "WO_TINH", "Số lượng KH rời mạng")
-    if kh_roi_mang is not None:
-        out.append({
-            "ma": "wo_qua_han", "nhan": "KH RỜI MẠNG CĐBR",
-            "gia_tri": _so_viet(kh_roi_mang), "don_vi": "",
-            "ghi_chu": "Tháng gần nhất", "mau": "orange",
-        })
-
-    xlcs_24h = _so_lieu_moi_nhat(db, "NETWORK", "XLCS 24h")
-    if xlcs_24h is not None:
-        out.append({
-            "ma": "an_toan", "nhan": "XLCS 24H",
-            "gia_tri": _so_viet(xlcs_24h, 2), "don_vi": "%",
-            "ghi_chu": "Đạt" if xlcs_24h >= 100 else "Chưa đạt", "mau": "teal",
-        })
-
-    xlcs_3h = _so_lieu_moi_nhat(db, "NETWORK", "XLCS 3h")
-    if xlcs_3h is not None:
-        out.append({
-            "ma": "xlcs_3h", "nhan": "XLCS 3H",
-            "gia_tri": _so_viet(xlcs_3h, 2), "don_vi": "%",
-            "ghi_chu": "Tháng gần nhất", "mau": "teal",
-        })
-
-    for ma, label_bang, ten_hien in (
-        ("kpi_tkm_3h", "KPI TKM 3H", "KPI TKM 3H"),
-        ("kpi_tkm_10h", "KPI TKM 10H", "KPI TKM 10H"),
-        ("kpi_tkm_24h", "KPI TKM 24H", "KPI TKM 24H"),
-    ):
-        gt = _so_lieu_moi_nhat(db, "VHKT", label_bang)
-        if gt is not None:
-            out.append({
-                "ma": ma, "nhan": ten_hien,
-                "gia_tri": _so_viet(gt, 2), "don_vi": "%",
-                "ghi_chu": "Tháng gần nhất", "mau": "blue",
-            })
-
-    cell_h = _tong_ky_gan_nhat(db, "OUTPUT", "Cell*h tổng")
-    if cell_h is not None:
-        out.append({
-            "ma": "cell_h_tong", "nhan": "CELL*H TỔNG",
-            "gia_tri": _so_viet(cell_h, 1), "don_vi": "",
-            "ghi_chu": "Tháng gần nhất", "mau": "purple",
-        })
-
-    ksub_min = _tong_ky_gan_nhat(db, "FUEL", "Ksub*min")
-    if ksub_min is not None:
-        out.append({
-            "ma": "ksub_min", "nhan": "KSUB*MIN",
-            "gia_tri": _so_viet(ksub_min, 1), "don_vi": "",
-            "ghi_chu": "Tháng gần nhất", "mau": "orange",
-        })
+    # Thứ tự các ô còn lại theo đúng yêu cầu: Cell*h tổng, Sự cố truyền dẫn,
+    # Ksub*min, Rời mạng CĐBR, rồi XLCS 3h/10h/24h, rồi TKM 3h/10h/24h.
+    _them("cell_h_tong", "CELL*H TỔNG", "OUTPUT", "Cell*h tổng", "", "purple", le=1)
+    _them("su_co_ngay", "SỰ CỐ TRUYỀN DẪN", "PAKH", "Số sự cố truyền dẫn", "", "purple", le=0)
+    _them("ksub_min", "KSUB*MIN", "FUEL", "Ksub*min", "", "orange", le=1)
+    _them("wo_qua_han", "KH RỜI MẠNG CĐBR", "WO_TINH", "Số lượng KH rời mạng", "", "orange", le=0)
+    _them("xlcs_3h", "XLCS 3H", "NETWORK", "XLCS 3h", "%", "teal", huong_tot="cao")
+    _them("xlcs_10h", "XLCS 10H", "NETWORK", "XLCS 10h", "%", "teal", huong_tot="cao")
+    _them("an_toan", "XLCS 24H", "NETWORK", "XLCS 24h", "%", "teal", huong_tot="cao")
+    _them("kpi_tkm_3h", "KPI TKM 3H", "VHKT", "KPI TKM 3H", "%", "blue", huong_tot="cao")
+    _them("kpi_tkm_10h", "KPI TKM 10H", "VHKT", "KPI TKM 10H", "%", "blue", huong_tot="cao")
+    _them("kpi_tkm_24h", "KPI TKM 24H", "VHKT", "KPI TKM 24H", "%", "blue", huong_tot="cao")
 
     return out
 

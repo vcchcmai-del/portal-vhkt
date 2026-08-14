@@ -158,6 +158,29 @@ function SchedRow({ s }) {
   );
 }
 
+/**
+ * Dòng ghi chú dưới mỗi ô chỉ số trang chủ — hiện đúng tháng lấy số (mỗi chỉ
+ * tiêu có thể có tháng mới nhất khác nhau tuỳ bảng nào vừa nhập số), kèm thẻ
+ * Đạt/Chưa đạt target và Cải thiện/Suy giảm so cùng kỳ nếu có đủ dữ liệu đối
+ * chiếu. Chỉ tiêu chưa có logic đánh giá (doanh thu, tiền phạt tháng...) vẫn
+ * hiện ghi chú/mục tiêu cũ như trước.
+ */
+function ChiSoGhiChu({ s }) {
+  if (!s.ky_nhan) return s.ghi_chu ? <p className="cnct-stat-sub">{s.ghi_chu}</p> : (s.muc_tieu ? <p className="cnct-stat-sub">{s.muc_tieu}</p> : null);
+  const the = { fontSize: 10.5, padding: "2px 7px" };
+  return (
+    <div style={{ marginTop: 2 }}>
+      <p className="cnct-stat-sub" style={{ margin: 0 }}>{s.ky_nhan}</p>
+      {(s.dat != null || s.cai_thien != null) && (
+        <div className="flex items-center gap-1.5" style={{ marginTop: 5, flexWrap: "wrap" }}>
+          {s.dat != null && <span className={`tag ${s.dat ? "tag-green" : "tag-red"}`} style={the}>{s.dat ? "Đạt target" : "Chưa đạt"}</span>}
+          {s.cai_thien != null && <span className={`tag ${s.cai_thien ? "tag-green" : "tag-red"}`} style={the}>{s.cai_thien ? "Cải thiện" : "Suy giảm"}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function HomeView({ onGo, onOpenNews, config }) {
   const [home] = useRemote("/api/home", null);
   const [APPS] = useRemote("/api/apps", D.APPS_FB, adapt.apps);
@@ -224,10 +247,12 @@ export function HomeView({ onGo, onOpenNews, config }) {
               <div className="cnct-kpi-icon"><StatIcon ma={s.ma} size={26} /></div>
               <div className="cnct-kpi-label">{s.nhan}</div>
               <div className="cnct-kpi-value">{s.gia_tri}{s.don_vi}</div>
-              <div className="cnct-kpi-sub">{s.muc_tieu}</div>
-              {s.tien_do != null
-                ? <div className="cnct-progress"><i style={{ width: `${num(s)}%` }} /></div>
-                : s.ghi_chu ? <div className="cnct-pass">✓ {s.ghi_chu}</div> : null}
+              {s.tien_do != null ? (
+                <>
+                  <div className="cnct-kpi-sub">{s.muc_tieu}</div>
+                  <div className="cnct-progress"><i style={{ width: `${num(s)}%` }} /></div>
+                </>
+              ) : <ChiSoGhiChu s={s} />}
             </section>
           ))}
         </div>
@@ -248,7 +273,7 @@ export function HomeView({ onGo, onOpenNews, config }) {
             <div className="cnct-stat-icon"><StatIcon ma={s.ma} size={22} /></div>
             <div className="cnct-stat-label">{s.nhan}</div>
             <div className="cnct-stat-value">{s.gia_tri}{s.don_vi ? ` ${s.don_vi}` : ""}</div>
-            <div className="cnct-stat-sub">{s.ghi_chu || s.muc_tieu}</div>
+            <ChiSoGhiChu s={s} />
           </section>
         ))}
       </div>
@@ -1517,6 +1542,14 @@ function NhanNguon({ nguon }) {
 // chiếu với 2025) — không cho chọn năm khác để tránh rối, theo yêu cầu người dùng.
 const NAM_HIEN_TAI = "2026";
 
+// Thứ tự hiển thị các chỉ tiêu trong cùng một kỳ ở bảng "Đối chiếu chỉ tiêu &
+// cùng kỳ năm trước" — mặc định (chưa liệt kê) giữ nguyên thứ tự dữ liệu trả về.
+const THU_TU_CHI_TIEU = {
+  "Số PA phát sinh trong tháng": 0, "XLCS 3h": 1, "XLCS 10h": 2, "XLCS 24h": 3,
+  "Tổng triển khai đã NT": 0, "Triển khai đã NT dây mới": 1, "Triển khai đã NT dây sẵn": 2,
+  "KPI TKM 3H": 3, "KPI TKM 10H": 4, "KPI TKM 24H": 5,
+};
+
 export function DashView() {
   const [ma, setMa] = useState("KPI");
   const [duLieu, setDuLieu] = useState(null);
@@ -1708,7 +1741,9 @@ export function DashView() {
               </thead>
               <tbody>
                 {(() => {
-                  const hang = [...duLieu.compare].sort((a, b) => b.ky.localeCompare(a.ky));
+                  const hang = [...duLieu.compare].sort((a, b) =>
+                    b.ky.localeCompare(a.ky)
+                    || (THU_TU_CHI_TIEU[a.chi_tieu] ?? 99) - (THU_TU_CHI_TIEU[b.chi_tieu] ?? 99));
                   // Gộp ô "Kỳ" cho các dòng liên tiếp cùng tháng (rowSpan), giống mẫu báo cáo.
                   const soDongTheoKy = hang.map((c, i) => i === 0 || hang[i - 1].ky !== c.ky ? hang.filter((x) => x.ky === c.ky).length : 0);
                   return hang.map((c, i) => {
