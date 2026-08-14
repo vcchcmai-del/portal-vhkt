@@ -154,7 +154,7 @@ def build_roster_template_xlsx(month: Optional[str] = None) -> bytes:
     if month:
         y, m = (int(x) for x in month.split("-"))
     else:
-        today = dt.date.today()
+        today = models.today()
         y, m = today.year, today.month
     start = dt.date(y, m, 1)
     end = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
@@ -250,7 +250,7 @@ def admin_roster_template(month: Optional[str] = None, _=Depends(require_module(
         raise HTTPException(500, "Máy chủ chưa cài thư viện tạo tệp Excel (openpyxl).")
     except (ValueError, TypeError):
         raise HTTPException(400, "Định dạng tháng không hợp lệ, cần dạng YYYY-MM.")
-    label = month or dt.date.today().strftime("%Y-%m")
+    label = month or models.today().strftime("%Y-%m")
     return Response(
         content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

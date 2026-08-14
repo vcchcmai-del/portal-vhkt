@@ -27,7 +27,7 @@ TRASH_MODELS = {"news": models.News, "documents": models.Document}
 
 
 def list_trash(db: Session) -> list:
-    now = dt.datetime.utcnow()
+    now = models.now()
     items = []
     for module, model in TRASH_MODELS.items():
         rows = db.query(model).filter(model.deleted_at.isnot(None)).all()
@@ -48,7 +48,7 @@ def list_trash(db: Session) -> list:
 
 def purge_expired(db: Session) -> int:
     """Xoá vĩnh viễn mọi mục trong thùng rác đã quá hạn. Trả về số mục đã xoá."""
-    cutoff = dt.datetime.utcnow() - dt.timedelta(days=TRASH_RETENTION_DAYS)
+    cutoff = models.now() - dt.timedelta(days=TRASH_RETENTION_DAYS)
     purged = 0
     for module, model in TRASH_MODELS.items():
         rows = (db.query(model)

@@ -39,7 +39,7 @@ API_VERSION = 9
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-08-14.v46"
+PORTAL_BUILD = "2026-08-14.v47"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -312,7 +312,7 @@ def schedule_of_day(ngay: str, db: Session = Depends(get_db),
 def home(db: Session = Depends(get_db),
          user: Optional[models.User] = Depends(current_user_optional)):
     """Gom mọi thứ trang chủ cần vào một lần gọi, để trang mở nhanh."""
-    today = dt.date.today()
+    today = models.today()
     notice = (
         db.query(models.Notice)
         .filter(models.Notice.active.is_(True))
@@ -1103,7 +1103,7 @@ def public_events(kind: str = "culture", db: Session = Depends(get_db),
 
 @app.get("/api/birthdays", tags=["Góc văn hoá"])
 def public_birthdays(month: Optional[int] = None, db: Session = Depends(get_db)):
-    m = month or dt.date.today().month
+    m = month or models.today().month
     rows = (db.query(models.Person)
             .filter(models.Person.active.is_(True), models.Person.birthday.isnot(None))
             .all())
@@ -1168,7 +1168,7 @@ def health(db: Session = Depends(get_db)):
         "startup_errors": STARTUP_ERRORS,
         "build": PORTAL_BUILD,
         "deploy_label": DEPLOY_LABEL or None,
-        "time": dt.datetime.now().isoformat(),
+        "time": models.now().isoformat(),
     }
 
 
@@ -1182,7 +1182,7 @@ def health_ready(db: Session = Depends(get_db)):
     """
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "ready", "database": "ok", "time": dt.datetime.now().isoformat()}
+        return {"status": "ready", "database": "ok", "time": models.now().isoformat()}
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"Cơ sở dữ liệu chưa sẵn sàng: {exc}") from exc
 

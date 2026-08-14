@@ -12,8 +12,33 @@ from sqlalchemy.orm import relationship
 from .database import Base
 
 
+# Việt Nam dùng một múi giờ cố định UTC+7, không có giờ mùa hè — nên lấy giờ
+# theo lệch cố định là đủ, không cần cơ sở dữ liệu múi giờ (tzdata) vốn có thể
+# thiếu trên ảnh Docker rút gọn.
+VN_TZ = dt.timezone(dt.timedelta(hours=7))
+
+
 def now():
-    return dt.datetime.utcnow()
+    """
+    Giờ hiện tại theo múi giờ Việt Nam, dạng "naive" (không kèm tzinfo).
+
+    Máy chủ triển khai (container) thường chạy hệ thống theo giờ UTC, nên nếu
+    lấy giờ hệ thống trực tiếp thì mọi dấu thời gian lưu trong CSDL (nhật ký
+    hệ thống, ngày tạo bản tin, hạn xử lý sự cố...) sẽ lệch 7 tiếng so với
+    thực tế. Cố ý trả về "naive" (không tzinfo) để khớp với kiểu cột DateTime
+    hiện có và cách trình duyệt tự hiểu chuỗi ISO không hậu tố "Z" là giờ địa
+    phương — nhờ vậy không cần sửa gì ở phía giao diện.
+    """
+    return dt.datetime.now(VN_TZ).replace(tzinfo=None)
+
+
+def today():
+    """Ngày hôm nay theo giờ Việt Nam — dùng thay cho dt.date.today() (giờ hệ
+    thống, thường là UTC) ở mọi chỗ cần "hôm nay" đúng nghĩa nghiệp vụ (lịch
+    công tác hôm nay, sinh nhật trong tháng, mã tự sinh theo ngày...). Khác
+    biệt lộ rõ nhất vào khung 00:00–07:00 giờ Việt Nam, khi giờ UTC vẫn còn ở
+    NGÀY HÔM TRƯỚC."""
+    return now().date()
 
 
 class User(Base):

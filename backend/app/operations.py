@@ -16,7 +16,7 @@ admin_router = APIRouter(prefix="/api/admin", tags=["Quản trị điều hành 
 
 
 def _incident_out(row):
-    overdue = bool(row.due_at and row.due_at < dt.datetime.now() and row.status not in ("resolved", "closed"))
+    overdue = bool(row.due_at and row.due_at < models.now() and row.status not in ("resolved", "closed"))
     return {"id": row.id, "code": row.code, "title": row.title, "site": row.site,
             "severity": row.severity, "status": "overdue" if overdue else row.status,
             "assignee": row.assignee, "description": row.description, "resolution": row.resolution,
@@ -24,7 +24,7 @@ def _incident_out(row):
 
 
 def _wo_out(row):
-    overdue = bool(row.due_at and row.due_at < dt.datetime.now() and row.status != "done")
+    overdue = bool(row.due_at and row.due_at < models.now() and row.status != "done")
     return {"id": row.id, "code": row.code, "title": row.title, "category": row.category,
             "location": row.location, "priority": row.priority,
             "status": "overdue" if overdue else row.status, "assignee": row.assignee,
@@ -49,7 +49,7 @@ def _duty_out(row):
 def operations_summary(db: Session = Depends(get_db)):
     incidents = db.query(models.Incident).all()
     orders = db.query(models.WorkOrder).all()
-    now = dt.datetime.now()
+    now = models.now()
     return {
         "incidents_open": sum(x.status not in ("resolved", "closed") for x in incidents),
         "incidents_critical": sum(x.severity == "critical" and x.status not in ("resolved", "closed") for x in incidents),
@@ -122,7 +122,7 @@ def _apply(row, values):
 
 
 def _next_code(db, model, prefix):
-    return f"{prefix}-{dt.date.today():%y%m%d}-{db.query(model).count() + 1:03d}"
+    return f"{prefix}-{models.today():%y%m%d}-{db.query(model).count() + 1:03d}"
 
 
 @admin_router.get("/incidents")
@@ -133,7 +133,7 @@ def admin_incidents(db: Session = Depends(get_db), _=Depends(require_module("ope
 @admin_router.post("/incidents")
 def create_incident(data: IncidentIn, db: Session = Depends(get_db), user=Depends(require_module("operations", "create")), request: Request = None):
     row = models.Incident(code=data.code or _next_code(db, models.Incident, "SC"), title=data.title or "Sự cố chưa đặt tên", site=data.site or "",
-        severity=data.severity or "medium", status=data.status or "open", assignee=data.assignee or "", description=data.description or "", resolution=data.resolution or "", reported_at=data.reported_at or dt.datetime.now(), due_at=data.due_at)
+        severity=data.severity or "medium", status=data.status or "open", assignee=data.assignee or "", description=data.description or "", resolution=data.resolution or "", reported_at=data.reported_at or models.now(), due_at=data.due_at)
     db.add(row); db.commit(); db.refresh(row); log_action(db, user, "create", "operations", row.id, row.code, request=request); return _incident_out(row)
 
 
@@ -165,7 +165,7 @@ def delete_work_order(item_id: int, db: Session = Depends(get_db), user=Depends(
 def admin_handovers(db: Session = Depends(get_db), _=Depends(require_module("operations", "view"))): return list_handovers(db)
 @admin_router.post("/handovers")
 def create_handover(data: HandoverIn, db: Session = Depends(get_db), user=Depends(require_module("operations", "create")), request: Request = None):
-    row = models.ShiftHandover(shift_date=data.shift_date or dt.date.today(), shift_name=data.shift_name or "Ca ngày", outgoing=data.outgoing or user.full_name, incoming=data.incoming or "", summary=data.summary or "", open_items=data.open_items or "", risks=data.risks or "", confirmed=bool(data.confirmed))
+    row = models.ShiftHandover(shift_date=data.shift_date or models.today(), shift_name=data.shift_name or "Ca ngày", outgoing=data.outgoing or user.full_name, incoming=data.incoming or "", summary=data.summary or "", open_items=data.open_items or "", risks=data.risks or "", confirmed=bool(data.confirmed))
     db.add(row); db.commit(); db.refresh(row); log_action(db, user, "create", "operations", row.id, f"Bàn giao {row.shift_date}", request=request); return _handover_out(row)
 @admin_router.put("/handovers/{item_id}")
 def update_handover(item_id: int, data: HandoverIn, db: Session = Depends(get_db), user=Depends(require_module("operations", "update")), request: Request = None):
@@ -179,7 +179,7 @@ def delete_handover(item_id: int, db: Session = Depends(get_db), user=Depends(re
 def admin_duty(db: Session = Depends(get_db), _=Depends(require_module("duty_roster", "view"))): return list_duty_schedules(db=db)
 @admin_router.post("/duty-schedules")
 def create_duty(data: DutyIn, db: Session = Depends(get_db), user=Depends(require_module("duty_roster", "create")), request: Request = None):
-    row = models.DutySchedule(duty_date=data.duty_date or dt.date.today(), duty_type=data.duty_type or "technical", shift_name=data.shift_name or "Cả ngày", person_name=data.person_name or "Chưa phân công", phone=data.phone or "", backup_name=data.backup_name or "", note=data.note or "")
+    row = models.DutySchedule(duty_date=data.duty_date or models.today(), duty_type=data.duty_type or "technical", shift_name=data.shift_name or "Cả ngày", person_name=data.person_name or "Chưa phân công", phone=data.phone or "", backup_name=data.backup_name or "", note=data.note or "")
     db.add(row); db.commit(); db.refresh(row); log_action(db, user, "create", "duty_roster", row.id, row.person_name, request=request); return _duty_out(row)
 @admin_router.put("/duty-schedules/{item_id}")
 def update_duty(item_id: int, data: DutyIn, db: Session = Depends(get_db), user=Depends(require_module("duty_roster", "update")), request: Request = None):

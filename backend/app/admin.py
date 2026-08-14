@@ -114,7 +114,7 @@ def admin_create_news(data: NewsAdminIn, db: Session = Depends(get_db), user=Dep
         gallery=__import__("json").dumps(data.gallery or [], ensure_ascii=False),
         featured=bool(data.featured), pinned=bool(data.pinned),
         visible=True if data.visible is None else data.visible,
-        published_at=data.published_at or dt.datetime.now(),
+        published_at=data.published_at or models.now(),
     )
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "news", row.id, row.title, request=request)
@@ -155,7 +155,7 @@ def admin_delete_news(news_id: int, db: Session = Depends(get_db), user=Depends(
     if row.deleted_at is not None:
         raise HTTPException(400, "Bản tin này đã ở trong thùng rác.")
     label = row.title
-    row.deleted_at = dt.datetime.utcnow()
+    row.deleted_at = models.now()
     row.deleted_by = user.full_name
     db.commit()
     log_action(db, user, "delete", "news", news_id, label, detail="Chuyển vào thùng rác", request=request)
@@ -414,7 +414,7 @@ def admin_create_doc(data: DocIn, db: Session = Depends(get_db), user=Depends(re
         title=data.title or "Tài liệu mới", code=data.code or "",
         category=data.category or "Văn bản", file_url=data.file_url or "",
         size_label=data.size_label or "", content_text=data.content_text or "",
-        updated_on=data.updated_on or dt.date.today())
+        updated_on=data.updated_on or models.today())
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "documents", row.id, row.title, request=request)
     return {"id": row.id}
@@ -439,7 +439,7 @@ def admin_delete_doc(did: int, db: Session = Depends(get_db), user=Depends(requi
     if row.deleted_at is not None:
         raise HTTPException(400, "Tài liệu này đã ở trong thùng rác.")
     label = row.title
-    row.deleted_at = dt.datetime.utcnow()
+    row.deleted_at = models.now()
     row.deleted_by = user.full_name
     db.commit()
     log_action(db, user, "delete", "documents", did, label, detail="Chuyển vào thùng rác", request=request)
@@ -494,7 +494,7 @@ def export_people_csv(db: Session = Depends(get_db), _=Depends(require_module("p
          "Có" if p.active else "Không"]
         for p in rows
     ]
-    return _csv_response(header, vals, f"danh-sach-nhan-vien-{dt.date.today()}.csv")
+    return _csv_response(header, vals, f"danh-sach-nhan-vien-{models.today()}.csv")
 
 
 @router.post("/people")
@@ -616,14 +616,14 @@ def export_events_csv(kind: Optional[str] = None, db: Session = Depends(get_db),
         for e in rows
     ]
     ten_tep = "lich-cong-tac-tuan" if (kind or "work") == "work" else f"su-kien-{kind}"
-    return _csv_response(header, vals, f"{ten_tep}-{dt.date.today()}.csv")
+    return _csv_response(header, vals, f"{ten_tep}-{models.today()}.csv")
 
 
 @router.post("/events")
 def admin_create_event(data: EventIn, db: Session = Depends(get_db), user=Depends(require_module("events", "create")),
                        request: Request = None):
     row = models.Event(title=data.title or "Sự kiện mới",
-                       start_at=data.start_at or dt.datetime.now(),
+                       start_at=data.start_at or models.now(),
                        place=data.place or "", host=data.host or "",
                        kind=data.kind or "culture",
                        participants=data.participants or "",
@@ -898,7 +898,7 @@ def database_download(_=Depends(require_admin)):
     path = url.split("///")[-1]
     if not os.path.exists(path):
         raise HTTPException(404, "Không tìm thấy tệp cơ sở dữ liệu.")
-    name = f"portal-{dt.date.today().isoformat()}.db"
+    name = f"portal-{models.today().isoformat()}.db"
     return FileResponse(path, filename=name, media_type="application/octet-stream")
 
 
@@ -970,7 +970,7 @@ def export_users_csv(db: Session = Depends(get_db), _=Depends(require_admin)):
          "Có" if u.must_change_password else "Không"]
         for u in rows
     ]
-    return _csv_response(header, vals, f"danh-sach-tai-khoan-{dt.date.today()}.csv")
+    return _csv_response(header, vals, f"danh-sach-tai-khoan-{models.today()}.csv")
 
 
 @router.get("/roles")
@@ -1109,7 +1109,7 @@ async def admin_upload(file: UploadFile = File(...), db: Session = Depends(get_d
     if not ext:
         raise HTTPException(400, "Chỉ nhận ảnh JPG, PNG, WEBP, GIF hoặc SVG.")
 
-    name = f"{dt.date.today().isoformat()}-{secrets.token_hex(6)}{ext}"
+    name = f"{models.today().isoformat()}-{secrets.token_hex(6)}{ext}"
     dest = os.path.join(upload_dir(), name)
 
     size = 0
@@ -1333,7 +1333,7 @@ def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
     rows = q.order_by(models.Metric.board, models.Metric.period).all()
     header = ["bang", "ky", "chi_tieu", "don_vi", "gia_tri"]
     vals = [[m.board, m.period, m.label, m.unit_name or "", m.value] for m in rows]
-    return _csv_response(header, vals, f"{ten_tep}-{dt.date.today()}.csv")
+    return _csv_response(header, vals, f"{ten_tep}-{models.today()}.csv")
 
 
 @router.post("/metrics")

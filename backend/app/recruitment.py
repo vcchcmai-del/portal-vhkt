@@ -218,7 +218,7 @@ def export_candidates_csv(db: Session = Depends(get_db), _=Depends(require_modul
     content = "﻿" + "\n".join(lines) + "\n"
     return PlainTextResponse(
         content, media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="ung-vien-{dt.date.today()}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="ung-vien-{models.today()}.csv"'},
     )
 
 
@@ -268,7 +268,7 @@ def admin_create_staffing(data: StaffingIn, db: Session = Depends(get_db),
     if not (data.center or "").strip():
         raise HTTPException(400, "Chưa nhập tên trung tâm.")
     row = models.CenterStaffing(
-        report_date=data.report_date or dt.date.today(), center=data.center.strip(),
+        report_date=data.report_date or models.today(), center=data.center.strip(),
         oft_gap=data.oft_gap or 0, ft_gap=data.ft_gap or 0,
         posted_channels=data.posted_channels or 0,
         school_contacts=data.school_contacts or 0, banners_posted=data.banners_posted or 0,
@@ -321,5 +321,5 @@ def export_staffing_csv(db: Session = Depends(get_db), _=Depends(require_module(
     content = "﻿" + "\n".join(lines) + "\n"
     return PlainTextResponse(
         content, media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="dinh-bien-trung-tam-{dt.date.today()}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="dinh-bien-trung-tam-{models.today()}.csv"'},
     )

@@ -27,6 +27,8 @@ import re
 import urllib.error
 import urllib.request
 
+from .models import now as _gio_hien_tai
+
 TIMEOUT = 12
 CACHE_MINUTES = 10          # sau ngần này phút thì tự lấy lại từ Google Sheet
 MAX_BYTES = 3 * 1024 * 1024  # chặn tệp quá lớn
@@ -279,7 +281,7 @@ def sync_source(source, db, force=False):
         return False, "Nguồn đang tắt."
 
     if not force and source.last_sync_at:
-        tuoi = (dt.datetime.utcnow() - source.last_sync_at).total_seconds() / 60
+        tuoi = (_gio_hien_tai() - source.last_sync_at).total_seconds() / 60
         if tuoi < CACHE_MINUTES and source.last_status == "ok":
             return True, "Dùng dữ liệu đã lưu."
 
@@ -292,7 +294,7 @@ def sync_source(source, db, force=False):
     except SheetError as e:
         source.last_status = "error"
         source.last_error = str(e)
-        source.last_sync_at = dt.datetime.utcnow()
+        source.last_sync_at = _gio_hien_tai()
         db.commit()
         return False, str(e)
 
@@ -300,7 +302,7 @@ def sync_source(source, db, force=False):
     source.row_count = len(data)
     source.last_status = "ok"
     source.last_error = ""
-    source.last_sync_at = dt.datetime.utcnow()
+    source.last_sync_at = _gio_hien_tai()
     db.commit()
     return True, f"Đã đồng bộ {len(data)} dòng."
 

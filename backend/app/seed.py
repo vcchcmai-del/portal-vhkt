@@ -8,7 +8,7 @@ from .auth import hash_password
 from .database import SessionLocal
 from . import models as m
 
-TODAY = dt.date.today()
+TODAY = m.today()
 
 
 def seed_if_empty():
@@ -64,7 +64,7 @@ def seed_if_empty():
         for i, (title, excerpt, cat, tag, feat) in enumerate(news_raw):
             db.add(m.News(title=title, excerpt=excerpt, category=cat, tag=tag, featured=feat,
                           author="Ban Truyền thông",
-                          published_at=dt.datetime.now() - dt.timedelta(days=i * 2)))
+                          published_at=m.now() - dt.timedelta(days=i * 2)))
 
         # --- Tài liệu -------------------------------------------------------
         docs_raw = [
