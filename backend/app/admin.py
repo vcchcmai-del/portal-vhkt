@@ -1301,8 +1301,17 @@ def admin_list_metrics(board: Optional[str] = None, db: Session = Depends(get_db
 
 
 def _slug(text: str) -> str:
-    """Bỏ dấu, chỉ giữ chữ/số/gạch ngang — dùng đặt tên tệp tải xuống."""
+    """
+    Bỏ dấu, chỉ giữ chữ/số/gạch ngang — dùng đặt tên tệp tải xuống.
+
+    "Đ"/"đ" KHÔNG bỏ dấu được bằng NFD (không phải chữ cái + dấu phụ ghép lại,
+    mà là một ký tự Unicode riêng — unicodedata coi nó là chữ cái hợp lệ, isalnum()
+    trả True) nên phải đổi tay trước; để sót thì tên tệp còn ký tự ngoài
+    ASCII, ghi vào header Content-Disposition sẽ vỡ (UnicodeEncodeError, lỗi
+    500) — đã xảy ra thật với "Rời mạng CĐBR"/"XLCS CĐBR" khi xuất báo cáo.
+    """
     import unicodedata
+    text = text.replace("Đ", "D").replace("đ", "d")
     text = unicodedata.normalize("NFD", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     text = "".join(ch if ch.isalnum() else "-" for ch in text)
