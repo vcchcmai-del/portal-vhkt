@@ -183,25 +183,51 @@ KINDS = {
     },
 }
 
-BOARDS = {
-    "KPI", "WO", "PAKH", "FUEL", "HIRE", "OUTPUT", "NETWORK",
-    # KPI vận hành khai thác: Cell*h, sự cố truyền dẫn, ksubmin, TKM 3h/10h/24h, XLCS 3h/10h/24h...
-    "VHKT", "VHKT_TARGET",
-    # Target cho Tiền phạt & Doanh thu (KPI) và Rời mạng CĐBR (WO) — để trống
-    # cột đơn vị trong bảng target thì áp dụng chung cho mọi trung tâm.
-    "KPI_TARGET", "WO_TARGET",
-    # Target cho Sự cố truyền dẫn (PAKH), Ksub*min (FUEL), GĐTT & Cell*h (OUTPUT)
-    # — mỗi dòng kèm tên tỉnh (đơn vị) vì target khác nhau theo tỉnh.
-    "PAKH_TARGET", "FUEL_TARGET", "OUTPUT_TARGET",
-    # Target cho XLCS (NETWORK/XLCS CĐBR) — chung toàn chi nhánh, không theo tỉnh.
-    "NETWORK_TARGET",
-    # Chi tiết nguyên nhân phạt theo nhóm VTT / VTNet — mỗi dòng là một nguyên
-    # nhân (chi_tieu), giá trị đơn vị triệu đồng.
-    "KPI_VTT", "KPI_VTNET",
-    # Rời mạng CĐBR theo địa bàn: số lượng theo tỉnh, số lượng+tỷ lệ theo huyện
-    # (Bình Dương, Bà Rịa - Vũng Tàu) — đơn vị (unit_name) = tên tỉnh/huyện.
-    "WO_TINH", "WO_HUYEN_BD", "WO_HUYEN_BRVT",
+# Tên hiển thị của từng mã bảng — PHẢI khớp DASHBOARD_BOARDS trong
+# frontend/src/admin.jsx (nguồn hiển thị cho khu quản trị). Đây là nguồn DUY
+# NHẤT cho cả xuất báo cáo (cột "bang" hiện tên này) lẫn nhập lại (chấp nhận
+# gõ mã HOẶC dán đúng tên này, xem _chuan_hoa_bang bên dưới) — sửa một chỗ là
+# đồng bộ hết, tránh lặp lại đúng lỗi "tên hiển thị lệch với dữ liệu nhập" đã
+# từng xảy ra.
+BOARD_LABELS = {
+    "KPI": "Tiền phạt & Doanh thu",
+    "KPI_TARGET": "Chỉ tiêu/Target Tiền phạt & Doanh thu",
+    "KPI_VTT": "Nguyên nhân phạt — nhóm VTT",
+    "KPI_VTNET": "Nguyên nhân phạt — nhóm VTNet",
+    "WO": "Rời mạng CĐBR (tỷ lệ / số lượng KH)",
+    "WO_TARGET": "Chỉ tiêu/Target Rời mạng CĐBR",
+    "WO_TINH": "Rời mạng CĐBR — số lượng theo tỉnh",
+    "WO_HUYEN_BD": "Rời mạng CĐBR — theo huyện (Bình Dương)",
+    "WO_HUYEN_BRVT": "Rời mạng CĐBR — theo huyện (Bà Rịa - Vũng Tàu)",
+    "PAKH": "Sự cố truyền dẫn (theo tỉnh)",
+    "PAKH_TARGET": "Chỉ tiêu/Target Sự cố truyền dẫn",
+    "FUEL": "Ksub*min (theo tỉnh)",
+    "FUEL_TARGET": "Chỉ tiêu/Target Ksub*min",
+    "OUTPUT": "GĐTT & Cell*h tổng (theo tỉnh)",
+    "OUTPUT_TARGET": "Chỉ tiêu/Target GĐTT & Cell*h",
+    "NETWORK": "XLCS CĐBR (Số PA phát sinh, XLCS 3h/10h/24h)",
+    "NETWORK_TARGET": "Chỉ tiêu/Target XLCS CĐBR",
+    "VHKT": "TKM CĐBR (Triển khai mới, KPI TKM 3h/10h/24h)",
+    "VHKT_TARGET": "Chỉ tiêu/Target TKM CĐBR",
+    "HIRE": "Tuyển dụng (tính tự động từ Ứng viên/Định biên, không nhập tay)",
 }
+BOARDS = set(BOARD_LABELS)
+# Tra ngược từ tên hiển thị (không phân biệt hoa/thường, khoảng trắng thừa)
+# về đúng mã bảng — để nhập lại đúng tệp vừa xuất ra (cột "bang" đã đổi sang
+# tên đọc-hiểu-ngay) vẫn nhận diện được, không bắt người dùng phải nhớ mã.
+_BOARD_LABEL_TO_CODE = {label.strip().casefold(): code for code, label in BOARD_LABELS.items()}
+
+
+def _chuan_hoa_bang(raw: str) -> str:
+    """Nhận mã bảng (PAKH) hoặc đúng tên hiển thị (Sự cố truyền dẫn...) — trả
+    về mã bảng chuẩn, hoặc chuỗi gốc viết hoa nếu không khớp gì (để báo lỗi
+    "không hợp lệ" như cũ, không âm thầm bỏ qua)."""
+    ma = (raw or "").strip().upper()
+    if ma in BOARDS:
+        return ma
+    return _BOARD_LABEL_TO_CODE.get((raw or "").strip().casefold(), ma)
+
+
 ROLES = {"admin", "editor", "staff"}
 
 # Các bảng "chung toàn chi nhánh" — cột đơn_vị PHẢI để trống, vì đối chiếu
@@ -317,8 +343,9 @@ def _cot_theo_pham_vi(spec, boards):
     cols = list(spec["columns"])
     if not boards:
         return cols
+    ten_cac_bang = [BOARD_LABELS.get(b, b) for b in boards]
     return [
-        (name, f"Bảng: {' / '.join(boards)}", required, boards[0]) if name == "bang"
+        (name, f"Bảng: {' / '.join(ten_cac_bang)}", required, ten_cac_bang[0]) if name == "bang"
         else (name, label, required, example)
         for name, label, required, example in cols
     ]
@@ -354,7 +381,7 @@ def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
     cols = _cot_theo_pham_vi(spec, boards)
     dropdowns = dict(spec.get("dropdowns", {}))
     if boards:
-        dropdowns["bang"] = boards
+        dropdowns["bang"] = [BOARD_LABELS.get(b, b) for b in boards]
 
     wb = Workbook()
     ws = wb.active
@@ -693,9 +720,15 @@ def _apply_event(item, db, models, auth):
 # ------------------------------------------------------------ metrics
 
 def _check_metric(row, db, models, auth):
-    board = _clean(row.get("bang")).upper()
+    # Chấp nhận cả mã bảng (PAKH) lẫn đúng tên hiển thị (Sự cố truyền dẫn...)
+    # — để nhập lại tệp vừa xuất ra (cột "bang" đã đổi sang tên đọc-hiểu-ngay)
+    # vẫn nhận diện đúng, không bắt gõ tay mã.
+    board = _chuan_hoa_bang(row.get("bang"))
     if board not in BOARDS:
-        raise ImportError_(f"Bảng “{row.get('bang')}” không hợp lệ. Chỉ nhận: {', '.join(sorted(BOARDS))}.")
+        raise ImportError_(
+            f"Bảng “{row.get('bang')}” không hợp lệ. Chỉ nhận đúng mã hoặc đúng tên: "
+            + ", ".join(f"{c} ({l})" for c, l in sorted(BOARD_LABELS.items()))
+        )
 
     period = _clean(row.get("ky"))
     label = _clean(row.get("chi_tieu"))

@@ -142,17 +142,31 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
   // trước/ghi, để đúng yêu cầu "chỉ nhập được dữ liệu của đúng tab đang mở".
   // Kiểm tra sớm từ chữ dán vào (trước khi xem trước) lẫn từ kết quả xem
   // trước/tệp tải lên (bang sau khi máy chủ đã đọc, che luôn đường vòng qua tệp).
+  // Cột "bang" giờ chấp nhận cả mã (PAKH) lẫn đúng tên hiển thị (Sự cố truyền
+  // dẫn...) — so khớp cả hai dạng, không phân biệt hoa/thường, mới không báo
+  // nhầm "ngoài phạm vi" khi dán lại đúng tệp vừa xuất ra.
+  const trongPhamVi = (raw) => {
+    const sach = (raw || "").trim().replace(/^"|"$/g, "");
+    if (!sach) return true;
+    const ck = sach.toLowerCase();
+    return boardScope.some((b) => b.value.toLowerCase() === ck || b.label.toLowerCase() === ck);
+  };
+  // Một vài tên bảng có dấu phẩy ngay trong tên (ví dụ "XLCS CĐBR (Số PA phát
+  // sinh, XLCS 3h/10h/24h)") — nếu tách cột kiểu CSV bằng dấu phẩy sẽ cắt
+  // nhầm giữa chừng tên đó. Dán từ Excel luôn phân tách bằng tab nên ưu tiên
+  // tách bằng tab trước, chỉ dùng phẩy/chấm phẩy khi dòng không có tab.
+  const cotDauTien = (dong) => (dong.includes("\t") ? dong.split("\t")[0] : dong.split(/,|;/)[0]);
   const maBangNgoaiPhamDanChu = boardScope && text.trim()
     ? [...new Set(
         text.trim().split(/\r?\n/).slice(1)
-          .map((dong) => dong.split(/\t|,|;/)[0]?.trim().toUpperCase())
-          .filter((ma) => ma && !boardScope.some((b) => b.value === ma))
+          .map((dong) => cotDauTien(dong)?.trim())
+          .filter((ma) => ma && !trongPhamVi(ma))
       )]
     : [];
   const maBangNgoaiPhamKetQua = boardScope && rows.length
     ? [...new Set(
-        rows.map((r) => r.du_lieu?.bang?.trim().toUpperCase())
-          .filter((ma) => ma && !boardScope.some((b) => b.value === ma))
+        rows.map((r) => r.du_lieu?.bang?.trim())
+          .filter((ma) => ma && !trongPhamVi(ma))
       )]
     : [];
   const maBangNgoaiPham = [...new Set([...maBangNgoaiPhamDanChu, ...maBangNgoaiPhamKetQua])];
@@ -186,8 +200,9 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
             ))}
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            Cột "bang" trong dữ liệu dán/tải lên chỉ nên dùng đúng các mã ở trên. Nhập cho bảng khác thì dùng đúng
-            màn "Nhập từ Excel" của tab đó, tránh nhầm dữ liệu giữa các tab.
+            Cột "bang" trong dữ liệu dán/tải lên chỉ nên dùng đúng mã HOẶC đúng tên ở trên (tệp xuất từ đúng
+            màn này dùng sẵn tên, không cần đổi lại). Nhập cho bảng khác thì dùng đúng màn "Nhập từ Excel"
+            của tab đó, tránh nhầm dữ liệu giữa các tab.
           </p>
           {maBangNgoaiPham.length > 0 && (
             <p style={{ background: "#FBF4F5", color: RED_DARK, padding: "9px 12px",
