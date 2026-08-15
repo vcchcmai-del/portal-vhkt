@@ -307,21 +307,43 @@ def check_columns(kind: str, header):
         )
 
 
-def build_template(kind: str) -> str:
+def _cot_theo_pham_vi(spec, boards):
+    """
+    Trả về danh sách cột của spec, đổi mô tả + ví dụ của cột "bang" cho khớp
+    đúng các mã bảng của MỘT tab dashboard cụ thể (`boards`), thay vì mô tả
+    chung liệt kê mọi bảng — để tệp mẫu tải từ tab nào chỉ hướng dẫn đúng mã
+    bảng của tab đó, không lẫn giữa các tab.
+    """
+    cols = list(spec["columns"])
+    if not boards:
+        return cols
+    return [
+        (name, f"Bảng: {' / '.join(boards)}", required, boards[0]) if name == "bang"
+        else (name, label, required, example)
+        for name, label, required, example in cols
+    ]
+
+
+def build_template(kind: str, boards=None) -> str:
     """Sinh nội dung tệp mẫu CSV: dòng tiêu đề kèm một dòng ví dụ."""
     spec = KINDS[kind]
-    cols = [c for c, _l, _r, _e in spec["columns"]]
-    example = [e for _c, _l, _r, e in spec["columns"]]
+    cols_spec = _cot_theo_pham_vi(spec, boards)
+    cols = [c for c, _l, _r, _e in cols_spec]
+    example = [e for _c, _l, _r, e in cols_spec]
     lines = [",".join(cols), ",".join(f'"{v}"' for v in example)]
     return "\ufeff" + "\n".join(lines) + "\n"
 
 
-def build_template_xlsx(kind: str) -> bytes:
+def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
     """
     Sinh tệp mẫu Excel có hướng dẫn ngay trong tệp:
       - Trang 1 "Du lieu": dòng tiêu đề đúng chuẩn, một dòng ví dụ, cột đã canh rộng,
         khoá dòng tiêu đề để cuộn vẫn thấy, cột bắt buộc tô đỏ.
       - Trang 2 "Huong dan": giải thích từng cột và cách nhập.
+
+    `boards`: khi nhập từ một tab dashboard cụ thể, giới hạn cột "bang" đúng
+    các mã bảng của tab đó bằng ô thả xuống thật trong Excel (giống các cột
+    có sẵn danh sách lựa chọn), tránh gõ nhầm mã bảng của tab khác.
     """
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -329,8 +351,10 @@ def build_template_xlsx(kind: str) -> bytes:
     from openpyxl.worksheet.datavalidation import DataValidation
 
     spec = KINDS[kind]
-    cols = spec["columns"]
-    dropdowns = spec.get("dropdowns", {})
+    cols = _cot_theo_pham_vi(spec, boards)
+    dropdowns = dict(spec.get("dropdowns", {}))
+    if boards:
+        dropdowns["bang"] = boards
 
     wb = Workbook()
     ws = wb.active
@@ -371,7 +395,7 @@ def build_template_xlsx(kind: str) -> bytes:
     hd.column_dimensions["C"].width = 14
     hd.column_dimensions["D"].width = 30
 
-    hd["A1"] = f"TỆP MẪU: {spec['label']}"
+    hd["A1"] = f"TỆP MẪU: {spec['label']}" + (f" — {nhom}" if nhom else "")
     hd["A1"].font = Font(bold=True, size=14, color="C8102E")
     hd["A2"] = spec["note"]
     hd["A2"].alignment = Alignment(wrap_text=True)

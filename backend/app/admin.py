@@ -1421,13 +1421,21 @@ def import_kinds(kind: Optional[str] = None, user: models.User = Depends(current
 
 
 @router.get("/import/template-xlsx/{kind}")
-def import_template_xlsx(kind: str, user: models.User = Depends(current_user)):
-    """Tải tệp mẫu Excel: có dòng tiêu đề chuẩn, dòng ví dụ và trang hướng dẫn."""
+def import_template_xlsx(kind: str, boards: Optional[str] = None, nhom: Optional[str] = None,
+                         user: models.User = Depends(current_user)):
+    """
+    Tải tệp mẫu Excel: có dòng tiêu đề chuẩn, dòng ví dụ và trang hướng dẫn.
+
+    `boards` (tuỳ chọn, cách nhau bằng dấu phẩy) và `nhom`: khi tải từ đúng
+    một tab dashboard, giới hạn cột "bang" và tên tệp theo đúng tab đó thay vì
+    tệp mẫu chung chung dùng lẫn cho mọi tab.
+    """
     if kind not in bi.KINDS:
         raise HTTPException(404, "Không có nhóm dữ liệu này.")
     check_import_kind_permission(user, kind, "view")
+    ma_bang = [b.strip().upper() for b in boards.split(",") if b.strip()] if boards else None
     try:
-        content = bi.build_template_xlsx(kind)
+        content = bi.build_template_xlsx(kind, boards=ma_bang, nhom=nhom)
     except ImportError:
         raise HTTPException(
             500,
@@ -1435,23 +1443,27 @@ def import_template_xlsx(kind: str, user: models.User = Depends(current_user)):
             "Hãy dùng nút tải tệp mẫu CSV thay thế."
         )
     from fastapi.responses import Response
+    ten_tep = f"mau-{kind}-{_slug(nhom)}" if nhom else f"mau-{kind}"
     return Response(
         content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="mau-{kind}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{ten_tep}.xlsx"'},
     )
 
 
 @router.get("/import/template/{kind}")
-def import_template(kind: str, user: models.User = Depends(current_user)):
+def import_template(kind: str, boards: Optional[str] = None, nhom: Optional[str] = None,
+                    user: models.User = Depends(current_user)):
     """Tải tệp mẫu CSV có sẵn dòng tiêu đề đúng và một dòng ví dụ."""
     if kind not in bi.KINDS:
         raise HTTPException(404, "Không có nhóm dữ liệu này.")
     check_import_kind_permission(user, kind, "view")
+    ma_bang = [b.strip().upper() for b in boards.split(",") if b.strip()] if boards else None
+    ten_tep = f"mau-{kind}-{_slug(nhom)}" if nhom else f"mau-{kind}"
     return PlainTextResponse(
-        bi.build_template(kind),
+        bi.build_template(kind, boards=ma_bang),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="mau-{kind}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{ten_tep}.csv"'},
     )
 
 

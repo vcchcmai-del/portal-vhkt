@@ -25,7 +25,7 @@ const STATUS = {
   loi: { label: "Lỗi", cls: "tag-red" },
 };
 
-export function AdminImport({ fixedKind, boardScope } = {}) {
+export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
   const [kinds, setKinds] = useState([]);
   const [kind, setKind] = useState(fixedKind || "people");
   const [text, setText] = useState("");
@@ -85,9 +85,12 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
       const headers = {};
       const token = getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
+      const qs = boardScope
+        ? `?boards=${encodeURIComponent(boardScope.map((b) => b.value).join(","))}${nhomLabel ? `&nhom=${encodeURIComponent(nhomLabel)}` : ""}`
+        : "";
       const path = dinhDang === "xlsx"
-        ? `/api/admin/import/template-xlsx/${kind}`
-        : `/api/admin/import/template/${kind}`;
+        ? `/api/admin/import/template-xlsx/${kind}${qs}`
+        : `/api/admin/import/template/${kind}${qs}`;
       const res = await fetch(path, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -96,7 +99,35 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `mau-${kind}.${dinhDang}`; a.click();
+      // Lấy đúng tên tệp máy chủ đã đặt (khớp tên tab) thay vì đặt cứng "mau-{kind}".
+      const dat = res.headers.get("content-disposition") || "";
+      const khop = dat.match(/filename="?([^"]+)"?/);
+      a.href = url; a.download = khop ? khop[1] : `mau-${kind}.${dinhDang}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
+  };
+
+  // Xuất số liệu Dashboard đúng phạm vi các bảng của tab này — chỉ áp dụng
+  // cho nhóm "metrics" (số liệu Dashboard), các nhóm khác (nhân viên, lịch
+  // công tác...) chưa có API xuất theo hạng mục tương tự.
+  const xuatDuLieuTab = async () => {
+    if (fixedKind !== "metrics" || !boardScope) return;
+    try {
+      const headers = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const qs = `?board=${encodeURIComponent(boardScope.map((b) => b.value).join(","))}${nhomLabel ? `&nhom=${encodeURIComponent(nhomLabel)}` : ""}`;
+      const res = await fetch(`/api/admin/metrics/export${qs}`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || "Không xuất được báo cáo.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dat = res.headers.get("content-disposition") || "";
+      const khop = dat.match(/filename="?([^"]+)"?/);
+      a.href = url; a.download = khop ? khop[1] : "so-lieu-dashboard.csv"; a.click();
       URL.revokeObjectURL(url);
     } catch (e) { setErr(e.message); }
   };
@@ -107,15 +138,24 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
   const coTheGhi = t && (t.them_moi > 0 || t.cap_nhat > 0);
   const coDuLieu = text.trim() || pendingFile;
 
-  // Dòng nào có cột "bang" nằm ngoài phạm vi màn này — cảnh báo sớm, không chặn
-  // (máy chủ vẫn là nơi quyết định đúng/sai cuối cùng lúc xem trước).
-  const maBangNgoaiPham = boardScope && text.trim()
+  // Dòng nào có cột "bang" nằm ngoài phạm vi màn này — chặn hẳn, không cho xem
+  // trước/ghi, để đúng yêu cầu "chỉ nhập được dữ liệu của đúng tab đang mở".
+  // Kiểm tra sớm từ chữ dán vào (trước khi xem trước) lẫn từ kết quả xem
+  // trước/tệp tải lên (bang sau khi máy chủ đã đọc, che luôn đường vòng qua tệp).
+  const maBangNgoaiPhamDanChu = boardScope && text.trim()
     ? [...new Set(
         text.trim().split(/\r?\n/).slice(1)
           .map((dong) => dong.split(/\t|,|;/)[0]?.trim().toUpperCase())
           .filter((ma) => ma && !boardScope.some((b) => b.value === ma))
       )]
     : [];
+  const maBangNgoaiPhamKetQua = boardScope && rows.length
+    ? [...new Set(
+        rows.map((r) => r.du_lieu?.bang?.trim().toUpperCase())
+          .filter((ma) => ma && !boardScope.some((b) => b.value === ma))
+      )]
+    : [];
+  const maBangNgoaiPham = [...new Set([...maBangNgoaiPhamDanChu, ...maBangNgoaiPhamKetQua])];
 
   return (
     <div className="flex flex-col gap-4">
@@ -132,7 +172,14 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
 
       {boardScope && (
         <div className="card" style={{ padding: 14, borderLeft: "3px solid #0E6CD6" }}>
-          <p style={{ fontWeight: 700, fontSize: 13.5 }}>Mã bảng dùng ở màn này</p>
+          <div className="flex items-center justify-between gap-2" style={{ flexWrap: "wrap" }}>
+            <p style={{ fontWeight: 700, fontSize: 13.5 }}>Mã bảng dùng ở màn này</p>
+            {fixedKind === "metrics" && (
+              <button className="btn btn-sm" onClick={xuatDuLieuTab}>
+                <Download size={13} /> Xuất số liệu {nhomLabel ? `"${nhomLabel}"` : "của tab này"}
+              </button>
+            )}
+          </div>
           <div className="flex gap-2" style={{ flexWrap: "wrap", marginTop: 8 }}>
             {boardScope.map((b) => (
               <span key={b.value} className="tag tag-grey mono" style={{ fontSize: 12 }}>{b.value} — {b.label}</span>
@@ -143,10 +190,10 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
             màn "Nhập từ Excel" của tab đó, tránh nhầm dữ liệu giữa các tab.
           </p>
           {maBangNgoaiPham.length > 0 && (
-            <p style={{ background: "#FFF8E8", color: "#8A5A08", padding: "9px 12px",
-                        borderRadius: 9, fontSize: 12.5, marginTop: 10 }}>
-              Dữ liệu đang dán có mã bảng lạ với màn này: <strong>{maBangNgoaiPham.join(", ")}</strong>.
-              Kiểm tra lại — có thể bạn cần dán vào đúng màn của tab khác.
+            <p style={{ background: "#FBF4F5", color: RED_DARK, padding: "9px 12px",
+                        borderRadius: 9, fontSize: 12.5, marginTop: 10, fontWeight: 600 }}>
+              Dữ liệu có mã bảng ngoài phạm vi màn này: <strong>{maBangNgoaiPham.join(", ")}</strong> — đã
+              chặn xem trước/ghi. Xoá các dòng đó hoặc dán vào đúng màn "Nhập từ Excel" của tab tương ứng.
             </p>
           )}
         </div>
@@ -240,7 +287,7 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
         </div>
 
         <div className="flex gap-2" style={{ marginTop: 16 }}>
-          <button className="btn btn-red" disabled={busy || !coDuLieu}
+          <button className="btn btn-red" disabled={busy || !coDuLieu || maBangNgoaiPhamDanChu.length > 0}
             onClick={() => (pendingFile ? runFile(pendingFile, false) : runText(false))}>
             {busy ? <Loader2 size={15} className="spin" /> : <ArrowRight size={15} />}
             {busy ? "Đang đọc…" : "Xem trước kết quả"}
@@ -299,7 +346,7 @@ export function AdminImport({ fixedKind, boardScope } = {}) {
                 </p>
               )}
               <div className="flex gap-2" style={{ marginBottom: 16, flexWrap: "wrap" }}>
-                <button className="btn btn-red" disabled={busy || !coTheGhi}
+                <button className="btn btn-red" disabled={busy || !coTheGhi || maBangNgoaiPhamKetQua.length > 0}
                   onClick={() => (pendingFile ? runFile(pendingFile, true) : runText(true))}>
                   {busy ? <Loader2 size={15} className="spin" /> : <Check size={15} />}
                   Xác nhận ghi {t.them_moi + t.cap_nhat} dòng vào hệ thống

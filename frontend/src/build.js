@@ -5,4 +5,4 @@
  * với chuỗi máy chủ báo về, lệch nhau là biết ngay một trong hai phần chưa được
  * cập nhật — thay vì mò đoán như trước.
  */
-export const BUILD_ID = "2026-08-15.v50";
+export const BUILD_ID = "2026-08-15.v51";

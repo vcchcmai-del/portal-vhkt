@@ -1303,7 +1303,7 @@ export const ADMIN_PAGES = [
     group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2 },
   ...DASHBOARD_IMPORT_TABS.map((tab) => ({
     id: `adm-dashboard-import-${tab.id}`, label: `Nhập Excel — ${tab.label}`, icon: Upload,
-    comp: () => <AdminImport fixedKind="metrics" boardScope={tab.boards} />, module: "dashboard",
+    comp: () => <AdminImport fixedKind="metrics" boardScope={tab.boards} nhomLabel={tab.label} />, module: "dashboard",
     group: "dashboard", groupLabel: "Quản lý dashboard", groupIcon: Table2,
   })),
   { id: "adm-sheets", label: "Nguồn dữ liệu Sheet", icon: Database, comp: AdminSheets, module: "sheets",
