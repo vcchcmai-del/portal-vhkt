@@ -203,6 +203,16 @@ BOARDS = {
     "WO_TINH", "WO_HUYEN_BD", "WO_HUYEN_BRVT",
 }
 ROLES = {"admin", "editor", "staff"}
+
+# Các bảng "chung toàn chi nhánh" — cột đơn_vị PHẢI để trống, vì đối chiếu
+# cùng-kỳ-năm-trước và target chung khớp theo đúng bộ (bảng, kỳ, chỉ tiêu,
+# đơn_vị): điền nhầm đơn vị đo (%, Dịch vụ...) vào cột này làm giá trị không
+# khớp với dòng năm trước (đơn_vị=trống), khiến "Cùng kỳ trước" luôn trống dù
+# đã có đủ số liệu — đã xảy ra thật với VHKT, xem nhật ký sửa lỗi liên quan.
+BOARDS_KHONG_THEO_TINH = {
+    "KPI", "KPI_TARGET", "WO", "WO_TARGET", "NETWORK", "NETWORK_TARGET",
+    "VHKT", "VHKT_TARGET", "KPI_VTT", "KPI_VTNET", "HIRE",
+}
 MAX_ROWS = 2000
 
 
@@ -675,6 +685,13 @@ def _check_metric(row, db, models, auth):
         raise ImportError_(f"Giá trị “{row.get('gia_tri')}” không phải là số.")
 
     unit = _clean(row.get("don_vi"))
+    if unit and board in BOARDS_KHONG_THEO_TINH:
+        raise ImportError_(
+            f"Bảng “{board}” tính chung toàn chi nhánh, cột đơn_vị phải để trống — "
+            f"đang có “{unit}”. Điền nhầm cột này sẽ làm bảng đối chiếu cùng kỳ năm "
+            f"trước bị trống dù đã có đủ số liệu (đơn vị của dòng năm trước là trống, "
+            f"không khớp)."
+        )
     existing = (db.query(models.Metric)
                 .filter(models.Metric.board == board, models.Metric.period == period,
                         models.Metric.label == label,
