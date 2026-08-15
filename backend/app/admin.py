@@ -1320,14 +1320,44 @@ def _slug(text: str) -> str:
     return text.strip("-") or "hang-muc"
 
 
+# Tên hiển thị của từng mã bảng — PHẢI khớp với DASHBOARD_BOARDS trong
+# frontend/src/admin.jsx (nguồn hiển thị cho khu quản trị). Chỉ dùng để thêm
+# cột đọc-hiểu-ngay "ten_bang" khi xuất báo cáo; cột "bang" (mã) vẫn giữ
+# nguyên không đổi, để tệp xuất ra nhập ngược lại hệ thống vẫn hoạt động.
+BOARD_LABELS = {
+    "PAKH": "Sự cố truyền dẫn (theo tỉnh)",
+    "PAKH_TARGET": "Chỉ tiêu/Target Sự cố truyền dẫn",
+    "FUEL": "Ksub*min (theo tỉnh)",
+    "FUEL_TARGET": "Chỉ tiêu/Target Ksub*min",
+    "OUTPUT": "GĐTT & Cell*h tổng (theo tỉnh)",
+    "OUTPUT_TARGET": "Chỉ tiêu/Target GĐTT & Cell*h",
+    "NETWORK": "XLCS CĐBR (Số PA phát sinh, XLCS 3h/10h/24h)",
+    "NETWORK_TARGET": "Chỉ tiêu/Target XLCS CĐBR",
+    "VHKT": "TKM CĐBR (Triển khai mới, KPI TKM 3h/10h/24h)",
+    "VHKT_TARGET": "Chỉ tiêu/Target TKM CĐBR",
+    "KPI": "Tiền phạt & Doanh thu",
+    "KPI_TARGET": "Chỉ tiêu/Target Tiền phạt & Doanh thu",
+    "KPI_VTNET": "Nguyên nhân phạt — nhóm VTNet",
+    "KPI_VTT": "Nguyên nhân phạt — nhóm VTT",
+    "WO": "Rời mạng CĐBR (tỷ lệ / số lượng KH)",
+    "WO_TARGET": "Chỉ tiêu/Target Rời mạng CĐBR",
+    "WO_TINH": "Rời mạng CĐBR — số lượng theo tỉnh",
+    "WO_HUYEN_BD": "Rời mạng CĐBR — theo huyện (Bình Dương)",
+    "WO_HUYEN_BRVT": "Rời mạng CĐBR — theo huyện (Bà Rịa - Vũng Tàu)",
+}
+
+
 @router.get("/metrics/export")
 def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
                        db: Session = Depends(get_db),
                        _=Depends(require_module("dashboard", "view"))):
     """
-    Xuất số liệu Dashboard ra CSV — dùng đúng tên cột của màn "Nhập từ Excel"
-    (bang, ky, chi_tieu, don_vi, gia_tri) nên tải xuống, sửa/lọc lại trong Excel
-    rồi nhập ngược lên là ghi đè đúng dòng cũ (không tạo bản trùng).
+    Xuất số liệu Dashboard ra CSV — cột "bang" giữ nguyên mã (dùng đúng tên
+    cột của màn "Nhập từ Excel": bang, ky, chi_tieu, don_vi, gia_tri) nên tải
+    xuống, sửa/lọc lại trong Excel rồi nhập ngược lên là ghi đè đúng dòng cũ
+    (không tạo bản trùng). Thêm cột "ten_bang" (tên bảng đọc-hiểu-ngay, khớp
+    đúng tên hiển thị trên Dashboard) để xem trong Excel không cần tra mã —
+    cột này bị bỏ qua khi nhập ngược lên, không ảnh hưởng việc ghi đè.
 
     `board` nhận một hoặc nhiều mã bảng cách nhau bằng dấu phẩy (ví dụ
     "KPI,KPI_TARGET,KPI_VTT,KPI_VTNET") để xuất gộp cả một hạng mục Dashboard
@@ -1340,8 +1370,8 @@ def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
         q = q.filter(models.Metric.board.in_(ma_bang))
         ten_tep = f"so-lieu-dashboard-{_slug(nhom) if nhom else '-'.join(ma_bang)}"
     rows = q.order_by(models.Metric.board, models.Metric.period).all()
-    header = ["bang", "ky", "chi_tieu", "don_vi", "gia_tri"]
-    vals = [[m.board, m.period, m.label, m.unit_name or "", m.value] for m in rows]
+    header = ["bang", "ten_bang", "ky", "chi_tieu", "don_vi", "gia_tri"]
+    vals = [[m.board, BOARD_LABELS.get(m.board, m.board), m.period, m.label, m.unit_name or "", m.value] for m in rows]
     return _csv_response(header, vals, f"{ten_tep}-{models.today()}.csv")
 
 
