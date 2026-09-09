@@ -559,6 +559,32 @@ class InfraStat(Base):
     value_text = Column(String(300), nullable=True)             # dự phòng nếu ô không phải số
 
 
+class TechCategory(Base):
+    """Đầu việc mảng kỹ thuật. Trước đây là danh sách cứng trong mã nguồn nên
+    thêm đầu việc mới phải sửa code ở cả hai phía; nay lưu trong cơ sở dữ liệu
+    để quản trị viên tự thêm, và để hạng mục tiến độ tham chiếu đúng một nguồn."""
+    __tablename__ = "tech_categories"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(40), unique=True, nullable=False, index=True)  # vd ke_hoach_5g
+    label = Column(String(160), nullable=False)                         # vd "3. Kế hoạch 5G"
+    hint = Column(Text)                     # gợi ý phạm vi, hiện trên form giao việc
+    order_no = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+
+
+class TechProgressItem(Base):
+    """Hạng mục định lượng (Kế hoạch/Thực hiện) thuộc một đầu việc."""
+    __tablename__ = "tech_progress_items"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(60), unique=True, nullable=False, index=True)  # vd 5g_srt5g
+    label = Column(String(200), nullable=False)                         # vd "Tích hợp SRT5G"
+    category_code = Column(String(40), nullable=False, index=True)      # khoá về TechCategory.code
+    order_no = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+
+
 class ProgressEntry(Base):
     """Kế hoạch/Thực hiện theo hạng mục con của từng đầu việc kỹ thuật.
     ft_name rỗng = dòng tổng theo Trung tâm (nhập Excel); có tên = dòng chi

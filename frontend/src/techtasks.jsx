@@ -4,38 +4,10 @@ import { api } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Empty, Field, RED } from "./ui";
 
-// Đúng 10 đầu việc mảng kỹ thuật — trùng CATEGORIES ở backend/app/techtasks.py.
-export const CATEGORIES = [
-  { id: "tuyen_dung", label: "1. Tuyển dụng" },
-  { id: "kiem_soat_wo", label: "2. Kiểm soát WO" },
-  { id: "ke_hoach_5g", label: "3. Kế hoạch 5G" },
-  { id: "giam_phat_sla", label: "4. Giảm phạt SLA" },
-  { id: "di_doi_ngam_hoa", label: "5. Di dời – ngầm hóa" },
-  { id: "cung_co", label: "6. Củng cố" },
-  { id: "ban_hang", label: "7. Bán hàng" },
-  { id: "cldv_co_dinh", label: "8. Cải thiện CLDV cố định" },
-  { id: "ql_tai_san", label: "9. QL Tài sản" },
-  { id: "xang_dau", label: "10. Xăng dầu" },
-];
-const CATEGORY_LABELS = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label]));
-
-const CATEGORY_HINTS = {
-  tuyen_dung: "Giao nhiệm vụ tuyển dụng bổ sung nhân sự cho tổ trưởng, mục tiêu Tổng số line/Số "
-    + "nhân sự < 1350. NS mới giao Tổ trưởng có trách nhiệm kèm cặp, hướng dẫn làm cùng (FT dây "
-    + "máy); Đội trưởng kèm FT nhà trạm.",
-  kiem_soat_wo: "Sử dụng tool kiểm soát: manage-wo.pages.dev — kiểm soát từng nhóm WO theo từng FT.",
-  ke_hoach_5g: "Sửa sợi, tích hợp SRT5G, lắp tủ nguồn, Minishelter, tích hợp phát sóng trạm 5G.",
-  giam_phat_sla: "Tiếp xúc KH rời mạng, thu hồi thiết bị, ưu tiên xử lý các WO quá hạn có nguy cơ phạt SLA.",
-  di_doi_ngam_hoa: "Báo cáo lại đề xuất di dời Trạm/Cáp, phối hợp chính quyền bó cáp cần triển khai trong tháng.",
-  cung_co: "Bó cáp, thay tủ ong/tủ bay, sơn lại tủ, củng cố trạm đạt chuẩn.",
-  ban_hang: "Thống nhất kế hoạch bán hàng trong tháng: Năng lượng, Xây dựng, FTTH, 8 dự án Chung "
-    + "cư được giao quản lý toàn diện.",
-  cldv_co_dinh: "Cài Tammi, Port kém, Home-wifi kém, Swap ONT 2BT, sự cố lặp, đề xuất kéo tủ, "
-    + "củng cố TB nhà trọ.",
-  ql_tai_san: "Tổ chức kiểm kê kết hợp WO MR, xử lý chênh lệch tài sản, trạm hủy/di dời.",
-  xang_dau: "Kiểm soát đề xuất - phê duyệt xăng dầu qua app cBusiness360, tổ chức đổ dầu dự phòng "
-    + "UCTT đủ định mức cho các trạm cố định.",
-};
+// Đầu việc KHÔNG còn khai báo cứng ở đây nữa: danh sách lấy từ
+// /api/admin/tech-tasks/categories (bảng tech_categories). Trước đây cùng một
+// danh sách bị chép ở cả hai phía nên thêm đầu việc phải sửa code hai nơi và
+// rất dễ lệch với phần Tiến độ.
 
 const STATUS_LABELS = { todo: "Chưa bắt đầu", doing: "Đang thực hiện", done: "Hoàn thành", overdue: "Quá hạn" };
 const STATUS_TAG = { todo: "tag-grey", doing: "tag-amber", done: "tag-green", overdue: "tag-red" };
@@ -51,8 +23,8 @@ function StatusTag({ task }) {
   return <span className={`tag ${STATUS_TAG[s] || "tag-grey"}`}>{STATUS_LABELS[s] || s}</span>;
 }
 
-const blankTask = () => ({
-  category: CATEGORIES[0].id, title: "", description: "", assignee: "", target: "",
+const blankTask = (categories) => ({
+  category: categories?.[0]?.id || "", title: "", description: "", assignee: "", target: "",
   due_at: "", status: "todo", link_url: "", note: "",
 });
 
@@ -77,6 +49,18 @@ function TaskListTab() {
   const [fCategory, setFCategory] = useState("");
   const [fStatus, setFStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [assignees, setAssignees] = useState([]);
+  const [newCat, setNewCat] = useState(null);   // tên đầu việc đang thêm, null = không mở ô
+
+  const catLabels = useMemo(
+    () => Object.fromEntries(categories.map((c) => [c.id, c.label])), [categories]);
+  const catHint = useMemo(
+    () => categories.find((c) => c.id === form?.category)?.hint || "", [categories, form?.category]);
+
+  const loadCategories = () => api.get("/api/admin/tech-tasks/categories")
+    .then((x) => setCategories(Array.isArray(x) ? x : []))
+    .catch((e) => setErr(e.message));
 
   const load = () => {
     const params = new URLSearchParams();
@@ -91,6 +75,23 @@ function TaskListTab() {
 
   useEffect(() => { load(); }, [fCategory, fStatus]);
   useEffect(() => { loadSummary(); }, [rows.length]);
+  useEffect(() => {
+    loadCategories();
+    api.get("/api/admin/tech-tasks/assignees")
+      .then((x) => setAssignees(Array.isArray(x) ? x : [])).catch(() => {});
+  }, []);
+
+  /** Thêm đầu việc mới ngay trong form giao việc, rồi chọn luôn đầu việc đó. */
+  const themDauViec = async () => {
+    const label = (newCat || "").trim();
+    if (!label) { setNewCat(null); return; }
+    try {
+      const c = await api.post("/api/admin/tech-tasks/categories", { label });
+      await loadCategories();
+      setForm((f) => (f ? { ...f, category: c.id } : f));
+      setNewCat(null); setErr("");
+    } catch (e) { setErr(e.message); }
+  };
 
   const save = async () => {
     try {
@@ -136,17 +137,17 @@ function TaskListTab() {
       <div className="card flex justify-between items-center" style={{ flexWrap: "wrap", gap: 10 }}>
         <div>
           <b>Công việc mảng kỹ thuật</b>
-          <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>Giao và theo dõi tiến độ 10 đầu việc lớn.</p>
+          <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>Giao và theo dõi tiến độ {categories.length} đầu việc.</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn btn-sm" onClick={() => { load(); loadSummary(); }}><RefreshCw size={14} />Tải lại</button>
+          <button className="btn btn-sm" onClick={() => { load(); loadSummary(); loadCategories(); }}><RefreshCw size={14} />Tải lại</button>
           <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>
-          <button className="btn btn-red btn-sm" onClick={() => setForm(blankTask())}><Plus size={14} />Giao việc mới</button>
+          <button className="btn btn-red btn-sm" onClick={() => setForm(blankTask(categories))}><Plus size={14} />Giao việc mới</button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {CATEGORIES.map((c) => {
+        {categories.map((c) => {
           const s = summary.find((x) => x.category === c.id) || { total: 0, overdue: 0 };
           const on = fCategory === c.id;
           return (
@@ -166,7 +167,7 @@ function TaskListTab() {
         <input className="inp" style={{ maxWidth: 280 }} placeholder="🔎 Tìm theo nội dung / phụ trách…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select className="inp" style={{ maxWidth: 240 }} value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
           <option value="">Mọi đầu việc</option>
-          {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
         <select className="inp" style={{ maxWidth: 180 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option value="">Mọi trạng thái</option>
@@ -180,9 +181,24 @@ function TaskListTab() {
         <Card title={form.id ? "Cập nhật công việc" : "Giao việc mới"}>
           <div className="grid md:grid-cols-2 gap-3">
             <Field label="Đầu việc">
-              <select className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
+              {newCat === null ? (
+                <div className="flex gap-2">
+                  <select className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+                    {!form.category && <option value="">— Chọn đầu việc —</option>}
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-sm" title="Thêm đầu việc mới"
+                    onClick={() => setNewCat("")}><Plus size={14} /></button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input className="inp" autoFocus placeholder="Tên đầu việc mới, vd: 11. An toàn thông tin"
+                    value={newCat} onChange={(e) => setNewCat(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(); } }} />
+                  <button type="button" className="btn btn-red btn-sm" onClick={themDauViec}>Thêm</button>
+                  <button type="button" className="btn btn-sm" onClick={() => setNewCat(null)}>Hủy</button>
+                </div>
+              )}
             </Field>
             <Field label="Trạng thái">
               <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
@@ -190,15 +206,27 @@ function TaskListTab() {
               </select>
             </Field>
           </div>
-          {CATEGORY_HINTS[form.category] && (
+          {catHint && (
             <p className="muted" style={{ fontSize: 12, marginTop: 6, background: "#FAF9F9", padding: "8px 10px", borderRadius: 8 }}>
-              Gợi ý phạm vi: {CATEGORY_HINTS[form.category]}
+              Gợi ý phạm vi: {catHint}
             </p>
           )}
           <div style={{ marginTop: 12 }}>{field("Nội dung công việc", "title")}</div>
           <Field label="Mô tả chi tiết"><textarea className="inp" rows="2" value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
           <div className="grid md:grid-cols-2 gap-3">
-            {field("Người/tổ phụ trách", "assignee")}
+            <Field label="Người/tổ phụ trách">
+              {/* Gõ để lọc, chọn từ danh sách nhân viên và tài khoản đã có; vẫn
+                  cho gõ tự do tên tổ/đội chưa lập hồ sơ. */}
+              <input className="inp" list="ds-phu-trach" placeholder="Chọn hoặc gõ tên…"
+                value={form.assignee || ""} onChange={(e) => setForm({ ...form, assignee: e.target.value })} />
+              <datalist id="ds-phu-trach">
+                {assignees.map((a) => (
+                  <option key={a.name} value={a.name}>
+                    {[a.role, a.dept, a.nguon].filter(Boolean).join(" · ")}
+                  </option>
+                ))}
+              </datalist>
+            </Field>
             {field("Mục tiêu / chỉ tiêu", "target")}
             {field("Hạn xử lý", "due_at", "date")}
             {field("Link công cụ liên quan (nếu có)", "link_url")}
@@ -218,7 +246,7 @@ function TaskListTab() {
             <tbody>
               {filteredRows.map((x) => (
                 <tr key={x.id}>
-                  <td className="muted" style={{ fontSize: 12.5 }}>{CATEGORY_LABELS[x.category] || x.category}</td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{catLabels[x.category] || x.category_label || x.category}</td>
                   <td>
                     <b>{x.title}</b>
                     {x.link_url && <a href={x.link_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}><ExternalLink size={12} /></a>}
@@ -268,13 +296,33 @@ function ProgressTab() {
   const [ftRows, setFtRows] = useState([]);
   const [ftForm, setFtForm] = useState(null);
 
+  const [newItemCat, setNewItemCat] = useState(null);  // đầu việc đang thêm hạng mục
+  const [newItem, setNewItem] = useState("");
+  const [assignees, setAssignees] = useState([]);
+
+  const loadItems = () => api.get("/api/admin/progress/items")
+    .then((x) => setItemGroups(Array.isArray(x) ? x : [])).catch((e) => setErr(e.message));
+
+  /** Thêm hạng mục định lượng cho đúng đầu việc đang đứng. */
+  const themHangMuc = async (category) => {
+    const label = (newItem || "").trim();
+    if (!label) { setNewItemCat(null); return; }
+    try {
+      await api.post("/api/admin/progress/items", { category, label });
+      setNewItemCat(null); setNewItem(""); setErr("");
+      loadItems(); loadSummary();
+    } catch (e) { setErr(e.message); }
+  };
+
   useEffect(() => {
     api.get("/api/admin/progress/periods").then((x) => {
       const list = Array.isArray(x) ? x : [];
       setPeriods(list);
       if (list.length) setPeriod(list[0]);
     }).catch(() => {});
-    api.get("/api/admin/progress/items").then((x) => setItemGroups(Array.isArray(x) ? x : [])).catch((e) => setErr(e.message));
+    loadItems();
+    api.get("/api/admin/tech-tasks/assignees")
+      .then((x) => setAssignees(Array.isArray(x) ? x : [])).catch(() => {});
   }, []);
 
   const loadSummary = () => {
@@ -385,7 +433,26 @@ function ProgressTab() {
         <>
           {itemGroups.map((g) => (
             <div key={g.category}>
-              <p className="eyebrow-grey" style={{ margin: "10px 0 8px" }}>{g.category_label}</p>
+              <div className="flex items-center gap-2" style={{ margin: "10px 0 8px" }}>
+                <p className="eyebrow-grey">{g.category_label}</p>
+                {newItemCat === g.category ? (
+                  <>
+                    <input className="inp" style={{ maxWidth: 260 }} autoFocus placeholder="Tên hạng mục mới…"
+                      value={newItem} onChange={(e) => setNewItem(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themHangMuc(g.category); } }} />
+                    <button className="btn btn-red btn-sm" onClick={() => themHangMuc(g.category)}>Thêm</button>
+                    <button className="btn btn-sm" onClick={() => { setNewItemCat(null); setNewItem(""); }}>Hủy</button>
+                  </>
+                ) : (
+                  <button className="btn btn-sm" title={`Thêm hạng mục cho ${g.category_label}`}
+                    onClick={() => { setNewItemCat(g.category); setNewItem(""); }}><Plus size={13} /></button>
+                )}
+              </div>
+              {!g.items.length && (
+                <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  Đầu việc này chưa khai báo hạng mục định lượng — bấm ＋ để thêm.
+                </p>
+              )}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {g.items.map((it) => {
                   const s = summary.find((x) => x.category === g.category && x.item === it.id)
@@ -480,7 +547,17 @@ function ProgressTab() {
             {ftForm && (
               <div className="card" style={{ padding: 12, marginBottom: 12 }}>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <Field label="Tên FT"><input className="inp" value={ftForm.ft_name} onChange={(e) => setFtForm({ ...ftForm, ft_name: e.target.value })} /></Field>
+                  <Field label="Tên FT">
+                    <input className="inp" list="ds-phu-trach-ft" placeholder="Chọn hoặc gõ tên…"
+                      value={ftForm.ft_name} onChange={(e) => setFtForm({ ...ftForm, ft_name: e.target.value })} />
+                    <datalist id="ds-phu-trach-ft">
+                      {assignees.map((a) => (
+                        <option key={a.name} value={a.name}>
+                          {[a.role, a.dept].filter(Boolean).join(" · ")}
+                        </option>
+                      ))}
+                    </datalist>
+                  </Field>
                   {numField(ftForm, setFtForm, "Kế hoạch", "plan_qty")}
                   {numField(ftForm, setFtForm, "Thực hiện", "done_qty")}
                   <Field label="Ghi chú"><input className="inp" value={ftForm.note || ""} onChange={(e) => setFtForm({ ...ftForm, note: e.target.value })} /></Field>

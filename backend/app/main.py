@@ -184,6 +184,17 @@ def on_startup():
         seed_if_empty()
     chay("Nạp dữ liệu mẫu", buoc_seed)
 
+    # Nạp danh mục đầu việc/hạng mục tiến độ mảng kỹ thuật nếu bảng còn trống.
+    def buoc_dau_viec():
+        from .database import SessionLocal
+        from .techtasks import ensure_seeded
+        db = SessionLocal()
+        try:
+            ensure_seeded(db)
+        finally:
+            db.close()
+    chay("Nạp danh mục đầu việc kỹ thuật", buoc_dau_viec)
+
     # Tạo tài khoản quản trị. Đây là bước quan trọng nhất: hỏng thì không ai
     # đăng nhập được, nên ghi rõ vào danh sách lỗi.
     def buoc_tai_khoan():

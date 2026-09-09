@@ -793,38 +793,46 @@ import re as _re
 # Nhãn hiển thị của đầu việc có số thứ tự đứng trước (vd "3. Kế hoạch 5G") để
 # xếp đúng thứ tự ở menu — bỏ số thứ tự này khi tra ngược, để người dùng gõ
 # "Kế hoạch 5G" (không cần gõ "3. ") vẫn nhận diện đúng.
-_CATEGORY_LABEL_TO_CODE = {
-    _re.sub(r"^\d+\.\s*", "", label).strip().casefold(): code for code, label in tt.CATEGORIES
-}
-_ITEM_LABEL_TO_CODE = {label.strip().casefold(): code for code, label in tt.PROGRESS_ITEM_LABELS.items()}
-
-
-def _chuan_hoa_dau_viec(raw: str) -> str:
+def _chuan_hoa_dau_viec(raw: str, db) -> str:
+    """Nhận mã đầu việc hoặc tên hiển thị ('Kế hoạch 5G', không cần gõ '3. ')."""
     ma = (raw or "").strip().lower()
-    if ma in tt.CATEGORY_IDS:
+    if ma in tt.category_ids(db):
         return ma
-    return _CATEGORY_LABEL_TO_CODE.get(_re.sub(r"^\d+\.\s*", "", (raw or "").strip()).casefold(), ma)
+    tra_nguoc = {
+        _re.sub(r"^\d+\.\s*", "", label).strip().casefold(): code
+        for code, label in tt.category_labels(db).items()
+    }
+    return tra_nguoc.get(_re.sub(r"^\d+\.\s*", "", (raw or "").strip()).casefold(), ma)
 
 
-def _chuan_hoa_hang_muc(raw: str) -> str:
+def _chuan_hoa_hang_muc(raw: str, db) -> str:
+    nhan = tt.item_labels(db)
     ma = (raw or "").strip().lower()
-    if ma in tt.PROGRESS_ITEM_LABELS:
+    if ma in nhan:
         return ma
-    return _ITEM_LABEL_TO_CODE.get((raw or "").strip().casefold(), ma)
+    tra_nguoc = {label.strip().casefold(): code for code, label in nhan.items()}
+    return tra_nguoc.get((raw or "").strip().casefold(), ma)
 
 
 def _check_progress(row, db, models, auth):
-    category = _chuan_hoa_dau_viec(row.get("dau_viec"))
-    if category not in tt.PROGRESS_ITEMS:
+    tt.ensure_seeded(db)
+    cat_labels = tt.category_labels(db)
+    item_labels = tt.item_labels(db)
+    item_cat = tt.item_category(db)
+    co_hang_muc = sorted({c for c in item_cat.values()})
+
+    category = _chuan_hoa_dau_viec(row.get("dau_viec"), db)
+    if category not in co_hang_muc:
         raise ImportError_(
             f"Đầu việc “{row.get('dau_viec')}” không hợp lệ hoặc chưa có hạng mục định lượng. "
-            "Chỉ nhận: " + ", ".join(f"{c} ({tt.CATEGORY_LABELS[c]})" for c in tt.PROGRESS_ITEMS)
+            "Chỉ nhận: " + ", ".join(f"{c} ({cat_labels.get(c, c)})" for c in co_hang_muc)
         )
-    item = _chuan_hoa_hang_muc(row.get("hang_muc"))
-    if item not in tt.PROGRESS_ITEM_LABELS or tt.PROGRESS_ITEM_CATEGORY.get(item) != category:
+    item = _chuan_hoa_hang_muc(row.get("hang_muc"), db)
+    if item not in item_labels or item_cat.get(item) != category:
+        hop_le = [(c, l) for c, l in item_labels.items() if item_cat.get(c) == category]
         raise ImportError_(
             f"Hạng mục “{row.get('hang_muc')}” không hợp lệ hoặc không thuộc đầu việc đã chọn. "
-            "Chỉ nhận: " + ", ".join(f"{c} ({l})" for c, l in tt.PROGRESS_ITEMS.get(category, []))
+            "Chỉ nhận: " + ", ".join(f"{c} ({l})" for c, l in hop_le)
         )
 
     period = _clean(row.get("ky"))
