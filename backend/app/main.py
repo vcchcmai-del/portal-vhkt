@@ -446,9 +446,9 @@ def _cong_duoc_theo_tinh(rows) -> bool:
     for r in rows:
         theo_ky.setdefault(r.period, []).append(r)
     for nhom in theo_ky.values():
-        tong = [r for r in nhom if (r.unit_name or "").strip() == DON_VI_TOAN_CHI_NHANH]
-        le = [r for r in nhom if (r.unit_name or "").strip() != DON_VI_TOAN_CHI_NHANH
-              and (r.unit_name or "").strip()]
+        tong = [r for r in nhom if province_codes.la_toan_chi_nhanh(r.unit_name)]
+        le = [r for r in nhom if (r.unit_name or "").strip()
+              and not province_codes.la_toan_chi_nhanh(r.unit_name)]
         if not tong or not le:
             continue
         cong = sum(r.value or 0 for r in le)
@@ -478,7 +478,7 @@ def _gia_tri_toan_chi_nhanh(rows):
         nhom = theo_ky.get(ky)
         if not nhom:
             return None
-        tong = [r for r in nhom if (r.unit_name or "").strip() == DON_VI_TOAN_CHI_NHANH]
+        tong = [r for r in nhom if province_codes.la_toan_chi_nhanh(r.unit_name)]
         if tong:
             return sum(r.value or 0 for r in tong)
         chung = [r for r in nhom if not (r.unit_name or "").strip()]
@@ -781,7 +781,8 @@ def _bu_dong_tong_chi_nhanh(rows):
     dựng mức tổng cho bảng rời mạng theo huyện. Các dòng theo tỉnh vẫn giữ
     nguyên: người đọc cần thấy cả hai mức.
     """
-    labels_tong = {r["chi_tieu"] for r in rows if r.get("don_vi") == DON_VI_TOAN_CHI_NHANH}
+    labels_tong = {r["chi_tieu"] for r in rows
+                   if province_codes.la_toan_chi_nhanh(r.get("don_vi"))}
     if not labels_tong:
         return rows
 
@@ -794,7 +795,7 @@ def _bu_dong_tong_chi_nhanh(rows):
         for r in cua_label:
             theo_ky.setdefault(r["ky"], []).append(r)
         for ky, nhom in theo_ky.items():
-            if any(r.get("don_vi") == DON_VI_TOAN_CHI_NHANH for r in nhom):
+            if any(province_codes.la_toan_chi_nhanh(r.get("don_vi")) for r in nhom):
                 continue
             gia_tri = [r.get("gia_tri") for r in nhom
                        if r.get("gia_tri") is not None and r.get("don_vi")]

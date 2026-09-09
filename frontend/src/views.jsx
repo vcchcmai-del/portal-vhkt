@@ -165,6 +165,16 @@ function SchedRow({ s }) {
  * chiếu. Chỉ tiêu chưa có logic đánh giá (doanh thu, tiền phạt tháng...) vẫn
  * hiện ghi chú/mục tiêu cũ như trước.
  */
+/**
+ * Đơn vị viết sau con số: phần trăm viết dính ("0,93%"), đơn vị đo khác thì
+ * cách một khoảng ("161 triệu đ"). Trước đây hai ô chỉ số làm hai kiểu nên
+ * trang chủ vừa có "161triệu đ" vừa có "72,80 %".
+ */
+function hauToDonVi(donVi) {
+  if (!donVi) return "";
+  return donVi === "%" ? "%" : ` ${donVi}`;
+}
+
 function ChiSoGhiChu({ s }) {
   if (!s.ky_nhan) return s.ghi_chu ? <p className="cnct-stat-sub">{s.ghi_chu}</p> : (s.muc_tieu ? <p className="cnct-stat-sub">{s.muc_tieu}</p> : null);
   const the = { fontSize: 10.5, padding: "2px 7px" };
@@ -208,7 +218,7 @@ export function HomeView({ onGo, onOpenNews, config }) {
           <section key={s.ma} className={`cnct-kpi-card ${s.mau || "green"}`}>
             <div className="cnct-kpi-icon"><StatIcon ma={s.ma} size={26} /></div>
             <div className="cnct-kpi-label">{s.nhan}</div>
-            <div className="cnct-kpi-value">{s.gia_tri}{s.don_vi}</div>
+            <div className="cnct-kpi-value">{s.gia_tri}{hauToDonVi(s.don_vi)}</div>
             {s.tien_do != null ? (
               <>
                 <div className="cnct-kpi-sub">{s.muc_tieu}</div>
@@ -233,7 +243,7 @@ export function HomeView({ onGo, onOpenNews, config }) {
           <section key={s.ma} className={`cnct-stat ${s.mau || ""}`}>
             <div className="cnct-stat-icon"><StatIcon ma={s.ma} size={22} /></div>
             <div className="cnct-stat-label">{s.nhan}</div>
-            <div className="cnct-stat-value">{s.gia_tri}{s.don_vi ? ` ${s.don_vi}` : ""}</div>
+            <div className="cnct-stat-value">{s.gia_tri}{hauToDonVi(s.don_vi)}</div>
             <ChiSoGhiChu s={s} />
           </section>
         ))}

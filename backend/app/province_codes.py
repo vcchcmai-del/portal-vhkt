@@ -55,10 +55,22 @@ def ma_don_vi(ten: str):
     return BANG_TRA.get((ten or "").strip().casefold())
 
 
+def la_toan_chi_nhanh(don_vi) -> bool:
+    """Dòng này có phải mức toàn chi nhánh không, viết kiểu gì cũng nhận.
+
+    Chỗ ĐỌC số liệu phải nhận cả tên cũ ("Toàn chi nhánh", "TP.HCM") lẫn mã mới:
+    dữ liệu và mã nguồn không đổi cùng lúc — bản chạy thật có thể còn tên cũ cho
+    tới lần triển khai kế tiếp, hoặc ngược lại dữ liệu đã chuẩn hoá mà bản đang
+    chạy còn cũ. So đúng một chuỗi thì kỳ nào lệch pha là cộng dồn cả dòng tổng
+    lẫn dòng tỉnh, ra số gấp đôi.
+    """
+    return ma_don_vi(don_vi) == TOAN_CHI_NHANH
+
+
 def khoa_sap_xep(don_vi):
     """Khoá sắp xếp cho một tên đơn vị — dùng chung ở mọi bảng, biểu đồ và tệp xuất."""
-    ten = don_vi or ""
-    return (THU_TU.get(ten, 50), ten)
+    ten = (don_vi or "").strip()
+    return (THU_TU.get(ma_don_vi(ten) or ten, 50), ten)
 
 
 def apply_once() -> None:
