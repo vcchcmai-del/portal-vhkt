@@ -414,6 +414,29 @@ def _so_lieu_moi_nhat(db: Session, board: str, label: str):
     return row.value if row else None
 
 
+# Nhãn đơn vị dành cho dòng TỔNG toàn chi nhánh, nhập song song với các dòng
+# theo tỉnh của cùng chỉ tiêu (Cell*h tổng, Số sự cố truyền dẫn, Ksub*min...).
+DON_VI_TOAN_CHI_NHANH = "Toàn chi nhánh"
+
+
+def _cong_mot_ky(rows):
+    """Giá trị của một chỉ tiêu trong MỘT kỳ, từ các dòng đã lọc sẵn.
+
+    Có kỳ chỉ nhập tổng toàn chi nhánh, có kỳ nhập chi tiết theo tỉnh, và có kỳ
+    nhập cả hai. Cộng tuốt thì kỳ nào có cả hai sẽ bị tính gấp đôi — nên khi đã
+    có dòng "Toàn chi nhánh" thì lấy đúng dòng đó và bỏ qua dòng theo tỉnh, chỉ
+    cộng dồn khi kỳ đó thuần chi tiết theo tỉnh/đơn vị.
+
+    Cùng quy ước với _uu_tien_tong_chi_nhanh (dùng cho biểu đồ Dashboard); hàm
+    này làm việc trên bản ghi Metric, hàm kia trên dict đã làm phẳng. Sửa quy
+    ước thì phải sửa cả hai.
+    """
+    tong_san = [r for r in rows if (r.unit_name or "").strip() == DON_VI_TOAN_CHI_NHANH]
+    if tong_san:
+        return sum(r.value or 0 for r in tong_san)
+    return sum(r.value or 0 for r in rows)
+
+
 def _tong_ky_gan_nhat(db: Session, board: str, label: str):
     """Tổng giá trị của một chỉ tiêu tại kỳ gần nhất — dùng khi chỉ tiêu có
     nhiều dòng theo tỉnh/đơn vị trong cùng một kỳ (khác _so_lieu_moi_nhat, vốn
@@ -426,7 +449,7 @@ def _tong_ky_gan_nhat(db: Session, board: str, label: str):
     if not rows:
         return None
     ky_gan_nhat = max(r.period for r in rows)
-    return sum(r.value or 0 for r in rows if r.period == ky_gan_nhat)
+    return _cong_mot_ky([r for r in rows if r.period == ky_gan_nhat])
 
 
 def _so_viet(v, le=0):
@@ -462,7 +485,7 @@ def _chi_so_home(db: Session, board: str, chi_tieu: str, huong_tot: str = "thap"
     if not rows:
         return None
     ky = max(r.period for r in rows)
-    gia_tri = sum(r.value or 0 for r in rows if r.period == ky)
+    gia_tri = _cong_mot_ky([r for r in rows if r.period == ky])
 
     target_rows = (
         db.query(models.Metric)
@@ -470,7 +493,7 @@ def _chi_so_home(db: Session, board: str, chi_tieu: str, huong_tot: str = "thap"
                 models.Metric.period == ky)
         .all()
     )
-    target = sum(r.value or 0 for r in target_rows) if target_rows else None
+    target = _cong_mot_ky(target_rows) if target_rows else None
     so_target = ((gia_tri - target) / target * 100) if target else None
     dat = None if so_target is None else (so_target <= 0 if huong_tot == "thap" else so_target >= 0)
 
@@ -480,7 +503,7 @@ def _chi_so_home(db: Session, board: str, chi_tieu: str, huong_tot: str = "thap"
         .filter(models.Metric.board == board, models.Metric.label == chi_tieu, models.Metric.period == ky_truoc)
         .all()
     ) if ky_truoc else []
-    cung_ky_gt = sum(r.value or 0 for r in cung_ky_rows) if cung_ky_rows else None
+    cung_ky_gt = _cong_mot_ky(cung_ky_rows) if cung_ky_rows else None
     chenh_ck = ((gia_tri - cung_ky_gt) / cung_ky_gt * 100) if cung_ky_gt else None
     cai_thien = None if chenh_ck is None else (chenh_ck <= 0 if huong_tot == "thap" else chenh_ck >= 0)
 
