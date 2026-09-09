@@ -45,7 +45,7 @@ export function AdminCsdlHtImport() {
       <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
         Chọn đúng file "TỔNG HỢP" (sheet "TỔNG HỢP" + "DM Mã cụm"). Nhập lại sẽ{" "}
         <b>ghi đè toàn bộ</b> dữ liệu của đúng kỳ báo cáo đọc được trong file, không ảnh hưởng các kỳ khác.
-        Sau khi ghi, vào trang "CSDL HTML" ở menu chính để tra cứu.
+        Sau khi ghi, vào trang "CSDL hạ tầng" ở menu chính để tra cứu.
       </p>
       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <input type="file" accept=".xlsx" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setErr(""); }} />
