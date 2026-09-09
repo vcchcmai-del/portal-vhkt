@@ -185,6 +185,13 @@ def on_startup():
     chay("Nạp dữ liệu mẫu", buoc_seed)
 
     # Nạp danh mục đầu việc/hạng mục tiến độ mảng kỹ thuật nếu bảng còn trống.
+    # Apply the August 2026 KPI report once. The database marker prevents a
+    # later restart from overwriting figures entered by administrators.
+    def buoc_kpi_t8_2026():
+        from .dashboard_kpi_2026_08 import apply_once
+        apply_once()
+    chay("Cập nhật KPI báo cáo T8/2026", buoc_kpi_t8_2026)
+
     def buoc_dau_viec():
         from .database import SessionLocal
         from .techtasks import ensure_seeded
@@ -701,6 +708,36 @@ def _flat_metric_rows(board: str, db: Session):
     return [{"ky": r.period, "chi_tieu": r.label, "don_vi": r.unit_name, "gia_tri": r.value} for r in rows], "database"
 
 
+def _uu_tien_tong_chi_nhanh(rows):
+    """Use report-level branch totals when they are available.
+
+    The older source stores several indicators by province. A later report can
+    provide an authoritative branch total instead. For an indicator with such
+    a total, return that total for the reported periods and derive earlier
+    periods by summing the provincial rows, so yearly comparisons remain valid
+    without displaying the same KPI twice.
+    """
+    labels_tong = {r["chi_tieu"] for r in rows if r.get("don_vi") == "Toàn chi nhánh"}
+    if not labels_tong:
+        return rows
+
+    result = [r for r in rows if r["chi_tieu"] not in labels_tong]
+    for label in labels_tong:
+        by_period = {}
+        for row in (r for r in rows if r["chi_tieu"] == label):
+            by_period.setdefault(row["ky"], []).append(row)
+        for period, group in by_period.items():
+            total = next((r for r in group if r.get("don_vi") == "Toàn chi nhánh"), None)
+            if total is not None:
+                result.append(total)
+                continue
+            values = [r.get("gia_tri") for r in group if r.get("gia_tri") is not None]
+            if values:
+                result.append({"ky": period, "chi_tieu": label,
+                               "don_vi": "Toàn chi nhánh", "gia_tri": sum(values)})
+    return result
+
+
 def _ky_cung_ky_truoc(ky: str):
     """"2026-08" -> "2025-08". Không đúng dạng YYYY-MM thì trả None."""
     try:
@@ -864,6 +901,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
                 "compare": [], "canh_bao_trung_tam": [], "nhom_phat": None, "dia_ban": None}
 
     rows, nguon = _flat_metric_rows(board, db)
+    rows = _uu_tien_tong_chi_nhanh(rows)
     if not rows:
         raise HTTPException(404, f"Chưa có số liệu cho bảng {board}.")
 
@@ -882,6 +920,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
     # Khoá đối chiếu gồm cả đơn vị/trung tâm — 2 trung tâm nhập cùng chỉ tiêu,
     # cùng kỳ thì KHÔNG được đè lên nhau (đây là lỗi đã sửa so với bản đầu).
     target_rows, _ = _flat_metric_rows(f"{board}_TARGET", db)
+    target_rows = _uu_tien_tong_chi_nhanh(target_rows)
     target_map = {(r["ky"], r["chi_tieu"], r["don_vi"]): r["gia_tri"] for r in target_rows}
     # Target không kèm đơn vị (đơn_vi=None) coi là target chung áp cho mọi trung tâm.
     target_chung = {(r["ky"], r["chi_tieu"]): r["gia_tri"] for r in target_rows if not r["don_vi"]}
