@@ -252,9 +252,26 @@ ROLES = {"admin", "editor", "staff"}
 # khớp với dòng năm trước (đơn_vị=trống), khiến "Cùng kỳ trước" luôn trống dù
 # đã có đủ số liệu — đã xảy ra thật với VHKT, xem nhật ký sửa lỗi liên quan.
 BOARDS_KHONG_THEO_TINH = {
-    "KPI", "KPI_TARGET", "WO", "WO_TARGET", "NETWORK", "NETWORK_TARGET",
-    "VHKT", "VHKT_TARGET", "KPI_VTT", "KPI_VTNET", "HIRE",
+    "KPI", "KPI_TARGET", "WO", "WO_TARGET", "KPI_VTT", "KPI_VTNET", "HIRE",
 }
+
+# XLCS và TKM có báo cáo tách theo tỉnh/trung tâm (bảng KPI Bình Dương, Vũng
+# Tàu), và biểu đồ VHKT vốn đã dựng cảnh báo "trung tâm chưa đạt" từ cột đơn_vị
+# — nên hai bảng này CHO PHÉP điền đơn_vị, nhưng chỉ nhận đúng tên địa bàn.
+# Vẫn chặn thói quen điền đơn vị đo (%, Dịch vụ...) vốn là nguyên nhân làm
+# bảng đối chiếu cùng kỳ năm trước bị trống.
+BOARDS_THEO_DIA_BAN = {"NETWORK", "NETWORK_TARGET", "VHKT", "VHKT_TARGET"}
+DIA_BAN_CO_DINH = {"toàn chi nhánh", "bình dương", "bà rịa - vũng tàu"}
+
+
+def _dia_ban_hop_le(db, models) -> set:
+    """Tên/mã địa bàn nhận được: 2 tỉnh, tổng chi nhánh và danh mục trung tâm."""
+    ds = set(DIA_BAN_CO_DINH)
+    for c in db.query(models.InfraCenterCode).all():
+        for v in (c.code, c.name, c.old_code, c.old_name):
+            if v and v.strip():
+                ds.add(v.strip().casefold())
+    return ds
 MAX_ROWS = 2000
 
 
@@ -764,6 +781,11 @@ def _check_metric(row, db, models, auth):
             f"đang có “{unit}”. Điền nhầm cột này sẽ làm bảng đối chiếu cùng kỳ năm "
             f"trước bị trống dù đã có đủ số liệu (đơn vị của dòng năm trước là trống, "
             f"không khớp)."
+        )
+    if unit and board in BOARDS_THEO_DIA_BAN and unit.casefold() not in _dia_ban_hop_le(db, models):
+        raise ImportError_(
+            f"Bảng “{board}” chỉ nhận đơn_vị là địa bàn (để trống, “Toàn chi nhánh”, "
+            f"tên tỉnh hoặc tên/mã trung tâm) — đang có “{unit}”."
         )
     existing = (db.query(models.Metric)
                 .filter(models.Metric.board == board, models.Metric.period == period,

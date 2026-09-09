@@ -978,7 +978,11 @@ def dashboard(board: str, db: Session = Depends(get_db)):
         for r in compare:
             if r["ky"] != ky_moi_nhat or not r["don_vi"] or r["target"] is None:
                 continue
-            if r["thuc_hien"] is not None and r["thuc_hien"] > r["target"]:
+            # KPI TKM là loại "càng cao càng tốt" (xem huong_tot="cao" của các ô
+            # trang chủ), nên chưa đạt là khi THẤP HƠN chỉ tiêu. Trước đây so
+            # ngược dấu, nhưng bảng VHKT chưa có dòng nào theo đơn vị nên danh
+            # sách luôn rỗng và lỗi không lộ ra.
+            if r["thuc_hien"] is not None and r["thuc_hien"] < r["target"]:
                 theo_trung_tam.setdefault(r["don_vi"], []).append(r["chi_tieu"])
         canh_bao_trung_tam = [
             {"trung_tam": tt, "chi_tieu_khong_dat": chi_tieu_list, "ky": ky_moi_nhat}
