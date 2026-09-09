@@ -816,6 +816,20 @@ class _NhuMetric:
         self.value = r.get("gia_tri")
 
 
+_khoa_don_vi = province_codes.khoa_sap_xep
+
+
+def _sap_xep_doi_chieu(compare):
+    """Kỳ mới nhất trước, trong mỗi kỳ thì theo chỉ tiêu rồi đến thứ tự đơn vị.
+
+    Sắp hai lượt vì Python sắp xếp ổn định: lượt sau giữ nguyên thứ tự lượt
+    trước với các dòng bằng nhau, nên không cần nghĩ cách đảo chiều chuỗi kỳ.
+    """
+    ra = sorted(compare, key=lambda r: ((r["chi_tieu"] or ""), _khoa_don_vi(r["don_vi"])))
+    ra.sort(key=lambda r: r["ky"] or "", reverse=True)
+    return ra
+
+
 def _ky_cung_ky_truoc(ky: str):
     """"2026-08" -> "2025-08". Không đúng dạng YYYY-MM thì trả None."""
     try:
@@ -1046,8 +1060,11 @@ def dashboard(board: str, db: Session = Depends(get_db)):
         ]
 
     return {
-        "board": board, "series": list(buckets.values()), "source": nguon,
-        "compare": compare, "canh_bao_trung_tam": canh_bao_trung_tam,
+        "board": board,
+        "series": sorted(buckets.values(), key=lambda b: _khoa_don_vi(b["name"])),
+        "source": nguon,
+        "compare": _sap_xep_doi_chieu(compare),
+        "canh_bao_trung_tam": canh_bao_trung_tam,
         "nhom_phat": _nhom_phat_vtt_vtnet(db) if board == "KPI" else None,
         "dia_ban": _ro_mang_dia_ban(db) if board == "WO" else None,
     }

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from . import models
+from . import models, province_codes
 from . import trash as trash_module
 from .alerts import (
     ALERT_RULES, get_notify_settings, notify_alert, send_telegram_message,
@@ -1343,6 +1343,10 @@ def export_metrics_csv(board: Optional[str] = None, nhom: Optional[str] = None,
         q = q.filter(models.Metric.board.in_(ma_bang))
         ten_tep = f"so-lieu-dashboard-{_slug(nhom) if nhom else '-'.join(ma_bang)}"
     rows = q.order_by(models.Metric.board, models.Metric.period).all()
+    # Cùng thứ tự đơn vị với Dashboard (VCC HCM -> BDG -> VTU) để tệp xuất ra đọc
+    # được ngay, không phải sắp lại tay mỗi lần làm báo cáo.
+    rows.sort(key=lambda m: (m.board, m.period, m.label or "",
+                             province_codes.khoa_sap_xep(m.unit_name)))
     header = ["bang", "ky", "chi_tieu", "don_vi", "gia_tri"]
     vals = [[bi.BOARD_LABELS.get(m.board, m.board), m.period, m.label, m.unit_name or "", m.value] for m in rows]
     return _csv_response(header, vals, f"{ten_tep}-{models.today()}.csv")

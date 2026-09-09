@@ -1164,7 +1164,7 @@ function BieuDoTheoTinh({ compare, chiTieu, nam }) {
   const rows = rowsCa.filter((c) => !nam || nam === "all" || c.ky?.startsWith(nam));
   if (!rows.length) return <Empty title="Chưa có số liệu đối chiếu." hint="Cần nhập số liệu kèm tên tỉnh/đơn vị." />;
 
-  const donVi = [...new Set(rows.map((r) => r.don_vi))].sort();
+  const donVi = [...new Set(rows.map((r) => r.don_vi))].sort(sapXepDonVi);
   const ky = [...new Set(rows.map((r) => r.ky))].sort();
   const laTatCaNam = nam === "all";
   const data = ky.map((k) => {
@@ -1440,7 +1440,7 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
   if (!rows.length) return null;
 
   const nhom = chiTieuList
-    .map((ct) => ({ chiTieu: ct, hang: rows.filter((r) => r.chi_tieu === ct).sort((a, b) => (a.don_vi || "").localeCompare(b.don_vi || "")) }))
+    .map((ct) => ({ chiTieu: ct, hang: rows.filter((r) => r.chi_tieu === ct).sort((a, b) => sapXepDonVi(a.don_vi, b.don_vi)) }))
     .filter((n) => n.hang.length > 0);
 
   // Kết quả luôn là chênh lệch thô (Thực hiện - Target)/Target: dương nghĩa là
@@ -1477,13 +1477,13 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
                   {j === 0 && <td className="mono" rowSpan={n.hang.length} style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>}
                   {j === 0 && <td rowSpan={n.hang.length} style={{ fontWeight: 700 }}>{nhanChiTieu?.[n.chiTieu] || n.chiTieu}</td>}
                   <td className="muted">{r.don_vi || "Chi nhánh"}</td>
-                  <td className="mono muted" style={{ textAlign: "right" }}>{r.target?.toLocaleString("vi-VN") ?? "—"}</td>
-                  <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{r.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
+                  <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(r.target, n.chiTieu)}</td>
+                  <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{soTheoChiTieu(r.thuc_hien, n.chiTieu)}</td>
                   <td className="mono" style={{ textAlign: "right" }}>{kq != null ? `${kq > 0 ? "+" : ""}${kq.toFixed(2)}%` : "—"}</td>
                   <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt" : "Chưa đạt"}</span>}</td>
                   <td className="mono" style={{ textAlign: "right" }}>{kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}</td>
                   <td>{totCungKy == null ? <span className="muted">—</span> : <span className={`tag ${totCungKy ? "tag-green" : "tag-amber"}`}>{nhanCungKy}</span>}</td>
-                  <td className="mono muted" style={{ textAlign: "right" }}>{r.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
+                  <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(r.cung_ky_truoc, n.chiTieu)}</td>
                 </tr>
               );
             }))}
@@ -1515,6 +1515,37 @@ const THU_TU_CHI_TIEU = {
   "KPI TKM 3H": 3, "KPI TKM 10H": 4, "KPI TKM 24H": 5,
 };
 
+// Thứ tự đơn vị dùng chung cho MỌI bảng và biểu đồ: mức toàn chi nhánh trước,
+// rồi Bình Dương, rồi Vũng Tàu — đúng thứ tự đọc của báo cáo gốc. Trung tâm và
+// huyện không nằm trong danh sách thì xếp sau, theo vần.
+const THU_TU_DON_VI = { "VCC HCM": 0, BDG: 1, VTU: 2 };
+export function sapXepDonVi(a, b) {
+  const x = THU_TU_DON_VI[a] ?? 50, y = THU_TU_DON_VI[b] ?? 50;
+  return x - y || (a || "").localeCompare(b || "", "vi");
+}
+
+/**
+ * Đơn vị đo của từng chỉ tiêu, để bảng hiện "0,93%" chứ không phải "0,93" trơ
+ * trọi — người đọc không phải tự nhớ chỉ tiêu nào là tỷ lệ, chỉ tiêu nào là số
+ * tuyệt đối. Chỉ tiêu chưa liệt kê mà tên bắt đầu bằng "Tỷ lệ" thì mặc định là %.
+ */
+const DON_VI_CHI_TIEU = {
+  "Tiền phạt/Doanh thu": "%", "Tỷ lệ phạt/DT VTT": "%", "Tỷ lệ phạt/DT VTNet": "%",
+  "XLCS 3h": "%", "XLCS 10h": "%", "XLCS 24h": "%",
+  "KPI TKM 3H": "%", "KPI TKM 10H": "%", "KPI TKM 24H": "%",
+  "Doanh thu": "triệu đ",
+};
+export function donViChiTieu(ct) {
+  return DON_VI_CHI_TIEU[ct] ?? (/^Tỷ lệ/.test(ct || "") ? "%" : "");
+}
+/** Số kèm đơn vị, hoặc "—" khi chưa có số. */
+export function soTheoChiTieu(v, ct) {
+  if (v == null) return "—";
+  const dv = donViChiTieu(ct);
+  const so = v.toLocaleString("vi-VN");
+  return dv === "%" ? `${so}%` : dv ? `${so} ${dv}` : so;
+}
+
 export function DashView() {
   const [ma, setMa] = useState("KPI");
   const [duLieu, setDuLieu] = useState(null);
@@ -1539,7 +1570,13 @@ export function DashView() {
   }, [ma]);
 
   const coSoThat = duLieu?.series?.length > 0;
-  const series = coSoThat ? duLieu.series : board.mau;
+  const seriesGoc = coSoThat ? duLieu.series : board.mau;
+  // Chuỗi có thể là theo đơn vị (VCC HCM/BDG/VTU) hoặc theo kỳ. Theo đơn vị thì
+  // xếp đúng thứ tự báo cáo; theo kỳ thì kỳ mới nhất lên trước như cũ.
+  const laChuoiTheoDonVi = seriesGoc.some((r) => THU_TU_DON_VI[r.name] != null);
+  const series = laChuoiTheoDonVi
+    ? [...seriesGoc].sort((a, b) => sapXepDonVi(a.name, b.name))
+    : seriesGoc;
   const nguon = coSoThat ? (duLieu.source || "database") : "mau";
   const laKPI = ma === "KPI";     // Tiền phạt & Doanh thu — biểu đồ xu thế Target/năm nay/năm trước
   const laWO = ma === "WO";       // Rời mạng CĐBR — 2 biểu đồ: cột (số lượng) + xu thế (tỷ lệ)
@@ -1708,7 +1745,9 @@ export function DashView() {
                 {(() => {
                   const hang = [...duLieu.compare].sort((a, b) =>
                     b.ky.localeCompare(a.ky)
-                    || (THU_TU_CHI_TIEU[a.chi_tieu] ?? 99) - (THU_TU_CHI_TIEU[b.chi_tieu] ?? 99));
+                    || (THU_TU_CHI_TIEU[a.chi_tieu] ?? 99) - (THU_TU_CHI_TIEU[b.chi_tieu] ?? 99)
+                    || (a.chi_tieu || "").localeCompare(b.chi_tieu || "", "vi")
+                    || sapXepDonVi(a.don_vi, b.don_vi));
                   // Gộp ô "Kỳ" cho các dòng liên tiếp cùng tháng (rowSpan), giống mẫu báo cáo.
                   const soDongTheoKy = hang.map((c, i) => i === 0 || hang[i - 1].ky !== c.ky ? hang.filter((x) => x.ky === c.ky).length : 0);
                   return hang.map((c, i) => {
@@ -1726,13 +1765,13 @@ export function DashView() {
                       )}
                       <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
                       <td className="muted">{c.don_vi || "—"}</td>
-                      <td className="mono" style={{ textAlign: "right" }}>{c.thuc_hien?.toLocaleString("vi-VN") ?? "—"}</td>
-                      <td className="mono muted" style={{ textAlign: "right" }}>{c.target?.toLocaleString("vi-VN") ?? "—"}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{soTheoChiTieu(c.thuc_hien, c.chi_tieu)}</td>
+                      <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(c.target, c.chi_tieu)}</td>
                       <td className="mono" style={{ textAlign: "right", color: dat == null ? undefined : (dat ? "#0A7A50" : RED) }}>
                         {soTarget != null ? `${soTarget > 0 ? "+" : ""}${soTarget.toFixed(2)}%` : "—"}
                       </td>
                       <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt target" : "Không đạt target"}</span>}</td>
-                      <td className="mono muted" style={{ textAlign: "right" }}>{c.cung_ky_truoc?.toLocaleString("vi-VN") ?? "—"}</td>
+                      <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(c.cung_ky_truoc, c.chi_tieu)}</td>
                       <td className="mono" style={{ textAlign: "right", color: totCungKy == null ? undefined : (totCungKy ? "#0A7A50" : RED) }}>
                         {kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}
                       </td>
@@ -1758,12 +1797,15 @@ export function DashView() {
                 </tr>
               </thead>
               <tbody>
-                {[...series].sort((a, b) => String(b.name).localeCompare(String(a.name))).map((r, i) => (
+                {(laChuoiTheoDonVi
+                  ? series
+                  : [...series].sort((a, b) => String(b.name).localeCompare(String(a.name)))
+                ).map((r, i) => (
                   <tr key={i}>
                     <td style={{ fontWeight: 600 }}>{r.name}</td>
                     {cotSoLieu(series).map((c) => (
                       <td key={c} className="mono" style={{ textAlign: "right" }}>
-                        {r[c] != null ? Number(r[c]).toLocaleString("vi-VN") : "—"}
+                        {r[c] != null ? soTheoChiTieu(Number(r[c]), c) : "—"}
                       </td>
                     ))}
                   </tr>

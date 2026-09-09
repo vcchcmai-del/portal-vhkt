@@ -45,9 +45,20 @@ BANG_TRA = {
 BANG_THEO_HUYEN = {"WO_HUYEN_BD", "WO_HUYEN_BRVT"}
 
 
+# Thứ tự đọc của báo cáo gốc: mức toàn chi nhánh trước, rồi Bình Dương, rồi Vũng
+# Tàu. Trung tâm và huyện không nằm trong danh sách nên xếp sau, theo vần.
+THU_TU = {TOAN_CHI_NHANH: 0, BINH_DUONG: 1, VUNG_TAU: 2}
+
+
 def ma_don_vi(ten: str):
     """Tên đơn vị bất kỳ -> mã, hoặc None nếu không phải đơn vị theo tỉnh."""
     return BANG_TRA.get((ten or "").strip().casefold())
+
+
+def khoa_sap_xep(don_vi):
+    """Khoá sắp xếp cho một tên đơn vị — dùng chung ở mọi bảng, biểu đồ và tệp xuất."""
+    ten = don_vi or ""
+    return (THU_TU.get(ten, 50), ten)
 
 
 def apply_once() -> None:

@@ -14,7 +14,19 @@ const SHIFT_COLORS = {
 };
 const WEEKDAY_SHORT = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 const WEEKDAY_FULL = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
-const MAIN_BLOCKS = ["PVHKT", "Lái xe", "Chỉ Huy"];
+/**
+ * Ba đầu mục trực chung của chi nhánh, mỗi cái một tab riêng.
+ *
+ * `khoi` là tên khối trong file kiểu cũ (đã tách sẵn thành từng khối); `ma` là
+ * mã ca trong file lịch trực chi nhánh (chỉ chia theo trung tâm, người trực chỉ
+ * huy nằm lẫn trong trung tâm của mình). Đọc được cả hai kiểu file.
+ */
+const KHOI_CHINH = [
+  { id: "CH", khoi: "Chỉ Huy", ma: "CH", nhan: "Trực chỉ huy", icon: Building2 },
+  { id: "TB", khoi: "PVHKT", ma: "TB", nhan: "Trực ban PVHKT", icon: Users },
+  { id: "LX", khoi: "Lái xe", ma: "LX", nhan: "Trực lái xe", icon: Phone },
+];
+const MAIN_BLOCKS = KHOI_CHINH.map((k) => k.khoi);
 
 function ShiftBadge({ code }) {
   if (!code) return null;
@@ -78,7 +90,7 @@ export function DutyRosterView() {
   const [err, setErr] = useState("");
   const [date, setDate] = useState("");
   const [view, setView] = useState("day");     // "day" | "grid"
-  const [subTab, setSubTab] = useState("main"); // "main" | center name
+  const [subTab, setSubTab] = useState(KHOI_CHINH[0].id); // id khối chung | mã trung tâm
   const [gridBlock, setGridBlock] = useState(0);
   const [search, setSearch] = useState("");
 
@@ -125,13 +137,14 @@ export function DutyRosterView() {
    * lẫn trong trung tâm của mình, phân biệt bằng mã ca. Không có khối riêng thì
    * gom theo mã ca để thẻ không bị trống.
    */
-  const trucTheoDauMuc = (tenKhoiRieng, maCa) => {
-    const khoiRieng = findBlock(tenKhoiRieng);
+  const trucTheoDauMuc = (k) => {
+    const khoiRieng = findBlock(k.khoi);
     if (khoiRieng) return onDutyThatDay(khoiRieng);
     return data.blocks.flatMap((b) => b.people
-      .filter((p) => p.shifts[dayIdx] === maCa && personMatches(p, term))
+      .filter((p) => p.shifts[dayIdx] === k.ma && personMatches(p, term))
       .map((p) => ({ ...p, group: tenKhoi(b.name) })));
   };
+  const khoiChinhDangXem = KHOI_CHINH.find((k) => k.id === subTab);
 
   return (
     <div className="flex flex-col gap-4">
@@ -166,9 +179,13 @@ export function DutyRosterView() {
       {view === "day" && (
         <>
           <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
-            <button className={`btn btn-sm ${subTab === "main" ? "btn-red" : ""}`} onClick={() => setSubTab("main")}>
-              PVHKT / Lái xe / Chỉ huy
-            </button>
+            {KHOI_CHINH.map((k) => (
+              <button key={k.id} className={`btn btn-sm ${subTab === k.id ? "btn-red" : ""}`}
+                onClick={() => setSubTab(k.id)}>
+                {k.nhan.replace("Trực ", "")}
+              </button>
+            ))}
+            <span style={{ width: 1, background: "#E5E0E1", margin: "0 2px" }} />
             {centerBlocks.map((b) => (
               <button key={b.name} className={`btn btn-sm ${subTab === b.name ? "btn-red" : ""}`}
                 title={tenKhoi(b.name)} onClick={() => setSubTab(b.name)}>
@@ -177,21 +194,13 @@ export function DutyRosterView() {
             ))}
           </div>
 
-          {subTab === "main" ? (
-            <>
-              <Card title="Trực ban PVHKT" icon={Users} pad={false}>
-                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
-                  <RosterTable people={trucTheoDauMuc("PVHKT", "TB")} hienDonVi={!findBlock("PVHKT")} /></div>
-              </Card>
-              <Card title="Trực chỉ huy" icon={Building2} pad={false}>
-                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
-                  <RosterTable people={trucTheoDauMuc("Chỉ Huy", "CH")} hienDonVi={!findBlock("Chỉ Huy")} /></div>
-              </Card>
-              <Card title="Trực lái xe" icon={Phone} pad={false}>
-                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
-                  <RosterTable people={trucTheoDauMuc("Lái xe", "LX")} hienDonVi={!findBlock("Lái xe")} /></div>
-              </Card>
-            </>
+          {khoiChinhDangXem ? (
+            <Card title={khoiChinhDangXem.nhan} icon={khoiChinhDangXem.icon} pad={false}>
+              <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
+                <RosterTable people={trucTheoDauMuc(khoiChinhDangXem)}
+                  hienDonVi={!findBlock(khoiChinhDangXem.khoi)} />
+              </div>
+            </Card>
           ) : (
             <Card title={tenKhoi(subTab)} icon={Building2} pad={false}>
               <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}><RosterTable people={onDutyThatDay(findBlock(subTab))} /></div>
