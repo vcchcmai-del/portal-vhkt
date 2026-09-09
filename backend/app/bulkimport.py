@@ -24,6 +24,7 @@ import json
 
 from .sheets import _clean, _key, _parse_date, _to_number
 from .operations import _next_code
+from . import techtasks as tt
 
 # ------------------------------------------------------------ Khai báo nhóm
 
@@ -180,6 +181,21 @@ KINDS = {
             ("da_xac_nhan", "Đã xác nhận: co / khong", False, "khong"),
         ],
         "note": "Trùng cả ngày trực, ca trực và người bàn giao thì cập nhật, không tạo thêm bản ghi mới.",
+    },
+    "progress": {
+        "label": "Tiến độ hạng mục kỹ thuật",
+        "key_col": None,
+        "columns": [
+            ("dau_viec", "Đầu việc (mã hoặc tên, vd: Kế hoạch 5G)", True, "Kế hoạch 5G"),
+            ("hang_muc", "Hạng mục con (mã hoặc tên, vd: Tích hợp SRT5G)", True, "Tích hợp SRT5G"),
+            ("ky", "Kỳ báo cáo", True, "2026-09"),
+            ("trung_tam", "Trung tâm", True, "Thới Hòa"),
+            ("ke_hoach", "Kế hoạch", True, "21"),
+            ("thuc_hien", "Thực hiện", True, "4"),
+            ("ghi_chu", "Ghi chú", False, ""),
+        ],
+        "note": "Trùng cả đầu việc, hạng mục, kỳ và trung tâm thì cập nhật, không tạo dòng mới. "
+                "Đây là dòng TỔNG theo trung tâm — muốn chia theo từng FT thì vào phần Tiến độ trên web.",
     },
 }
 
@@ -770,6 +786,85 @@ def _apply_metric(item, db, models, auth):
         db.add(m)
 
 
+# ------------------------------------------------------------ progress (tiến độ hạng mục)
+
+import re as _re
+
+# Nhãn hiển thị của đầu việc có số thứ tự đứng trước (vd "3. Kế hoạch 5G") để
+# xếp đúng thứ tự ở menu — bỏ số thứ tự này khi tra ngược, để người dùng gõ
+# "Kế hoạch 5G" (không cần gõ "3. ") vẫn nhận diện đúng.
+_CATEGORY_LABEL_TO_CODE = {
+    _re.sub(r"^\d+\.\s*", "", label).strip().casefold(): code for code, label in tt.CATEGORIES
+}
+_ITEM_LABEL_TO_CODE = {label.strip().casefold(): code for code, label in tt.PROGRESS_ITEM_LABELS.items()}
+
+
+def _chuan_hoa_dau_viec(raw: str) -> str:
+    ma = (raw or "").strip().lower()
+    if ma in tt.CATEGORY_IDS:
+        return ma
+    return _CATEGORY_LABEL_TO_CODE.get(_re.sub(r"^\d+\.\s*", "", (raw or "").strip()).casefold(), ma)
+
+
+def _chuan_hoa_hang_muc(raw: str) -> str:
+    ma = (raw or "").strip().lower()
+    if ma in tt.PROGRESS_ITEM_LABELS:
+        return ma
+    return _ITEM_LABEL_TO_CODE.get((raw or "").strip().casefold(), ma)
+
+
+def _check_progress(row, db, models, auth):
+    category = _chuan_hoa_dau_viec(row.get("dau_viec"))
+    if category not in tt.PROGRESS_ITEMS:
+        raise ImportError_(
+            f"Đầu việc “{row.get('dau_viec')}” không hợp lệ hoặc chưa có hạng mục định lượng. "
+            "Chỉ nhận: " + ", ".join(f"{c} ({tt.CATEGORY_LABELS[c]})" for c in tt.PROGRESS_ITEMS)
+        )
+    item = _chuan_hoa_hang_muc(row.get("hang_muc"))
+    if item not in tt.PROGRESS_ITEM_LABELS or tt.PROGRESS_ITEM_CATEGORY.get(item) != category:
+        raise ImportError_(
+            f"Hạng mục “{row.get('hang_muc')}” không hợp lệ hoặc không thuộc đầu việc đã chọn. "
+            "Chỉ nhận: " + ", ".join(f"{c} ({l})" for c, l in tt.PROGRESS_ITEMS.get(category, []))
+        )
+
+    period = _clean(row.get("ky"))
+    center = _clean(row.get("trung_tam"))
+    if not period:
+        raise ImportError_("Thiếu kỳ báo cáo.")
+    if not center:
+        raise ImportError_("Thiếu trung tâm.")
+
+    plan_qty = _to_number(row.get("ke_hoach"))
+    if plan_qty is None:
+        raise ImportError_(f"Kế hoạch “{row.get('ke_hoach')}” không phải là số.")
+    done_qty = _to_number(row.get("thuc_hien"))
+    if done_qty is None:
+        raise ImportError_(f"Thực hiện “{row.get('thuc_hien')}” không phải là số.")
+
+    existing = (db.query(models.ProgressEntry)
+                .filter(models.ProgressEntry.category == category, models.ProgressEntry.item == item,
+                        models.ProgressEntry.period == period, models.ProgressEntry.center == center,
+                        models.ProgressEntry.ft_name.is_(None)).first())
+    return {
+        "_key": f"{category}|{item}|{period}|{center}",
+        "_action": "update" if existing else "create",
+        "id": existing.id if existing else None,
+        "category": category, "item": item, "period": period, "center": center,
+        "plan_qty": plan_qty, "done_qty": done_qty, "note": _clean(row.get("ghi_chu")),
+    }
+
+
+def _apply_progress(item, db, models, auth):
+    p = db.get(models.ProgressEntry, item["id"]) if item["id"] else models.ProgressEntry()
+    p.category = item["category"]; p.item = item["item"]; p.period = item["period"]; p.center = item["center"]
+    p.ft_name = None
+    p.plan_qty = item["plan_qty"]; p.done_qty = item["done_qty"]
+    if item["note"]:
+        p.note = item["note"]
+    if not item["id"]:
+        db.add(p)
+
+
 def _parse_datetime_optional(raw):
     """Nhận dd/mm/yyyy hoặc dd/mm/yyyy hh:mm. Trả về datetime hoặc None nếu để trống."""
     raw = _clean(raw)
@@ -994,4 +1089,5 @@ HANDLERS = {
     "incidents": {"check": _check_incident, "apply": _apply_incident},
     "work_orders": {"check": _check_wo, "apply": _apply_wo},
     "handovers": {"check": _check_handover, "apply": _apply_handover},
+    "progress": {"check": _check_progress, "apply": _apply_progress},
 }

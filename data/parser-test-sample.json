@@ -1,0 +1,322 @@
+[
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Tổng số vị trí",
+    "value": 328.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Số vị trí 5G",
+    "value": 142.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Trạm 4G",
+    "value": 319.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "4G độc lập",
+    "value": 114.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Số vị trí 3G",
+    "value": 29.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "3G độc lập",
+    "value": 1.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Số vị trí 2G",
+    "value": 109.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "2G độc lập",
+    "value": 0.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Tổng trạm tỉnh",
+    "value": 1.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Tổng trạm huyện",
+    "value": 2.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Trạm Macro",
+    "value": 231.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Trạm Inbuiding",
+    "value": 15.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Trạm RRU",
+    "value": 29.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Smallcell",
+    "value": 9.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "AP-độc lập",
+    "value": 5.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Truyền dẫn độc lập",
+    "value": 0.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Femto cell",
+    "value": 36.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Trạm XHH",
+    "value": 199.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Tổng số tủ",
+    "value": 265.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "CHP",
+    "label": "Trạm UT1 phục vụ kinh doanh",
+    "value": 22.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Tổng số vị trí",
+    "value": 437.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Số vị trí 5G",
+    "value": 175.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Trạm 4G",
+    "value": 428.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "4G độc lập",
+    "value": 200.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Số vị trí 3G",
+    "value": 6.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "3G độc lập",
+    "value": 0.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Số vị trí 2G",
+    "value": 150.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "2G độc lập",
+    "value": 0.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Tổng trạm tỉnh",
+    "value": 1.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Tổng trạm huyện",
+    "value": 3.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Trạm Macro",
+    "value": 290.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Trạm Inbuiding",
+    "value": 21.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Trạm RRU",
+    "value": 33.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Smallcell",
+    "value": 37.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "AP-độc lập",
+    "value": 1.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Truyền dẫn độc lập",
+    "value": 0.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Femto cell",
+    "value": 51.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Trạm XHH",
+    "value": 293.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Tổng số tủ",
+    "value": 395.0,
+    "value_text": null
+  },
+  {
+    "period": "2026-08",
+    "section": "I. Vô tuyến",
+    "center": "TGO",
+    "label": "Trạm UT1 phục vụ kinh doanh",
+    "value": 65.0,
+    "value_text": null
+  }
+]

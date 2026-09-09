@@ -31,6 +31,8 @@ MODULES = [
     ("operations", "Sự cố, WO & bàn giao ca"),
     ("duty_roster", "Lịch trực vận hành"),
     ("recruitment", "Quản lý tuyển dụng"),
+    ("tech_tasks", "Quản lý công việc kỹ thuật"),
+    ("csdl_ht", "Tra cứu CSDL hạ tầng"),
 ]
 MODULE_IDS = {m[0] for m in MODULES}
 MODULE_LABELS = dict(MODULES)
@@ -50,6 +52,7 @@ IMPORT_KIND_MODULE = {
     "incidents": "operations",
     "work_orders": "operations",
     "handovers": "operations",
+    "progress": "tech_tasks",
 }
 
 # Các module chỉ quản trị viên mới vào được, không gán riêng cho tài khoản khác.

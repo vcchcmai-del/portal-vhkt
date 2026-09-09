@@ -15,7 +15,7 @@ const TOKEN_KEY = "portal_token";
  * Máy chủ báo số nhỏ hơn nghĩa là backend chưa được triển khai lại,
  * một số chức năng sẽ báo "Not Found" khi bấm vào.
  */
-export const API_CAN_CO = 9;
+export const API_CAN_CO = 12;
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);

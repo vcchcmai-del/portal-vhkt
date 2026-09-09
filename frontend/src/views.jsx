@@ -185,15 +185,6 @@ export function HomeView({ onGo, onOpenNews, config }) {
   const [home] = useRemote("/api/home", null);
   const [APPS] = useRemote("/api/apps", D.APPS_FB, adapt.apps);
 
-  const banners = home?.banners?.length ? home.banners : D.BANNERS_FB;
-  const [slide, setSlide] = useState(0);
-  useEffect(() => {
-    if (banners.length < 2) return;
-    const t = setInterval(() => setSlide((i) => (i + 1) % banners.length), 6000);
-    return () => clearInterval(t);
-  }, [banners.length]);
-  const banner = banners[slide] || banners[0] || { title: "", link_url: "#" };
-
   // Chỉ số lấy từ Google Sheet nếu đã cấu hình, chưa có thì dùng số mặc định
   const stats = home?.home_stats?.length ? home.home_stats : STAT_FB;
   const soLaMau = !!home && !home.home_stats?.length;
@@ -212,50 +203,20 @@ export function HomeView({ onGo, onOpenNews, config }) {
 
   return (
     <div className="cnct-home-v2">
-      <a className="cnct-banner" href={banner.link_url || "#"} style={{ textDecoration: "none" }}>
-        <div className="cnct-banner-icon">📣</div>
-        <div className="cnct-banner-title">{banner.title}</div>
-        <div className="cnct-banner-arrow">›</div>
-      </a>
-      <div className="cnct-dots">
-        {banners.map((b, i) => (
-          <span key={b.id || i} onClick={() => setSlide(i)}
-            style={{ background: i === slide ? RED : "#d9dde4", cursor: "pointer" }} />
+      <div className="cnct-kpi-row">
+        {big.map((s) => (
+          <section key={s.ma} className={`cnct-kpi-card ${s.mau || "green"}`}>
+            <div className="cnct-kpi-icon"><StatIcon ma={s.ma} size={26} /></div>
+            <div className="cnct-kpi-label">{s.nhan}</div>
+            <div className="cnct-kpi-value">{s.gia_tri}{s.don_vi}</div>
+            {s.tien_do != null ? (
+              <>
+                <div className="cnct-kpi-sub">{s.muc_tieu}</div>
+                <div className="cnct-progress"><i style={{ width: `${num(s)}%` }} /></div>
+              </>
+            ) : <ChiSoGhiChu s={s} />}
+          </section>
         ))}
-      </div>
-
-      <div className="cnct-top-grid">
-        <section className="cnct-message">
-          <div className="cnct-message-kicker">
-            <div className="cnct-message-icon">💬</div><span>Thông điệp của Giám đốc</span>
-          </div>
-          <div className="cnct-message-line" />
-          <div className="cnct-message-text">{config.director_message}</div>
-          <div className="cnct-message-author">
-            <Avatar name={config.director_name} color={RED} size={58} photo={config.director_photo} />
-            <div>
-              <div className="cnct-author-name">{config.director_name}</div>
-              <div className="cnct-author-title">{config.director_title}</div>
-            </div>
-          </div>
-          <div className="cnct-tower" aria-hidden="true" />
-        </section>
-
-        <div className="cnct-kpi-stack">
-          {big.map((s) => (
-            <section key={s.ma} className={`cnct-kpi-card ${s.mau || "green"}`}>
-              <div className="cnct-kpi-icon"><StatIcon ma={s.ma} size={26} /></div>
-              <div className="cnct-kpi-label">{s.nhan}</div>
-              <div className="cnct-kpi-value">{s.gia_tri}{s.don_vi}</div>
-              {s.tien_do != null ? (
-                <>
-                  <div className="cnct-kpi-sub">{s.muc_tieu}</div>
-                  <div className="cnct-progress"><i style={{ width: `${num(s)}%` }} /></div>
-                </>
-              ) : <ChiSoGhiChu s={s} />}
-            </section>
-          ))}
-        </div>
       </div>
 
       {soLaMau && (

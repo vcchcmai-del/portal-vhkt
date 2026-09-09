@@ -514,3 +514,65 @@ class CenterStaffing(Base):
     banner_location = Column(String(200))                 # vị trí treo băng rôn
     note = Column(Text)
     created_at = Column(DateTime, default=now)
+
+
+class TechTask(Base):
+    """Công việc giao trong 10 đầu việc mảng kỹ thuật (Tuyển dụng, WO, 5G...)."""
+    __tablename__ = "tech_tasks"
+
+    id = Column(Integer, primary_key=True)
+    category = Column(String(40), nullable=False, index=True)   # mã đầu việc, xem CATEGORIES
+    title = Column(String(300), nullable=False)
+    description = Column(Text)
+    assignee = Column(String(160))          # Tổ trưởng/Đội trưởng/FT phụ trách — nhập tự do
+    target = Column(String(300))            # mục tiêu/chỉ tiêu, vd "Line/NS < 1350"
+    due_at = Column(Date, nullable=True)
+    status = Column(String(20), default="todo", index=True)  # todo|doing|done|overdue
+    link_url = Column(String(500))          # tool ngoài liên quan, vd manage-wo.pages.dev
+    note = Column(Text)                     # ghi chú tiến độ
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
+class InfraCenterCode(Base):
+    """Tra Mã cụm ↔ Tên trung tâm — nhập từ sheet "DM Mã cụm" của CSDL hạ tầng."""
+    __tablename__ = "infra_center_codes"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(20), unique=True, nullable=False, index=True)   # THA, TUN...
+    name = Column(String(160), nullable=False)                          # Trung tâm Thới Hòa
+    old_code = Column(String(60))
+    old_name = Column(String(160))
+
+
+class InfraStat(Base):
+    """1 dòng = 1 chỉ tiêu hạ tầng của 1 trung tâm trong 1 kỳ — flatten từ các
+    bảng con của sheet "TỔNG HỢP" trong file CSDL hạ tầng mạng lưới."""
+    __tablename__ = "infra_stats"
+
+    id = Column(Integer, primary_key=True)
+    period = Column(String(20), nullable=False, index=True)     # "2026-08"
+    section = Column(String(160), nullable=False, index=True)   # "I. Vô tuyến", "V. Cơ điện — Ắc quy"...
+    center = Column(String(20), nullable=False, index=True)     # mã cụm, hoặc "Tổng"
+    label = Column(String(300), nullable=False, index=True)     # tên chỉ tiêu, đọc thẳng từ Excel
+    value = Column(Float, nullable=True)
+    value_text = Column(String(300), nullable=True)             # dự phòng nếu ô không phải số
+
+
+class ProgressEntry(Base):
+    """Kế hoạch/Thực hiện theo hạng mục con của từng đầu việc kỹ thuật.
+    ft_name rỗng = dòng tổng theo Trung tâm (nhập Excel); có tên = dòng chi
+    tiết theo FT trong trung tâm đó (nhập tay trên web)."""
+    __tablename__ = "progress_entries"
+
+    id = Column(Integer, primary_key=True)
+    category = Column(String(40), nullable=False, index=True)   # đầu việc, vd ke_hoach_5g
+    item = Column(String(60), nullable=False, index=True)       # hạng mục con, vd srt5g
+    period = Column(String(20), nullable=False, index=True)     # kỳ báo cáo, vd 2026-09
+    center = Column(String(120), nullable=False, index=True)
+    ft_name = Column(String(160), nullable=True)
+    plan_qty = Column(Float, default=0)     # Kế hoạch
+    done_qty = Column(Float, default=0)     # Thực hiện
+    note = Column(Text)
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)

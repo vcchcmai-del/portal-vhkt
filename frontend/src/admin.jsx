@@ -20,6 +20,7 @@ import { AdminDutyRosterImport } from "./dutyroster";
 import { AdminForum } from "./forum";
 import { AdminDutyRoster, AdminHandovers, AdminOperations, AdminWorkOrders } from "./operations";
 import { AdminCandidates, AdminStaffing } from "./recruitment";
+import { AdminCsdlHtImport } from "./csdlht";
 import { GalleryPicker, ImagePicker } from "./imagepicker";
 import { Card, Check as CheckBox, Empty, Field, norm, RED, RED_DARK, SwitchRow } from "./ui";
 
@@ -1295,6 +1296,7 @@ export const ADMIN_PAGES = [
     group: "recruit", groupLabel: "Quản lý tuyển dụng", groupIcon: Briefcase },
   { id: "adm-staffing-import", label: "Nhập định biên", icon: Upload, comp: () => <AdminImport fixedKind="center_staffing" />, module: "recruitment",
     group: "recruit", groupLabel: "Quản lý tuyển dụng", groupIcon: Briefcase },
+  { id: "adm-csdl-ht-import", label: "Nhập dữ liệu CSDL hạ tầng", icon: Upload, comp: AdminCsdlHtImport, module: "csdl_ht" },
   { id: "adm-schedule", label: "Thêm thủ công", icon: CalendarClock, comp: AdminSchedule, module: "events",
     group: "schedule", groupLabel: "Lịch công tác tuần", groupIcon: CalendarClock },
   { id: "adm-schedule-import", label: "Nhập từ Excel", icon: Upload, comp: () => <AdminImport fixedKind="schedule" />, module: "events",

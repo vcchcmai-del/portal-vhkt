@@ -6,8 +6,8 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bell, BookOpen, Briefcase, CalendarClock, ChevronDown, Home, Lightbulb, LogIn, LogOut, Megaphone,
-  AlertTriangle, KeyRound, Menu, MessageSquare, PartyPopper, Phone, Rocket, Search, Settings, ShieldCheck,
+  BarChart3, Bell, BookOpen, Briefcase, CalendarClock, ChevronDown, Database, Home, Lightbulb, LogIn, LogOut, Megaphone,
+  AlertTriangle, KeyRound, ListChecks, Menu, MessageSquare, PartyPopper, Phone, Rocket, Search, Settings, ShieldCheck,
 } from "lucide-react";
 
 import { api, clearToken, getToken, getUser, useRemote } from "./api";
@@ -22,6 +22,8 @@ import {
 import { DutyRosterView } from "./dutyroster";
 import { OperationsView } from "./operations";
 import { RecruitmentView } from "./recruitment";
+import { AdminTechTasks } from "./techtasks";
+import { AdminCsdlHt } from "./csdlht";
 
 const NAV = [
   { id: "home", label: "Trang chủ", icon: Home },
@@ -33,10 +35,34 @@ const NAV = [
   { id: "recruitment", label: "Tuyển dụng", icon: Briefcase },
 ];
 
+// Các mục vẫn hiện trong menu cho mọi người thấy, nhưng nội dung chỉ xem được
+// sau khi đăng nhập — bấm vào lúc chưa đăng nhập sẽ thấy lời mời đăng nhập
+// thay vì dữ liệu thật.
+const LOGIN_REQUIRED_VIEWS = new Set(["home", "dash", "operations", "recruitment"]);
+
+// Các module có quyền riêng theo tài khoản (không phải toàn bộ nhân viên đều
+// thấy) — chèn thẳng vào menu chính ngay sau "Điều hành kỹ thuật" thay vì
+// chôn trong "Khu quản trị", để tài khoản được cấp quyền thấy ngay khi đăng
+// nhập. Mỗi mục chỉ hiện khi canViewModule(module) đúng.
+const PERMISSIONED_NAV_ITEMS = [
+  { module: "tech_tasks", id: "tech-tasks", label: "Công việc mảng kỹ thuật", icon: ListChecks },
+  { module: "csdl_ht", id: "csdl-ht", label: "CSDL HTML", icon: Database },
+];
+
+function navWithPermissionedItems(canViewModule) {
+  const extra = PERMISSIONED_NAV_ITEMS.filter((it) => canViewModule(it.module));
+  if (!extra.length) return NAV;
+  const items = NAV.slice();
+  const idx = items.findIndex((n) => n.id === "operations");
+  items.splice(idx + 1, 0, ...extra);
+  return items;
+}
+
 const PUBLIC_VIEWS = {
   apps: AppsView, docs: DocsView, dash: DashView,
   operations: OperationsView,
   recruitment: RecruitmentView, "duty-roster": DutyRosterView,
+  "tech-tasks": AdminTechTasks, "csdl-ht": AdminCsdlHt,
 };
 
 /* ============================== TÌM KIẾM TỔNG ============================== */
@@ -319,8 +345,12 @@ export default function Portal() {
   const perms = new Set((user && user.permissions) || []);
   const actionPerms = (user && user.permission_actions) || {};
   const canViewModule = (module) => (actionPerms[module] || []).includes("view") || perms.has(module);
-  const canAdmin = user && (isAdmin || Object.values(actionPerms).some((actions) => actions.includes("view")) || perms.size > 0);
   const adminPages = ADMIN_PAGES.filter((p) => (isAdmin) || (!p.adminOnly && canViewModule(p.module)));
+  // "Khu quản trị" chỉ hiện khi có ít nhất một trang quản trị thật sự xem được —
+  // tránh trường hợp tài khoản chỉ được cấp quyền module không có trang quản trị
+  // riêng (ví dụ tech_tasks, đã có lối vào riêng ở menu chính) thấy mục "Quản trị"
+  // trống rỗng, bấm vào không có gì.
+  const canAdmin = user && (isAdmin || adminPages.length > 0);
 
   // Nhiều màn hình quản trị liên quan (đánh dấu cùng "group") gom lại thành
   // một mục điều hướng duy nhất có tab con — chỉ gom trên những trang người
@@ -374,9 +404,10 @@ export default function Portal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  const navItems = navWithPermissionedItems(canViewModule);
   const adminPage = adminPages.find((p) => p.id === view);
   const adminGroup = groupedAdminNav.find((g) => g.isGroup && g.id === view);
-  const current = adminPage || adminGroup || NAV.find((n) => n.id === view) || NAV[0];
+  const current = adminPage || adminGroup || navItems.find((n) => n.id === view) || navItems[0];
   const PublicView = PUBLIC_VIEWS[view];
 
   const Rail = () => (
@@ -393,7 +424,7 @@ export default function Portal() {
       </div>
 
       <div className="flex flex-col gap-1" style={{ paddingLeft: 8 }}>
-        {NAV.map((n) => {
+        {navItems.map((n) => {
           const I = n.icon;
           return (
             <button key={n.id} className={`rail-item ${view === n.id ? "on" : ""}`} onClick={() => go(n.id)}>
@@ -567,12 +598,21 @@ export default function Portal() {
             ? (canAdmin
               ? (adminGroup ? <AdminGroupPage pages={adminGroup.pages} /> : <adminPage.comp />)
               : <Card><p style={{ fontWeight: 600 }}>Bạn cần đăng nhập bằng tài khoản quản trị để vào mục này.</p></Card>)
-            : view === "home"
-              ? <HomeView key={user ? "home-in" : "home-out"} onGo={go} config={config}
-                  onOpenNews={(id) => { setOpenNewsId(id); go("news"); }} />
-              : view === "news"
-                ? <NewsView openId={openNewsId} onOpened={() => setOpenNewsId(null)} />
-                : PublicView ? <PublicView /> : null}
+            : (LOGIN_REQUIRED_VIEWS.has(view) && !user)
+              ? (
+                <Card>
+                  <p style={{ fontWeight: 600 }}>Bạn cần đăng nhập để xem nội dung này.</p>
+                  <button className="btn btn-sm" style={{ marginTop: 12 }} onClick={() => setLogin(true)}>
+                    <LogIn size={15} /> Đăng nhập
+                  </button>
+                </Card>
+              )
+              : view === "home"
+                ? <HomeView key={user ? "home-in" : "home-out"} onGo={go} config={config}
+                    onOpenNews={(id) => { setOpenNewsId(id); go("news"); }} />
+                : view === "news"
+                  ? <NewsView openId={openNewsId} onOpened={() => setOpenNewsId(null)} />
+                  : PublicView ? <PublicView /> : null}
 
           <footer style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid #E7E3E4" }}
             className="flex items-center justify-between gap-3 flex-wrap">

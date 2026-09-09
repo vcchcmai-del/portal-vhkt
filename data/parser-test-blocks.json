@@ -1,0 +1,122 @@
+[
+  {
+    "section": "I. Vô tuyến",
+    "row": 3,
+    "header_rows": 1,
+    "columns": 20,
+    "data_rows": 14
+  },
+  {
+    "section": "I. Vô tuyến",
+    "row": 21,
+    "header_rows": 2,
+    "columns": 21,
+    "data_rows": 14
+  },
+  {
+    "section": "II: Hạ Tầng",
+    "row": 38,
+    "header_rows": 2,
+    "columns": 22,
+    "data_rows": 14
+  },
+  {
+    "section": "III. Truyền dẫn",
+    "row": 56,
+    "header_rows": 2,
+    "columns": 20,
+    "data_rows": 14
+  },
+  {
+    "section": "IV. CĐBR",
+    "row": 74,
+    "header_rows": 2,
+    "columns": 22,
+    "data_rows": 14
+  },
+  {
+    "section": "V. CƠ ĐIỆN — 1. Số lượng máy PĐ",
+    "row": 93,
+    "header_rows": 3,
+    "columns": 20,
+    "data_rows": 13
+  },
+  {
+    "section": "V. CƠ ĐIỆN — 2. Loại máy phát",
+    "row": 112,
+    "header_rows": 2,
+    "columns": 22,
+    "data_rows": 13
+  },
+  {
+    "section": "V. CƠ ĐIỆN — 3. Công suất trạm",
+    "row": 130,
+    "header_rows": 2,
+    "columns": 14,
+    "data_rows": 13
+  },
+  {
+    "section": "V. CƠ ĐIỆN — 4. Ắc quy",
+    "row": 147,
+    "header_rows": 2,
+    "columns": 13,
+    "data_rows": 13
+  },
+  {
+    "section": "IV. Tủ Nguồn",
+    "row": 167,
+    "header_rows": 1,
+    "columns": 14,
+    "data_rows": 13
+  },
+  {
+    "section": "IV. Tủ Nguồn",
+    "row": 185,
+    "header_rows": 2,
+    "columns": 15,
+    "data_rows": 14
+  },
+  {
+    "section": "VII. Thiết bị, CCDC, vật tư hiện có tại CNCT — Thống kê công dụng cụ chính Đang sử dụng",
+    "row": 203,
+    "header_rows": 1,
+    "columns": 20,
+    "data_rows": 14
+  },
+  {
+    "section": "VII. Thiết bị, CCDC, vật tư hiện có tại CNCT — Thống kê công dụng cụ chính Đang sử dụng",
+    "row": 220,
+    "header_rows": 1,
+    "columns": 0,
+    "data_rows": 0,
+    "skipped": true,
+    "skip_reason": "Cột B không phải \"Mã cụm\" (là \"2026\")."
+  },
+  {
+    "section": "VII. Thiết bị, CCDC, vật tư hiện có tại CNCT — Thống kê công dụng cụ chính Đang sử dụng",
+    "row": 240,
+    "header_rows": 1,
+    "columns": 0,
+    "data_rows": 0,
+    "skipped": true,
+    "skip_reason": "Cột B không phải \"Mã cụm\" (là \"2025\")."
+  },
+  {
+    "section": "VII. Thiết bị, CCDC, vật tư hiện có tại CNCT — Thống kê công dụng cụ chính Đang sử dụng",
+    "row": 261,
+    "header_rows": 1,
+    "columns": 0,
+    "data_rows": 0,
+    "skipped": true,
+    "skip_reason": "Cột B không phải \"Mã cụm\" (là \"2026\")."
+  },
+  {
+    "section": "VII. Thiết bị, CCDC, vật tư hiện có tại CNCT — Thống kê công dụng cụ chính Đang sử dụng",
+    "row": 281,
+    "header_rows": 1,
+    "columns": 0,
+    "data_rows": 0,
+    "skipped": true,
+    "skip_reason": "Cột B không phải \"Mã cụm\" (là \"2025\")."
+  }
+]
