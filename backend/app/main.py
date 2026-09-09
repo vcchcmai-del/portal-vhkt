@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
-from . import models
+from . import models, province_codes
 from .admin import router as admin_router
 from .dutyroster import admin_router as dutyroster_admin_router, public_router as dutyroster_router
 from .operations import admin_router as operations_admin_router, public_router as operations_router
@@ -196,6 +196,12 @@ def on_startup():
         from .center_codes import apply_once
         apply_once()
     chay("Chuẩn hoá mã trung tâm", buoc_ma_trung_tam)
+
+    # Chuẩn hoá tên đơn vị trong bảng số liệu về VCC HCM / BDG / VTU.
+    def buoc_ma_don_vi():
+        from .province_codes import apply_once
+        apply_once()
+    chay("Chuẩn hoá mã đơn vị số liệu", buoc_ma_don_vi)
 
     # Nạp danh mục đầu việc/hạng mục tiến độ mảng kỹ thuật nếu bảng còn trống.
     def buoc_dau_viec():
@@ -404,7 +410,6 @@ def home(db: Session = Depends(get_db),
              "day": p.birthday.strftime("%d/%m") if p.birthday else None}
             for p in birthdays
         ],
-        "kpi": kpi_summary(db),
     }
 
 
@@ -422,31 +427,74 @@ def _so_lieu_moi_nhat(db: Session, board: str, label: str):
 
 # Nhãn đơn vị dành cho dòng TỔNG toàn chi nhánh, nhập song song với các dòng
 # theo tỉnh của cùng chỉ tiêu (Cell*h tổng, Số sự cố truyền dẫn, Ksub*min...).
-DON_VI_TOAN_CHI_NHANH = "Toàn chi nhánh"
+DON_VI_TOAN_CHI_NHANH = province_codes.TOAN_CHI_NHANH
 
 
-def _cong_mot_ky(rows):
-    """Giá trị của một chỉ tiêu trong MỘT kỳ, từ các dòng đã lọc sẵn.
+def _cong_duoc_theo_tinh(rows) -> bool:
+    """Chỉ tiêu này cộng các tỉnh lại có ra số toàn chi nhánh không?
 
-    Có kỳ chỉ nhập tổng toàn chi nhánh, có kỳ nhập chi tiết theo tỉnh, và có kỳ
-    nhập cả hai. Cộng tuốt thì kỳ nào có cả hai sẽ bị tính gấp đôi — nên khi đã
-    có dòng "Toàn chi nhánh" thì lấy đúng dòng đó và bỏ qua dòng theo tỉnh, chỉ
-    cộng dồn khi kỳ đó thuần chi tiết theo tỉnh/đơn vị.
+    Không phải chỉ tiêu nào cũng cộng được. Cell*h và số sự cố là phép cộng thật
+    (T07/2026: 60,40 + 23,46 = 83,86 đúng bằng dòng tổng). Ksub*min thì không —
+    nó là bình quân có trọng số theo thuê bao, cộng hai tỉnh của T01/2026 ra
+    67,36 trong khi báo cáo ghi 40,36. Các chỉ tiêu %  (XLCS, TKM) lại càng không.
 
-    Cùng quy ước với _uu_tien_tong_chi_nhanh (dùng cho biểu đồ Dashboard); hàm
-    này làm việc trên bản ghi Metric, hàm kia trên dict đã làm phẳng. Sửa quy
-    ước thì phải sửa cả hai.
+    Nên lấy chính những kỳ đã có đủ cả dòng tổng lẫn dòng tỉnh làm bằng chứng,
+    thay vì đoán theo tên chỉ tiêu. Chưa có bằng chứng thì cho là cộng được, giữ
+    nguyên nếp cũ với các chỉ tiêu đếm được vốn chỉ nhập theo tỉnh.
     """
-    tong_san = [r for r in rows if (r.unit_name or "").strip() == DON_VI_TOAN_CHI_NHANH]
-    if tong_san:
-        return sum(r.value or 0 for r in tong_san)
-    return sum(r.value or 0 for r in rows)
+    theo_ky = {}
+    for r in rows:
+        theo_ky.setdefault(r.period, []).append(r)
+    for nhom in theo_ky.values():
+        tong = [r for r in nhom if (r.unit_name or "").strip() == DON_VI_TOAN_CHI_NHANH]
+        le = [r for r in nhom if (r.unit_name or "").strip() != DON_VI_TOAN_CHI_NHANH
+              and (r.unit_name or "").strip()]
+        if not tong or not le:
+            continue
+        cong = sum(r.value or 0 for r in le)
+        moc = sum(r.value or 0 for r in tong)
+        if not moc or abs(cong - moc) / abs(moc) > 0.01:
+            return False
+    return True
+
+
+def _gia_tri_toan_chi_nhanh(rows):
+    """Dựng hàm tra "kỳ -> số của toàn chi nhánh" từ TẤT CẢ dòng của một chỉ tiêu.
+
+    Một kỳ có thể có: dòng tổng đã ghi sẵn, dòng chung không kèm đơn vị (nếp cũ
+    của các bảng tính chung toàn chi nhánh), hoặc chỉ có các dòng theo tỉnh. Cộng
+    tuốt thì kỳ nào có nhiều kiểu dòng sẽ bị tính chồng — đây từng làm ô XLCS 3H
+    ngoài trang chủ hiện 216,40% (cộng Bình Dương + Vũng Tàu + dòng chung).
+
+    Trả None khi kỳ đó chỉ có số theo tỉnh mà chỉ tiêu lại không cộng được — thà
+    thiếu số còn hơn hiện số sai.
+    """
+    theo_ky = {}
+    for r in rows:
+        theo_ky.setdefault(r.period, []).append(r)
+    cong_duoc = _cong_duoc_theo_tinh(rows)
+
+    def _cua_ky(ky):
+        nhom = theo_ky.get(ky)
+        if not nhom:
+            return None
+        tong = [r for r in nhom if (r.unit_name or "").strip() == DON_VI_TOAN_CHI_NHANH]
+        if tong:
+            return sum(r.value or 0 for r in tong)
+        chung = [r for r in nhom if not (r.unit_name or "").strip()]
+        if chung:
+            return sum(r.value or 0 for r in chung)
+        if len(nhom) == 1:
+            return nhom[0].value
+        return sum(r.value or 0 for r in nhom) if cong_duoc else None
+
+    return _cua_ky
 
 
 def _tong_ky_gan_nhat(db: Session, board: str, label: str):
-    """Tổng giá trị của một chỉ tiêu tại kỳ gần nhất — dùng khi chỉ tiêu có
-    nhiều dòng theo tỉnh/đơn vị trong cùng một kỳ (khác _so_lieu_moi_nhat, vốn
-    chỉ đúng khi mỗi kỳ có đúng một dòng)."""
+    """Giá trị toàn chi nhánh của một chỉ tiêu tại kỳ gần nhất — dùng khi chỉ
+    tiêu có nhiều dòng theo tỉnh/đơn vị trong cùng một kỳ (khác _so_lieu_moi_nhat,
+    vốn chỉ đúng khi mỗi kỳ có đúng một dòng)."""
     rows = (
         db.query(models.Metric)
         .filter(models.Metric.board == board, models.Metric.label == label)
@@ -454,8 +502,7 @@ def _tong_ky_gan_nhat(db: Session, board: str, label: str):
     )
     if not rows:
         return None
-    ky_gan_nhat = max(r.period for r in rows)
-    return _cong_mot_ky([r for r in rows if r.period == ky_gan_nhat])
+    return _gia_tri_toan_chi_nhanh(rows)(max(r.period for r in rows))
 
 
 def _so_viet(v, le=0):
@@ -490,26 +537,30 @@ def _chi_so_home(db: Session, board: str, chi_tieu: str, huong_tot: str = "thap"
     )
     if not rows:
         return None
-    ky = max(r.period for r in rows)
-    gia_tri = _cong_mot_ky([r for r in rows if r.period == ky])
+    tra = _gia_tri_toan_chi_nhanh(rows)
+    # Kỳ mới nhất có thể chưa có số ở mức toàn chi nhánh (mới nhập theo tỉnh, mà
+    # chỉ tiêu lại không cộng được). Lùi dần về kỳ gần nhất còn số dùng được, để
+    # ô chỉ số vẫn hiện chứ không biến mất.
+    ky = gia_tri = None
+    for k in sorted({r.period for r in rows}, reverse=True):
+        gia_tri = tra(k)
+        if gia_tri is not None:
+            ky = k
+            break
+    if ky is None:
+        return None
 
     target_rows = (
         db.query(models.Metric)
-        .filter(models.Metric.board == f"{board}_TARGET", models.Metric.label == chi_tieu,
-                models.Metric.period == ky)
+        .filter(models.Metric.board == f"{board}_TARGET", models.Metric.label == chi_tieu)
         .all()
     )
-    target = _cong_mot_ky(target_rows) if target_rows else None
+    target = _gia_tri_toan_chi_nhanh(target_rows)(ky) if target_rows else None
     so_target = ((gia_tri - target) / target * 100) if target else None
     dat = None if so_target is None else (so_target <= 0 if huong_tot == "thap" else so_target >= 0)
 
     ky_truoc = _ky_cung_ky_truoc(ky)
-    cung_ky_rows = (
-        db.query(models.Metric)
-        .filter(models.Metric.board == board, models.Metric.label == chi_tieu, models.Metric.period == ky_truoc)
-        .all()
-    ) if ky_truoc else []
-    cung_ky_gt = _cong_mot_ky(cung_ky_rows) if cung_ky_rows else None
+    cung_ky_gt = tra(ky_truoc) if ky_truoc else None
     chenh_ck = ((gia_tri - cung_ky_gt) / cung_ky_gt * 100) if cung_ky_gt else None
     cai_thien = None if chenh_ck is None else (chenh_ck <= 0 if huong_tot == "thap" else chenh_ck >= 0)
 
@@ -579,26 +630,6 @@ def tinh_chi_so_trang_chu(db: Session):
     _them("kpi_tkm_10h", "KPI TKM 10H", "VHKT", "KPI TKM 10H", "%", "blue", huong_tot="cao")
     _them("kpi_tkm_24h", "KPI TKM 24H", "VHKT", "KPI TKM 24H", "%", "blue", huong_tot="cao")
 
-    return out
-
-
-def kpi_summary(db: Session):
-    """Bốn ô số liệu tóm tắt trên trang chủ."""
-    out = []
-    for board, label in [("KPI", "Hoàn thành KPI tháng"), ("WO", "WO hoàn thành"),
-                         ("PAKH", "PAKH đã xử lý"), ("NETWORK", "Chất lượng mạng")]:
-        rows = (
-            db.query(models.Metric)
-            .filter(models.Metric.board == board, models.Metric.label.in_(["Thực hiện", "Hoàn thành", "Đã xử lý", "Availability"]))
-            .order_by(models.Metric.period.desc())
-            .limit(2).all()
-        )
-        if not rows:
-            continue
-        latest = rows[0].value
-        prev = rows[1].value if len(rows) > 1 else latest
-        delta = round((latest - prev) / prev * 100, 1) if prev else 0.0
-        out.append({"board": board, "label": label, "value": latest, "delta": delta})
     return out
 
 
@@ -737,34 +768,52 @@ def _flat_metric_rows(board: str, db: Session):
     return [{"ky": r.period, "chi_tieu": r.label, "don_vi": r.unit_name, "gia_tri": r.value} for r in rows], "database"
 
 
-def _uu_tien_tong_chi_nhanh(rows):
-    """Use report-level branch totals when they are available.
+def _bu_dong_tong_chi_nhanh(rows):
+    """Bù dòng tổng chi nhánh cho những kỳ mới chỉ có số theo tỉnh.
 
-    The older source stores several indicators by province. A later report can
-    provide an authoritative branch total instead. For an indicator with such
-    a total, return that total for the reported periods and derive earlier
-    periods by summing the provincial rows, so yearly comparisons remain valid
-    without displaying the same KPI twice.
+    Báo cáo nguồn có dòng tổng (VCC HCM) nhưng chỉ từ 2026 trở đi, trong khi các
+    kỳ 2025 vẫn thuần số theo tỉnh. Thiếu dòng tổng của năm trước thì chính dòng
+    tổng năm nay không tra được "cùng kỳ năm trước", nên bảng đối chiếu bỏ trống
+    đúng cái dòng người đọc quan tâm nhất.
+
+    Cộng hai tỉnh lại để bù — nhưng chỉ với chỉ tiêu thật sự cộng được (xem
+    _cong_duoc_theo_tinh) và chỉ với chỉ tiêu vốn đã có dòng tổng, để không tự
+    dựng mức tổng cho bảng rời mạng theo huyện. Các dòng theo tỉnh vẫn giữ
+    nguyên: người đọc cần thấy cả hai mức.
     """
-    labels_tong = {r["chi_tieu"] for r in rows if r.get("don_vi") == "Toàn chi nhánh"}
+    labels_tong = {r["chi_tieu"] for r in rows if r.get("don_vi") == DON_VI_TOAN_CHI_NHANH}
     if not labels_tong:
         return rows
 
-    result = [r for r in rows if r["chi_tieu"] not in labels_tong]
+    them = []
     for label in labels_tong:
-        by_period = {}
-        for row in (r for r in rows if r["chi_tieu"] == label):
-            by_period.setdefault(row["ky"], []).append(row)
-        for period, group in by_period.items():
-            total = next((r for r in group if r.get("don_vi") == "Toàn chi nhánh"), None)
-            if total is not None:
-                result.append(total)
+        cua_label = [r for r in rows if r["chi_tieu"] == label]
+        if not _cong_duoc_theo_tinh([_NhuMetric(r) for r in cua_label]):
+            continue
+        theo_ky = {}
+        for r in cua_label:
+            theo_ky.setdefault(r["ky"], []).append(r)
+        for ky, nhom in theo_ky.items():
+            if any(r.get("don_vi") == DON_VI_TOAN_CHI_NHANH for r in nhom):
                 continue
-            values = [r.get("gia_tri") for r in group if r.get("gia_tri") is not None]
-            if values:
-                result.append({"ky": period, "chi_tieu": label,
-                               "don_vi": "Toàn chi nhánh", "gia_tri": sum(values)})
-    return result
+            gia_tri = [r.get("gia_tri") for r in nhom
+                       if r.get("gia_tri") is not None and r.get("don_vi")]
+            if gia_tri:
+                them.append({"ky": ky, "chi_tieu": label,
+                             "don_vi": DON_VI_TOAN_CHI_NHANH, "gia_tri": sum(gia_tri)})
+    return rows + them
+
+
+class _NhuMetric:
+    """Bọc dict đã làm phẳng cho giống bản ghi Metric, để _cong_duoc_theo_tinh
+    dùng chung được cho cả hai đường dữ liệu."""
+
+    __slots__ = ("period", "unit_name", "value")
+
+    def __init__(self, r):
+        self.period = r["ky"]
+        self.unit_name = r.get("don_vi")
+        self.value = r.get("gia_tri")
 
 
 def _ky_cung_ky_truoc(ky: str):
@@ -906,7 +955,8 @@ def _ro_mang_dia_ban(db: Session):
 
     return {
         "tinh": _theo_tinh(tinh_rows),
-        "huyen": _theo_huyen(huyen_bd_rows, "Bình Dương") + _theo_huyen(huyen_brvt_rows, "Bà Rịa - Vũng Tàu"),
+        "huyen": (_theo_huyen(huyen_bd_rows, province_codes.BINH_DUONG)
+                  + _theo_huyen(huyen_brvt_rows, province_codes.VUNG_TAU)),
     }
 
 
@@ -930,7 +980,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
                 "compare": [], "canh_bao_trung_tam": [], "nhom_phat": None, "dia_ban": None}
 
     rows, nguon = _flat_metric_rows(board, db)
-    rows = _uu_tien_tong_chi_nhanh(rows)
+    rows = _bu_dong_tong_chi_nhanh(rows)
     if not rows:
         raise HTTPException(404, f"Chưa có số liệu cho bảng {board}.")
 
@@ -949,7 +999,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
     # Khoá đối chiếu gồm cả đơn vị/trung tâm — 2 trung tâm nhập cùng chỉ tiêu,
     # cùng kỳ thì KHÔNG được đè lên nhau (đây là lỗi đã sửa so với bản đầu).
     target_rows, _ = _flat_metric_rows(f"{board}_TARGET", db)
-    target_rows = _uu_tien_tong_chi_nhanh(target_rows)
+    target_rows = _bu_dong_tong_chi_nhanh(target_rows)
     target_map = {(r["ky"], r["chi_tieu"], r["don_vi"]): r["gia_tri"] for r in target_rows}
     # Target không kèm đơn vị (đơn_vi=None) coi là target chung áp cho mọi trung tâm.
     target_chung = {(r["ky"], r["chi_tieu"]): r["gia_tri"] for r in target_rows if not r["don_vi"]}

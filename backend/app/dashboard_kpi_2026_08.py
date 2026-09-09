@@ -2,15 +2,16 @@
 
 The report supplies branch totals for Cell*h, transmission incidents and
 Ksub*min. Previous records for those indicators were entered by province; the
-API recognises the ``Toàn chi nhánh`` rows as the authoritative aggregate.
+API recognises the ``VCC HCM`` rows as the authoritative aggregate.
 """
 
 from . import models
 from .database import SessionLocal
+from .province_codes import TOAN_CHI_NHANH
 
 
 RELEASE_KEY = "_system_dashboard_kpi_2026_08"
-BRANCH_TOTAL = "Toàn chi nhánh"
+BRANCH_TOTAL = TOAN_CHI_NHANH
 MONTHS = [f"2026-{month:02d}" for month in range(1, 9)]
 
 

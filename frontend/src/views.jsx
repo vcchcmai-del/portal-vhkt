@@ -839,13 +839,13 @@ const BOARDS = {
   },
   PAKH: {
     nhan: "Sự cố truyền dẫn", ma: "PAKH", icon: AlertTriangle,
-    tieuDe: "Số sự cố truyền dẫn theo tháng — Bình Dương / Bà Rịa - Vũng Tàu",
+    tieuDe: "Số sự cố truyền dẫn theo tháng — BDG / VTU / VCC HCM",
     mau: D.D_PAKH.map((r) => ({ name: r.m, "Tiếp nhận": r.nhan, "Đã xử lý": r.xuly })),
     ve: "vung",
   },
   FUEL: {
     nhan: "Ksub*min", ma: "FUEL", icon: Clock,
-    tieuDe: "Ksub*min theo tháng — Bình Dương / Bà Rịa - Vũng Tàu",
+    tieuDe: "Ksub*min theo tháng — BDG / VTU / VCC HCM",
     mau: D.D_FUEL.map((r) => ({ name: r.t, "Định mức": r.dm, "Thực chi": r.tt })),
     ve: "cot-ngang",
   },
@@ -871,9 +871,13 @@ const BOARDS = {
 
 const MAU_VE = [RED, "#DCD7D8", "#F2A007", "#0E9C99", "#7C3AED"];
 
-// Màu cố định theo tên tỉnh (thay vì theo thứ tự) — Bình Dương xanh dương,
-// các tỉnh khác dùng xám đậm/đỏ để phân biệt rõ, không lệ thuộc thứ tự sắp xếp.
-const MAU_THEO_TINH = { "Bình Dương": "#0E6CD6", "Bà Rịa - Vũng Tàu": "#4B5563", "TP.HCM": RED };
+// Màu cố định theo mã đơn vị (thay vì theo thứ tự) — BDG xanh dương, VTU xám
+// đậm, mức toàn chi nhánh đỏ, không lệ thuộc thứ tự sắp xếp. Giữ luôn tên cũ
+// để dữ liệu chưa chuẩn hoá xong vẫn đúng màu.
+const MAU_THEO_TINH = {
+  BDG: "#0E6CD6", VTU: "#4B5563", "VCC HCM": RED,
+  "Bình Dương": "#0E6CD6", "Bà Rịa - Vũng Tàu": "#4B5563", "TP.HCM": RED,
+};
 function mauTinh(ten, idx) { return MAU_THEO_TINH[ten] || MAU_VE[idx % MAU_VE.length]; }
 
 const dinhDangPhanTram = (v) => (v == null ? "" : `${Number(v).toFixed(2)}%`);

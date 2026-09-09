@@ -24,7 +24,7 @@ import json
 
 from .sheets import _clean, _key, _parse_date, _to_number
 from .operations import _next_code
-from . import techtasks as tt
+from . import province_codes, techtasks as tt
 
 # ------------------------------------------------------------ Khai báo nhóm
 
@@ -267,7 +267,7 @@ BOARDS_KHONG_THEO_TINH = {
 # Vẫn chặn thói quen điền đơn vị đo (%, Dịch vụ...) vốn là nguyên nhân làm
 # bảng đối chiếu cùng kỳ năm trước bị trống.
 BOARDS_THEO_DIA_BAN = {"NETWORK", "NETWORK_TARGET", "VHKT", "VHKT_TARGET"}
-DIA_BAN_CO_DINH = {"toàn chi nhánh", "bình dương", "bà rịa - vũng tàu"}
+DIA_BAN_CO_DINH = set(province_codes.BANG_TRA)
 
 
 def _dia_ban_hop_le(db, models) -> set:
@@ -781,6 +781,10 @@ def _check_metric(row, db, models, auth):
         raise ImportError_(f"Giá trị “{row.get('gia_tri')}” không phải là số.")
 
     unit = _clean(row.get("don_vi"))
+    # Người nhập quen gõ "Bình Dương" / "Toàn chi nhánh", còn CSDL lưu theo mã.
+    # Quy về mã ngay khi đọc, để không sinh ra hai dòng cho cùng một đơn vị.
+    if unit and board not in province_codes.BANG_THEO_HUYEN:
+        unit = province_codes.ma_don_vi(unit) or unit
     if unit and board in BOARDS_KHONG_THEO_TINH:
         raise ImportError_(
             f"Bảng “{board}” tính chung toàn chi nhánh, cột đơn_vị phải để trống — "
@@ -790,8 +794,8 @@ def _check_metric(row, db, models, auth):
         )
     if unit and board in BOARDS_THEO_DIA_BAN and unit.casefold() not in _dia_ban_hop_le(db, models):
         raise ImportError_(
-            f"Bảng “{board}” chỉ nhận đơn_vị là địa bàn (để trống, “Toàn chi nhánh”, "
-            f"tên tỉnh hoặc tên/mã trung tâm) — đang có “{unit}”."
+            f"Bảng “{board}” chỉ nhận đơn_vị là địa bàn (để trống, “VCC HCM”, "
+            f"“BDG”, “VTU” hoặc tên/mã trung tâm) — đang có “{unit}”."
         )
     existing = (db.query(models.Metric)
                 .filter(models.Metric.board == board, models.Metric.period == period,
