@@ -211,7 +211,7 @@ export function AdminCsdlHt() {
   return (
     <div className="flex flex-col gap-4">
       <div className="card">
-        <b>CSDL HTML</b>
+        <b>CSDL hạ tầng</b>
         <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>Tra cứu cơ sở dữ liệu hạ tầng mạng lưới — mỗi nhóm 1 bảng, đúng như file gốc.</p>
       </div>
 
