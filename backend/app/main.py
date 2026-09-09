@@ -178,6 +178,16 @@ def on_startup():
         sync_schema()
     chay("Cập nhật cấu trúc cơ sở dữ liệu", buoc_cau_truc, bat_buoc=True)
 
+    # Máy mới clone repo về thì CSDL trắng trơn — nạp số liệu Dashboard đi kèm
+    # mã nguồn (data/dong-bo). Phải chạy TRƯỚC các bước một-lần bên dưới: số
+    # liệu trong tệp đã là kết quả sau khi chạy chúng, nên bước này đóng luôn
+    # dấu mốc để chúng không chạy lại và dựng lại những dòng đã bỏ. Máy đã có
+    # dữ liệu thì bước này tự bỏ qua, không đụng gì.
+    def buoc_so_lieu_kem_ma_nguon():
+        from .dongbo import nap_neu_trong
+        print(nap_neu_trong())
+    chay("Nạp số liệu kèm mã nguồn", buoc_so_lieu_kem_ma_nguon)
+
     # Nạp dữ liệu mẫu, chỉ chạy khi cơ sở dữ liệu còn trống.
     def buoc_seed():
         from .seed import seed_if_empty

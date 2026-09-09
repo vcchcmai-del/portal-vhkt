@@ -1,0 +1,28 @@
+﻿code,label,category_code,order_no,active
+5g_minishelter,Minishelter,ke_hoach_5g,3,1
+5g_phat_song,Tích hợp phát sóng trạm 5G,ke_hoach_5g,4,1
+5g_srt5g,Tích hợp SRT5G,ke_hoach_5g,1,1
+5g_sua_soi,Sửa sợi,ke_hoach_5g,0,1
+5g_tu_nguon,Lắp tủ nguồn,ke_hoach_5g,2,1
+cc_bo_cap,Bó cáp,cung_co,11,1
+cc_dat_chuan,Củng cố trạm đạt chuẩn,cung_co,14,1
+cc_son_tu,Sơn lại tủ,cung_co,13,1
+cc_thay_tu,Thay tủ ong/tủ bay,cung_co,12,1
+cldv_keo_tu,Đề xuất kéo tủ,cldv_co_dinh,20,1
+cldv_nha_tro,Củng cố TB nhà trọ,cldv_co_dinh,21,1
+cldv_port_kem,Port kém,cldv_co_dinh,16,1
+cldv_su_co_lap,Sự cố lặp,cldv_co_dinh,19,1
+cldv_swap_ont,Swap ONT 2BT,cldv_co_dinh,18,1
+cldv_tammi,Cài Tammi,cldv_co_dinh,15,1
+cldv_wifi_kem,Home-wifi kém,cldv_co_dinh,17,1
+dd_bo_cap,Bó cáp phối hợp chính quyền,di_doi_ngam_hoa,10,1
+dd_de_xuat,Đề xuất di dời Trạm/Cáp,di_doi_ngam_hoa,9,1
+sla_thu_hoi_tb,Thu hồi thiết bị,giam_phat_sla,7,1
+sla_tiep_xuc_rm,Tiếp xúc KH rời mạng,giam_phat_sla,6,1
+sla_wo_qua_han,WO quá hạn nguy cơ phạt SLA,giam_phat_sla,8,1
+ts_chenh_lech,Xử lý chênh lệch tài sản,ql_tai_san,23,1
+ts_huy_di_doi,Trạm hủy/di dời,ql_tai_san,24,1
+ts_kiem_ke,Kiểm kê kết hợp WO MR,ql_tai_san,22,1
+wo_kiem_soat_ft,Kiểm soát WO theo FT,kiem_soat_wo,5,1
+xd_de_xuat,Đề xuất - phê duyệt qua cBusiness360,xang_dau,25,1
+xd_du_phong,Đổ dầu dự phòng UCTT,xang_dau,26,1

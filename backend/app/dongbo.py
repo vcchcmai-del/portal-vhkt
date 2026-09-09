@@ -1,0 +1,185 @@
+"""Đưa số liệu Dashboard vào kho mã nguồn, để Git mang theo được cả dữ liệu.
+
+Cơ sở dữ liệu (data/*.db, hoặc Postgres của bản chạy thật) KHÔNG nằm trong Git —
+đúng như vậy, vì nó chứa danh bạ nhân viên, tài khoản đăng nhập và nhật ký thao
+tác. Nhưng như thế thì clone repo về lại ra một cổng thông tin trắng trơn, và
+mọi thay đổi số liệu không để lại dấu vết nào trong lịch sử Git.
+
+Nên tách đôi: phần số liệu Dashboard — không có tên, số điện thoại hay email của
+ai — thì kết xuất ra CSV trong data/dong-bo/ và commit; phần dữ liệu cá nhân vẫn
+nằm ngoài Git. Repo hiện ở chế độ công khai, nên ranh giới này là bắt buộc, đừng
+thêm bảng mới vào đây mà chưa soát lại từng cột.
+
+    python scripts/xuat_so_lieu.py     # CSDL -> data/dong-bo/*.csv
+    python scripts/nap_so_lieu.py      # data/dong-bo/*.csv -> CSDL
+
+Lúc khởi động, nếu bảng số liệu còn trống thì tự nạp (xem main.py) — máy mới
+clone về là có sẵn số liệu, còn máy đã có dữ liệu thì không bị đụng vào.
+"""
+import csv
+import os
+
+from . import models
+from .database import SessionLocal
+
+THU_MUC = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "dong-bo",
+)
+
+
+class Bang:
+    """Một bảng được đồng bộ: tệp, model, các cột giữ lại, và khoá nhận diện."""
+
+    def __init__(self, tep, model, cot, khoa):
+        self.tep, self.model, self.cot, self.khoa = tep, model, cot, khoa
+
+
+# CỐ Ý không có: people, users, duty_roster_shifts, duty_schedules, audit_logs,
+# threads, replies, ideas, uploads — đều chứa thông tin cá nhân.
+# ProgressEntry cũng bỏ cột ft_name vì đó là tên người phụ trách.
+CAC_BANG = [
+    Bang("so-lieu-dashboard.csv", models.Metric,
+         ["board", "period", "label", "unit_name", "value"],
+         ["board", "period", "label", "unit_name"]),
+    Bang("dinh-bien-trung-tam.csv", models.CenterStaffing,
+         ["report_date", "center", "nt_ft_dinh_bien", "nt_ft_hien_tai",
+          "dm_ft_dinh_bien", "dm_ft_hien_tai", "dm_oft_dinh_bien", "dm_oft_hien_tai",
+          "oft_gap", "ft_gap", "applications_received", "posted_channels",
+          "school_contacts", "banners_posted", "banner_location", "note"],
+         ["report_date", "center"]),
+    Bang("tien-do-ky-thuat.csv", models.ProgressEntry,
+         ["category", "item", "period", "center", "plan_qty", "done_qty", "note"],
+         ["category", "item", "period", "center"]),
+    Bang("danh-muc-trung-tam.csv", models.InfraCenterCode,
+         ["code", "name", "old_code", "old_name"], ["code"]),
+    Bang("danh-muc-dau-viec.csv", models.TechCategory,
+         ["code", "label", "hint", "order_no", "active"], ["code"]),
+    Bang("danh-muc-hang-muc.csv", models.TechProgressItem,
+         ["code", "label", "category_code", "order_no", "active"], ["code"]),
+    Bang("csdl-ha-tang.csv", models.InfraStat,
+         ["period", "section", "center", "label", "value", "value_text"],
+         ["period", "section", "center", "label"]),
+]
+
+
+def _chuoi(v):
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "1" if v else "0"
+    return str(v)
+
+
+def _doc_lai(model, ten_cot, chuoi):
+    """Đưa chuỗi trong CSV về đúng kiểu của cột."""
+    kieu = getattr(model.__table__.c, ten_cot).type.python_type
+    if chuoi == "":
+        return None
+    if kieu is bool:
+        return chuoi not in ("0", "", "False", "false")
+    if kieu is int:
+        return int(float(chuoi))
+    if kieu is float:
+        return float(chuoi)
+    import datetime as dt
+    if kieu is dt.date:
+        return dt.date.fromisoformat(chuoi)
+    if kieu is dt.datetime:
+        return dt.datetime.fromisoformat(chuoi)
+    return chuoi
+
+
+def xuat(thu_muc=THU_MUC) -> dict:
+    """CSDL -> CSV. Trả về {tệp: số dòng}."""
+    os.makedirs(thu_muc, exist_ok=True)
+    db = SessionLocal()
+    ket_qua = {}
+    try:
+        for b in CAC_BANG:
+            hang = db.query(b.model).all()
+            # Sắp xếp cố định để lần xuất sau không sinh ra khác biệt giả trong Git.
+            hang.sort(key=lambda r: [_chuoi(getattr(r, k)) for k in b.khoa])
+            with open(os.path.join(thu_muc, b.tep), "w",
+                      encoding="utf-8-sig", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(b.cot)
+                for r in hang:
+                    w.writerow([_chuoi(getattr(r, c)) for c in b.cot])
+            ket_qua[b.tep] = len(hang)
+    finally:
+        db.close()
+    return ket_qua
+
+
+def nap(thu_muc=THU_MUC) -> dict:
+    """CSV -> CSDL, ghi đè theo khoá nhận diện. Trả về {tệp: (thêm, cập nhật)}."""
+    db = SessionLocal()
+    ket_qua = {}
+    try:
+        for b in CAC_BANG:
+            duong_dan = os.path.join(thu_muc, b.tep)
+            if not os.path.exists(duong_dan):
+                continue
+            them = sua = 0
+            with open(duong_dan, encoding="utf-8-sig", newline="") as f:
+                for dong in csv.DictReader(f):
+                    gia_tri = {c: _doc_lai(b.model, c, dong.get(c, "") or "")
+                               for c in b.cot}
+                    loc = [getattr(b.model, k) == gia_tri[k] for k in b.khoa]
+                    row = db.query(b.model).filter(*loc).first()
+                    if row is None:
+                        db.add(b.model(**gia_tri))
+                        them += 1
+                    else:
+                        for c, v in gia_tri.items():
+                            setattr(row, c, v)
+                        sua += 1
+            db.commit()
+            ket_qua[b.tep] = (them, sua)
+    finally:
+        db.close()
+    return ket_qua
+
+
+def _dong_dau_moc(db) -> None:
+    """Đánh dấu các bước một-lần là đã chạy.
+
+    Số liệu trong data/dong-bo đã là KẾT QUẢ sau khi các bước ấy chạy: tên đơn vị
+    đã là mã, tên trung tâm đã là mã, KPI T8/2026 đã cập nhật. Để chúng chạy lại
+    trên bộ số liệu này thì chúng sẽ ghi đè, thậm chí dựng lại những dòng đã cố ý
+    bỏ đi (dòng tổng Ksub*min T08/2026 là một ví dụ đã xảy ra).
+    """
+    from .center_codes import RELEASE_KEY as MOC_TRUNG_TAM
+    from .dashboard_kpi_2026_08 import RELEASE_KEY as MOC_KPI_T8
+    from .province_codes import RELEASE_KEY as MOC_DON_VI
+
+    for khoa in (MOC_KPI_T8, MOC_TRUNG_TAM, MOC_DON_VI):
+        if not db.query(models.SiteConfig).filter(models.SiteConfig.key == khoa).first():
+            db.add(models.SiteConfig(key=khoa, value="applied",
+                                     label="Đã có sẵn trong số liệu kèm mã nguồn"))
+    db.commit()
+
+
+def nap_neu_trong() -> str:
+    """Nạp số liệu kèm theo mã nguồn khi CSDL còn trắng — dùng lúc khởi động.
+
+    Chỉ chạy khi bảng số liệu Dashboard chưa có dòng nào, nên máy đang có dữ
+    liệu thật không bao giờ bị ghi đè.
+    """
+    db = SessionLocal()
+    try:
+        if db.query(models.Metric).first() is not None:
+            return "Đã có số liệu, bỏ qua."
+    finally:
+        db.close()
+    if not os.path.isdir(THU_MUC):
+        return "Chưa có thư mục data/dong-bo, bỏ qua."
+    kq = nap()
+    db = SessionLocal()
+    try:
+        _dong_dau_moc(db)
+    finally:
+        db.close()
+    tong = sum(t + s for t, s in kq.values())
+    return f"Đã nạp {tong} dòng số liệu kèm theo mã nguồn."

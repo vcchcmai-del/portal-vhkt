@@ -164,39 +164,15 @@ def seed_if_empty():
             db.add(m.SiteConfig(key=key, value=value, label=label, kind=kind))
 
         # --- Số liệu Dashboard -----------------------------------------------
-        months = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"]
-        kpi_th = [92, 88, 96, 101, 97, 99, 106, 94]
-        for mo, v in zip(months, kpi_th):
-            db.add(m.Metric(board="KPI", period=mo, label="Kế hoạch", value=100))
-            db.add(m.Metric(board="KPI", period=mo, label="Thực hiện", value=v))
-
-        wo = [(1120, 1002), (1210, 1145), (1305, 1189), (1288, 1210), (1402, 1284), (640, 588)]
-        for mo, (giao, xong) in zip(months[2:], wo):
-            db.add(m.Metric(board="WO", period=mo, label="Được giao", value=giao))
-            db.add(m.Metric(board="WO", period=mo, label="Hoàn thành", value=xong))
-
-        pakh = [(210, 198), (245, 240), (268, 255), (231, 228), (254, 251), (118, 106)]
-        for mo, (nhan, xuly) in zip(months[2:], pakh):
-            db.add(m.Metric(board="PAKH", period=mo, label="Tiếp nhận", value=nhan))
-            db.add(m.Metric(board="PAKH", period=mo, label="Đã xử lý", value=xuly))
-
-        fuel = [("Trung tâm KV1", 4200, 3980), ("Trung tâm KV2", 3800, 4110),
-                ("Trung tâm KV3", 3500, 3320), ("Đội cơ động", 2600, 2540), ("Khối văn phòng", 900, 720)]
-        for unit, dm, tt in fuel:
-            db.add(m.Metric(board="FUEL", period="2026-07", label="Định mức", unit_name=unit, value=dm))
-            db.add(m.Metric(board="FUEL", period="2026-07", label="Thực chi", unit_name=unit, value=tt))
-
-        for stage, v in [("Nhu cầu", 48), ("Ứng tuyển", 214), ("Phỏng vấn", 96), ("Đạt", 41), ("Đã nhận việc", 33)]:
-            db.add(m.Metric(board="HIRE", period="2026-Q3", label="Số lượng", unit_name=stage, value=v))
-
-        for mo, v in zip(months[2:], [18.2, 20.5, 22.1, 21.4, 25.8, 12.3]):
-            db.add(m.Metric(board="OUTPUT", period=mo, label="Sản lượng", value=v))
-
-        for i, (av, sc) in enumerate([(99.82, 14), (99.90, 9), (99.76, 18), (99.88, 11),
-                                      (99.94, 6), (99.91, 8), (99.87, 10)]):
-            day = (TODAY - dt.timedelta(days=6 - i)).isoformat()
-            db.add(m.Metric(board="NETWORK", period=day, label="Availability", value=av))
-            db.add(m.Metric(board="NETWORK", period=day, label="Số sự cố", value=sc))
+        # KHÔNG nạp số liệu mẫu ở đây nữa. Những dòng bịa cũ ("Kế hoạch/Thực
+        # hiện", "Được giao/Hoàn thành", "Tiếp nhận/Đã xử lý", "Sản lượng",
+        # "Định mức/Thực chi" theo Khối văn phòng và Trung tâm KV1-3) trông
+        # giống số thật nên đã lên thẳng ô chỉ số trang chủ và bảng đối chiếu,
+        # người dùng tưởng là số của mình. Xoá khỏi cơ sở dữ liệu thì lần cài
+        # mới lại mọc lại.
+        #
+        # Số liệu thật đi kèm mã nguồn ở data/dong-bo, nạp bởi dongbo.py ngay
+        # trước bước này lúc khởi động.
 
         # --- Sáng kiến ---------------------------------------------------------
         ideas_raw = [

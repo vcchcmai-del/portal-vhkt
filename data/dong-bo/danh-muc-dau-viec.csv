@@ -1,0 +1,11 @@
+﻿code,label,hint,order_no,active
+ban_hang,7. Bán hàng,"Thống nhất kế hoạch bán hàng trong tháng: Năng lượng, Xây dựng, FTTH, 8 dự án Chung cư được giao quản lý toàn diện.",6,1
+cldv_co_dinh,8. Cải thiện CLDV cố định,"Cài Tammi, Port kém, Home-wifi kém, Swap ONT 2BT, sự cố lặp, đề xuất kéo tủ, củng cố TB nhà trọ.",7,1
+cung_co,6. Củng cố,"Bó cáp, thay tủ ong/tủ bay, sơn lại tủ, củng cố trạm đạt chuẩn.",5,1
+di_doi_ngam_hoa,5. Di dời – ngầm hóa,"Báo cáo lại đề xuất di dời Trạm/Cáp, phối hợp chính quyền bó cáp cần triển khai trong tháng.",4,1
+giam_phat_sla,4. Giảm phạt SLA,"Tiếp xúc KH rời mạng, thu hồi thiết bị, ưu tiên xử lý các WO quá hạn có nguy cơ phạt SLA.",3,1
+ke_hoach_5g,3. Kế hoạch 5G,"Sửa sợi, tích hợp SRT5G, lắp tủ nguồn, Minishelter, tích hợp phát sóng trạm 5G.",2,1
+kiem_soat_wo,2. Kiểm soát WO,Sử dụng tool kiểm soát: https://manage-wo.pages.dev/login — kiểm soát từng nhóm WO theo từng FT.,1,1
+ql_tai_san,9. QL Tài sản,"Tổ chức kiểm kê kết hợp WO MR, xử lý chênh lệch tài sản, trạm hủy/di dời.",8,1
+tuyen_dung,1. Tuyển dụng,"Giao nhiệm vụ tuyển dụng bổ sung nhân sự cho tổ trưởng, mục tiêu Tổng số line/Số nhân sự < 1350. NS mới giao Tổ trưởng có trách nhiệm kèm cặp, hướng dẫn làm cùng (FT dây máy); Đội trưởng kèm FT nhà trạm.",0,1
+xang_dau,10. Xăng dầu,"Kiểm soát đề xuất - phê duyệt xăng dầu qua app cBusiness360, tổ chức đổ dầu dự phòng UCTT đủ định mức cho các trạm cố định.",9,1
