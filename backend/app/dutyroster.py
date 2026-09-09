@@ -309,11 +309,62 @@ def admin_delete_roster_month(month: str, db: Session = Depends(get_db),
 
 # --------------------------------------------------------------------- Tra cứu
 
+# Ba khối trực chung của chi nhánh, lấy từ mục "Lịch trực vận hành" (bảng
+# DutySchedule) khi file lịch trực tháng không tách sẵn chúng thành khối riêng.
+# Lịch trực chi nhánh các trung tâm gửi lên chỉ chia theo trung tâm, nên nếu
+# không nối hai nguồn thì ba tab này luôn trống dù dữ liệu đã có trong hệ thống.
+KHOI_TU_TRUC_VAN_HANH = {
+    "command": ("Chỉ Huy", "CH"),
+    "office": ("PVHKT", "TB"),
+    "vehicle": ("Lái xe", "LX"),
+}
+
+
 @public_router.get("/duty-roster/months")
 def list_roster_months(db: Session = Depends(get_db)):
-    rows = db.query(models.DutyRosterShift.duty_date).distinct().all()
-    months = sorted({d[0].strftime("%Y-%m") for d in rows}, reverse=True)
-    return months
+    thang = {d[0].strftime("%Y-%m")
+             for d in db.query(models.DutyRosterShift.duty_date).distinct().all()}
+    # Tháng chỉ có trực vận hành (chưa nhận file lịch trực trung tâm) vẫn phải
+    # chọn được, nếu không thì dữ liệu đã nhập lại không xem được ở đâu cả.
+    thang |= {d[0].strftime("%Y-%m")
+              for d in db.query(models.DutySchedule.duty_date).distinct().all()}
+    return sorted(thang, reverse=True)
+
+
+def _khoi_truc_van_hanh(db: Session, start: dt.date, end: dt.date, dates: list,
+                        da_co: set) -> list:
+    """Dựng các khối trực chung từ bảng Lịch trực vận hành."""
+    rows = (
+        db.query(models.DutySchedule)
+        .filter(models.DutySchedule.duty_date >= start, models.DutySchedule.duty_date <= end)
+        .order_by(models.DutySchedule.duty_date)
+        .all()
+    )
+    chi_so = {d: i for i, d in enumerate(dates)}
+    theo_khoi = {}
+    for r in rows:
+        anh_xa = KHOI_TU_TRUC_VAN_HANH.get((r.duty_type or "").strip())
+        if not anh_xa or r.duty_date not in chi_so:
+            continue
+        ten_khoi, ma_ca = anh_xa
+        if ten_khoi in da_co:          # file lịch trực đã có khối này thì để nguyên
+            continue
+        nguoi = theo_khoi.setdefault(ten_khoi, {})
+        p = nguoi.setdefault(r.person_name, {
+            "code": "", "name": r.person_name, "phone": r.phone,
+            "group": "", "title": r.shift_name or "",
+            "shifts": ["" for _ in dates], "event": "", "location": "",
+        })
+        p["shifts"][chi_so[r.duty_date]] = ma_ca
+        if r.note:
+            p["event"] = r.note
+
+    ra = []
+    for ten_khoi, _ in KHOI_TU_TRUC_VAN_HANH.values():
+        nguoi = theo_khoi.get(ten_khoi)
+        if nguoi:
+            ra.append({"name": ten_khoi, "people": list(nguoi.values())})
+    return ra
 
 
 def _build_roster(db: Session, start: dt.date, end: dt.date) -> dict:
@@ -323,10 +374,15 @@ def _build_roster(db: Session, start: dt.date, end: dt.date) -> dict:
         .order_by(models.DutyRosterShift.duty_date)
         .all()
     )
-    if not rows:
+    ngay_van_hanh = [
+        d[0] for d in db.query(models.DutySchedule.duty_date)
+        .filter(models.DutySchedule.duty_date >= start, models.DutySchedule.duty_date <= end)
+        .distinct().all()
+    ]
+    if not rows and not ngay_van_hanh:
         return {"dates": [], "blocks": []}
 
-    dates = sorted({r.duty_date for r in rows})
+    dates = sorted({r.duty_date for r in rows} | set(ngay_van_hanh))
     date_index = {d: i for i, d in enumerate(dates)}
 
     block_order = []
@@ -351,6 +407,7 @@ def _build_roster(db: Session, start: dt.date, end: dt.date) -> dict:
             p["location"] = r.location
 
     blocks = [{"name": b, "people": list(block_people[b].values())} for b in block_order]
+    blocks = _khoi_truc_van_hanh(db, start, end, dates, set(block_people)) + blocks
     return {"dates": [d.isoformat() for d in dates], "blocks": blocks}
 
 

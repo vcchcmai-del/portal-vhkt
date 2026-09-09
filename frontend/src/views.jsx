@@ -879,14 +879,23 @@ const BOARDS = {
   },
 };
 
-const MAU_VE = [RED, "#DCD7D8", "#F2A007", "#0E9C99", "#7C3AED"];
+// ----------------------------------------------------------- Bảng màu Dashboard
+//
+// Một chỗ duy nhất, để cùng một đơn vị luôn cùng một màu ở mọi biểu đồ. Không
+// dùng xám cho số liệu: xám đọc như "chưa có dữ liệu" hoặc như đường lưới nền,
+// làm chuỗi số thật trông mờ nhạt hơn hẳn chuỗi bên cạnh.
+const MAU_VE = [RED, "#0E6CD6", "#F2A007", "#0E9C99", "#7C3AED"];
+const MAU_TARGET = "#5B8DEF";      // đường chỉ tiêu — xanh dương nhạt, nét đứt
+const MAU_CUNG_KY = "#F2A007";     // cùng kỳ năm trước — cam, nét chấm
+const MAU_PHU = "#0E6CD6";         // chuỗi phụ trong biểu đồ ghép
 
 // Màu cố định theo mã đơn vị (thay vì theo thứ tự) — BDG xanh dương, VTU xám
 // đậm, mức toàn chi nhánh đỏ, không lệ thuộc thứ tự sắp xếp. Giữ luôn tên cũ
 // để dữ liệu chưa chuẩn hoá xong vẫn đúng màu.
 const MAU_THEO_TINH = {
-  BDG: "#0E6CD6", VTU: "#4B5563", "VCC HCM": RED,
-  "Bình Dương": "#0E6CD6", "Bà Rịa - Vũng Tàu": "#4B5563", "TP.HCM": RED,
+  "VCC HCM": RED, BDG: "#0E6CD6", VTU: "#0E9C99",
+  "Toàn chi nhánh": RED, "TP.HCM": RED,
+  "Bình Dương": "#0E6CD6", "Bà Rịa - Vũng Tàu": "#0E9C99",
 };
 function mauTinh(ten, idx) { return MAU_THEO_TINH[ten] || MAU_VE[idx % MAU_VE.length]; }
 
@@ -906,6 +915,7 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
       {dsChuoi.map((chuoi, i) => {
         const mau = (mauMap && mauMap[chuoi]) || MAU_VE[i % MAU_VE.length];
         const coTarget = data.some((r) => r[`${chuoi}__target`] != null);
+        const coCungKy = data.some((r) => r[`${chuoi}__cungky`] != null);
         return (
           <div key={chuoi}>
             <p style={{ fontSize: 12.5, fontWeight: 700, color: "#57494B", marginBottom: 2 }}>{nhanChuoi?.[chuoi] || chuoi}</p>
@@ -915,10 +925,14 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
                 <XAxis dataKey="name" {...truc} />
                 <YAxis {...truc} width={40} />
                 <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
-                {coTarget && <Legend wrapperStyle={{ fontSize: 11 }} height={20} />}
+                {(coTarget || coCungKy) && <Legend wrapperStyle={{ fontSize: 11 }} height={20} />}
                 {coTarget && (
-                  <Line type="monotone" dataKey={`${chuoi}__target`} name="Target" stroke="#A9A3A5"
+                  <Line type="monotone" dataKey={`${chuoi}__target`} name="Target" stroke={MAU_TARGET}
                     strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
+                )}
+                {coCungKy && (
+                  <Line type="monotone" dataKey={`${chuoi}__cungky`} name="Cùng kỳ năm trước"
+                    stroke={MAU_CUNG_KY} strokeDasharray="2 3" dot={false} strokeWidth={1.5} connectNulls />
                 )}
                 <Line type="monotone" dataKey={chuoi} name={nhanChuoi?.[chuoi] || chuoi} stroke={mau} strokeWidth={2.5} dot={{ r: 3 }} connectNulls>
                   <LabelList dataKey={chuoi} position="top" fontSize={10} formatter={dinhDang} fill={mau} />
@@ -932,7 +946,7 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
   );
 }
 
-/** Dựng dữ liệu {name, [chuoi]: giá trị, [chuoi]__target: target} từ "compare", lọc theo danh sách chỉ tiêu và năm. */
+/** Dựng dữ liệu {name, [chuoi], [chuoi]__target, [chuoi]__cungky} từ "compare", lọc theo chỉ tiêu và năm. */
 function BieuDoNhieuChiTieu({ compare, chiTieuList, nhanChiTieu, nam, dinhDang = (v) => (v == null ? "" : `${v}`), mauMap }) {
   const rows = (compare || []).filter((c) => chiTieuList.includes(c.chi_tieu) && (!nam || nam === "all" || c.ky?.startsWith(nam)));
   if (!rows.length) return <Empty title="Chưa có số liệu." />;
@@ -946,6 +960,7 @@ function BieuDoNhieuChiTieu({ compare, chiTieuList, nhanChiTieu, nam, dinhDang =
       const r = rows.find((r) => r.ky === k && r.chi_tieu === ct);
       hang[ct] = r?.thuc_hien ?? null;
       hang[`${ct}__target`] = r?.target ?? null;
+      hang[`${ct}__cungky`] = r?.cung_ky_truoc ?? null;
     });
     return hang;
   });
@@ -979,7 +994,7 @@ function BieuDo({ kieu, series }) {
               {series.map((r, j) => {
                 // Cột thực chi vượt định mức thì tô đỏ để nhìn ra ngay
                 const vuot = cot.length === 2 && i === 1 && r[cot[1]] > r[cot[0]];
-                return <Cell key={j} fill={i === 0 ? "#DCD7D8" : (vuot ? RED : "#0E9C99")} />;
+                return <Cell key={j} fill={i === 0 ? MAU_PHU : (vuot ? RED : "#0E9C99")} />;
               })}
             </Bar>
           ))}
@@ -1040,7 +1055,7 @@ function BieuDo({ kieu, series }) {
           <YAxis yAxisId="r" orientation="right" {...truc} />
           <Tooltip {...tooltipStyle} />
           <Legend wrapperStyle={{ fontSize: 12.5 }} />
-          <Bar yAxisId="r" dataKey={cot[1]} name={cot[1]} fill="#DCD7D8" radius={[4, 4, 0, 0]} barSize={26} />
+          <Bar yAxisId="r" dataKey={cot[1]} name={cot[1]} fill={MAU_PHU} radius={[4, 4, 0, 0]} barSize={26} />
           <Line yAxisId="l" type="monotone" dataKey={cot[0]} name={cot[0]} stroke={RED} strokeWidth={2.5} dot={{ r: 3 }} />
         </ComposedChart>
       </ResponsiveContainer>
@@ -1058,7 +1073,7 @@ function BieuDo({ kieu, series }) {
         {cot.length > 1 && <Legend wrapperStyle={{ fontSize: 12.5 }} />}
         {cot.map((c, i) => (
           <Bar key={c} dataKey={c} name={c} radius={[4, 4, 0, 0]} barSize={cot.length > 1 ? 22 : 44}
-            fill={cot.length === 1 ? RED : (i === 0 ? "#DCD7D8" : RED)} />
+            fill={cot.length === 1 ? RED : (i === 0 ? MAU_PHU : RED)} />
         ))}
       </BarChart>
     </ResponsiveContainer>
@@ -1105,7 +1120,7 @@ function TrendChart({ compare, chiTieu, hienSo = true, namHienTai, dinhDang = (v
         <YAxis {...truc} />
         <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
         <Legend wrapperStyle={{ fontSize: 12.5 }} />
-        <Line type="monotone" dataKey="Target" stroke="#A9A3A5" strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
+        <Line type="monotone" dataKey="Target" stroke={MAU_TARGET} strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
         <Line type="monotone" dataKey={nhanNamTruoc} stroke={RED} strokeDasharray="5 3" dot={{ r: 3 }} strokeWidth={2}>
           {hienSo && <LabelList dataKey={nhanNamTruoc} {...nhanSo} fill={RED} />}
         </Line>
@@ -1133,7 +1148,7 @@ function CanhBaoTrungTam({ danhSach }) {
   );
 }
 
-const MAU_TRON = [RED, "#0E6CD6", "#F2A007", "#0E9C99", "#7C3AED", "#B45309", "#0A7A50", "#DB2777", "#4B5563", "#65A30D", "#DC2626", "#0891B2", "#7E22CE", "#CA8A04", "#059669"];
+const MAU_TRON = [RED, "#0E6CD6", "#F2A007", "#0E9C99", "#7C3AED", "#B45309", "#0A7A50", "#DB2777", "#1D4ED8", "#65A30D", "#DC2626", "#0891B2", "#7E22CE", "#CA8A04", "#059669"];
 
 /** Biểu đồ cột số lượng KH rời mạng theo tỉnh, mỗi tỉnh một màu riêng (cố định theo tên). */
 function SoLuongRoMangTheoTinh({ theoTinh }) {
@@ -1184,6 +1199,7 @@ function BieuDoTheoTinh({ compare, chiTieu, nam }) {
       const r = rows.find((r) => r.ky === k && r.don_vi === dv);
       hang[dv] = r?.thuc_hien ?? null;
       hang[`${dv}__target`] = r?.target ?? null;
+      hang[`${dv}__cungky`] = r?.cung_ky_truoc ?? null;
     });
     return hang;
   });
@@ -1298,8 +1314,8 @@ function NhomPhatTrend({ xuHuong, nam }) {
           <YAxis {...truc} label={{ value: "Triệu đồng", angle: -90, position: "insideLeft", fontSize: 11, fill: "#A9A3A5" }} />
           <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu`} />
           <Legend wrapperStyle={{ fontSize: 12.5 }} />
-          <Line type="monotone" dataKey="Tổng" stroke="#4B5563" strokeDasharray="4 3" dot={{ r: 3 }} strokeWidth={2}>
-            <LabelList dataKey="Tổng" {...nhanSo} fill="#4B5563" />
+          <Line type="monotone" dataKey="Tổng" stroke={RED} strokeDasharray="4 3" dot={{ r: 3 }} strokeWidth={2}>
+            <LabelList dataKey="Tổng" {...nhanSo} fill={RED} />
           </Line>
           <Line type="monotone" dataKey="VTNet" stroke="#0E6CD6" dot={{ r: 3 }} strokeWidth={2.5}>
             <LabelList dataKey="VTNet" {...nhanSo} fill="#0E6CD6" />
@@ -1630,7 +1646,7 @@ export function DashView() {
             <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
               chiTieuList={["Tiền phạt/Doanh thu", "Tỷ lệ phạt/DT VTNet", "Tỷ lệ phạt/DT VTT"]}
               nhanChiTieu={{ "Tiền phạt/Doanh thu": "Tổng", "Tỷ lệ phạt/DT VTNet": "VTNet", "Tỷ lệ phạt/DT VTT": "VTT" }}
-              mauMap={{ "Tiền phạt/Doanh thu": "#4B5563", "Tỷ lệ phạt/DT VTNet": "#0E6CD6", "Tỷ lệ phạt/DT VTT": "#F2A007" }}
+              mauMap={{ "Tiền phạt/Doanh thu": RED, "Tỷ lệ phạt/DT VTNet": "#0E6CD6", "Tỷ lệ phạt/DT VTT": "#F2A007" }}
               dinhDang={dinhDangPhanTram} />
           </Card>
           {duLieu?.nhom_phat && (
@@ -1694,7 +1710,7 @@ export function DashView() {
         <>
           <Card title="Số phản ánh phát sinh trong tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
             <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI} chiTieuList={["Số PA phát sinh trong tháng"]}
-              dinhDang={(v) => v?.toLocaleString("vi-VN")} mauMap={{ "Số PA phát sinh trong tháng": "#4B5563" }} />
+              dinhDang={(v) => v?.toLocaleString("vi-VN")} mauMap={{ "Số PA phát sinh trong tháng": MAU_PHU }} />
           </Card>
           <Card title="XLCS trong 3h / 10h / 24h" icon={board.icon}>
             <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
@@ -1711,7 +1727,7 @@ export function DashView() {
             <BieuDoNhieuChiTieu compare={duLieu?.compare} nam={NAM_HIEN_TAI}
               chiTieuList={["Triển khai đã NT dây mới", "Triển khai đã NT dây sẵn"]}
               nhanChiTieu={{ "Triển khai đã NT dây mới": "Dây mới", "Triển khai đã NT dây sẵn": "Dây sẵn" }}
-              mauMap={{ "Triển khai đã NT dây mới": "#0E6CD6", "Triển khai đã NT dây sẵn": "#4B5563" }}
+              mauMap={{ "Triển khai đã NT dây mới": "#0E6CD6", "Triển khai đã NT dây sẵn": "#0E9C99" }}
               dinhDang={(v) => v?.toLocaleString("vi-VN")} />
           </Card>
           <Card title="KPI TKM 3h / 10h / 24h">
