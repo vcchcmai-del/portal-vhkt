@@ -184,14 +184,14 @@ def on_startup():
         seed_if_empty()
     chay("Nạp dữ liệu mẫu", buoc_seed)
 
-    # Nạp danh mục đầu việc/hạng mục tiến độ mảng kỹ thuật nếu bảng còn trống.
-    # Apply the August 2026 KPI report once. The database marker prevents a
-    # later restart from overwriting figures entered by administrators.
+    # Nạp số liệu KPI báo cáo T8/2026 đúng một lần. Dấu mốc lưu trong cơ sở dữ
+    # liệu để lần khởi động sau không ghi đè số quản trị viên đã tự sửa.
     def buoc_kpi_t8_2026():
         from .dashboard_kpi_2026_08 import apply_once
         apply_once()
     chay("Cập nhật KPI báo cáo T8/2026", buoc_kpi_t8_2026)
 
+    # Nạp danh mục đầu việc/hạng mục tiến độ mảng kỹ thuật nếu bảng còn trống.
     def buoc_dau_viec():
         from .database import SessionLocal
         from .techtasks import ensure_seeded
