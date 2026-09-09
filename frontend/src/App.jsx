@@ -46,7 +46,7 @@ const LOGIN_REQUIRED_VIEWS = new Set(["home", "dash", "operations", "recruitment
 // nhập. Mỗi mục chỉ hiện khi canViewModule(module) đúng.
 const PERMISSIONED_NAV_ITEMS = [
   { module: "tech_tasks", id: "tech-tasks", label: "Công việc mảng kỹ thuật", icon: ListChecks },
-  { module: "csdl_ht", id: "csdl-ht", label: "CSDL HTML", icon: Database },
+  { module: "csdl_ht", id: "csdl-ht", label: "CSDL hạ tầng", icon: Database },
 ];
 
 function navWithPermissionedItems(canViewModule) {
