@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Building2, CalendarClock, ChevronLeft, ChevronRight, Download, Phone, Search, Upload, Users,
 } from "lucide-react";
-import { API_BASE, api, getToken } from "./api";
+import { API_BASE, api, getToken, useCenters } from "./api";
 import { Card, Empty, Field, RED, RED_DARK } from "./ui";
 
 const SHIFT_COLORS = {
@@ -43,11 +43,16 @@ function personMatches(p, term) {
   return hay.includes(term);
 }
 
-function RosterTable({ people }) {
+/** `hienDonVi` dùng cho các bảng gom người từ nhiều trung tâm, để biết ai ở đâu. */
+function RosterTable({ people, hienDonVi = false }) {
   if (!people.length) return <p className="muted" style={{ fontSize: 13, fontStyle: "italic", padding: "10px 0" }}>Không có ai trực.</p>;
   return (
     <table className="tbl">
-      <thead><tr><th style={{ width: 32 }}>STT</th><th>Tên nhân viên</th><th>SĐT</th><th>Chức danh</th></tr></thead>
+      <thead><tr>
+        <th style={{ width: 32 }}>STT</th><th>Tên nhân viên</th>
+        {hienDonVi && <th>Đơn vị</th>}
+        <th>SĐT</th><th>Chức danh</th>
+      </tr></thead>
       <tbody>
         {people.map((p, i) => (
           <tr key={p.code || p.name}>
@@ -56,6 +61,7 @@ function RosterTable({ people }) {
               <b>{p.name}</b>
               {p.event && <span style={{ display: "block", fontSize: 11, color: "#B4780C", fontWeight: 700, marginTop: 2 }}>⚠ Hỗ trợ {p.location || p.event}</span>}
             </td>
+            {hienDonVi && <td>{p.group || "—"}</td>}
             <td className="mono">{p.phone || "—"}</td>
             <td>{p.title || "—"}</td>
           </tr>
@@ -96,6 +102,11 @@ export function DutyRosterView() {
     [data],
   );
 
+  // Khối trung tâm lưu bằng mã (THA, CHP…), còn PVHKT / Lái xe / Chỉ Huy thì
+  // không phải trung tâm nên tenTrungTam() trả lại nguyên tên.
+  const { tenTrungTam } = useCenters();
+  const tenKhoi = (ma) => tenTrungTam(ma);
+
   if (err) return <Empty title="Không tải được lịch trực." hint={err} />;
   if (!months.length) return <Empty title="Chưa có dữ liệu lịch trực." hint="Quản trị viên cần tải file Excel lịch trực lên ở khu quản trị." />;
   if (!data) return <Empty title="Đang tải…" />;
@@ -105,6 +116,22 @@ export function DutyRosterView() {
 
   const findBlock = (name) => data.blocks.find((b) => b.name === name);
   const onDutyThatDay = (block) => (block ? block.people.filter((p) => p.shifts[dayIdx] && personMatches(p, term)) : []);
+
+  /**
+   * Người trực của một đầu mục trong tab "Theo ngày".
+   *
+   * Có hai kiểu file: kiểu cũ tách sẵn khối "PVHKT" / "Chỉ Huy" / "Lái xe", và
+   * kiểu lịch trực chi nhánh chỉ chia theo trung tâm — người trực chỉ huy nằm
+   * lẫn trong trung tâm của mình, phân biệt bằng mã ca. Không có khối riêng thì
+   * gom theo mã ca để thẻ không bị trống.
+   */
+  const trucTheoDauMuc = (tenKhoiRieng, maCa) => {
+    const khoiRieng = findBlock(tenKhoiRieng);
+    if (khoiRieng) return onDutyThatDay(khoiRieng);
+    return data.blocks.flatMap((b) => b.people
+      .filter((p) => p.shifts[dayIdx] === maCa && personMatches(p, term))
+      .map((p) => ({ ...p, group: tenKhoi(b.name) })));
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -143,7 +170,8 @@ export function DutyRosterView() {
               PVHKT / Lái xe / Chỉ huy
             </button>
             {centerBlocks.map((b) => (
-              <button key={b.name} className={`btn btn-sm ${subTab === b.name ? "btn-red" : ""}`} onClick={() => setSubTab(b.name)}>
+              <button key={b.name} className={`btn btn-sm ${subTab === b.name ? "btn-red" : ""}`}
+                title={tenKhoi(b.name)} onClick={() => setSubTab(b.name)}>
                 {b.name}
               </button>
             ))}
@@ -152,17 +180,20 @@ export function DutyRosterView() {
           {subTab === "main" ? (
             <>
               <Card title="Trực ban PVHKT" icon={Users} pad={false}>
-                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}><RosterTable people={onDutyThatDay(findBlock("PVHKT"))} /></div>
+                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
+                  <RosterTable people={trucTheoDauMuc("PVHKT", "TB")} hienDonVi={!findBlock("PVHKT")} /></div>
               </Card>
               <Card title="Trực chỉ huy" icon={Building2} pad={false}>
-                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}><RosterTable people={onDutyThatDay(findBlock("Chỉ Huy"))} /></div>
+                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
+                  <RosterTable people={trucTheoDauMuc("Chỉ Huy", "CH")} hienDonVi={!findBlock("Chỉ Huy")} /></div>
               </Card>
               <Card title="Trực lái xe" icon={Phone} pad={false}>
-                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}><RosterTable people={onDutyThatDay(findBlock("Lái xe"))} /></div>
+                <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}>
+                  <RosterTable people={trucTheoDauMuc("Lái xe", "LX")} hienDonVi={!findBlock("Lái xe")} /></div>
               </Card>
             </>
           ) : (
-            <Card title={subTab} icon={Building2} pad={false}>
+            <Card title={tenKhoi(subTab)} icon={Building2} pad={false}>
               <div style={{ padding: "4px 16px 14px", overflowX: "auto" }}><RosterTable people={onDutyThatDay(findBlock(subTab))} /></div>
             </Card>
           )}
@@ -173,7 +204,7 @@ export function DutyRosterView() {
         <Card title="Bảng đầy đủ cả tháng" icon={CalendarClock}
           action={
             <select className="inp" style={{ maxWidth: 220 }} value={gridBlock} onChange={(e) => setGridBlock(Number(e.target.value))}>
-              {data.blocks.map((b, i) => <option key={b.name} value={i}>{b.name}</option>)}
+              {data.blocks.map((b, i) => <option key={b.name} value={i}>{tenKhoi(b.name)}</option>)}
             </select>
           }
           pad={false}>
