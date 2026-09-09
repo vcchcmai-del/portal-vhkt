@@ -505,6 +505,19 @@ class CenterStaffing(Base):
     id = Column(Integer, primary_key=True)
     report_date = Column(Date, nullable=False, index=True)
     center = Column(String(120), nullable=False, index=True)
+
+    # Định biên và nhân sự hiện có, tách theo mảng công việc. Đây là SỐ GỐC nhập
+    # vào; số thiếu bên dưới do hệ thống tự tính, không nhập tay, để không bao
+    # giờ lệch nhau. Nhà trạm chỉ dùng FT, dây máy có cả FT và OFT.
+    nt_ft_dinh_bien = Column(Integer)      # nhà trạm — FT tối thiểu
+    nt_ft_hien_tai = Column(Integer)       # nhà trạm — FT hiện tại
+    dm_ft_dinh_bien = Column(Integer)      # dây máy — FT tối thiểu
+    dm_ft_hien_tai = Column(Integer)       # dây máy — FT hiện tại
+    dm_oft_dinh_bien = Column(Integer)     # dây máy — OFT tối thiểu
+    dm_oft_hien_tai = Column(Integer)      # dây máy — OFT hiện tại
+
+    # Số thiếu (âm = đang thừa). Tính lại từ các cột trên mỗi lần lưu; dòng cũ
+    # nhập trước khi có định biên thì giữ nguyên số đã nhập.
     oft_gap = Column(Integer, default=0)                  # thiếu OFT
     ft_gap = Column(Integer, default=0)                   # thiếu FT
     applications_received = Column(Integer, default=0)    # hồ sơ nhận trong tháng

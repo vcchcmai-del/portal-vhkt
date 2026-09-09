@@ -118,9 +118,13 @@ KINDS = {
         "key_col": None,
         "columns": [
             ("ngay_chot", "Ngày chốt số liệu (dd/mm/yyyy)", True, "08/08/2026"),
-            ("trung_tam", "Trung tâm", True, "Trung tâm Thới Hòa"),
-            ("thieu_oft", "Thiếu OFT", False, "2"),
-            ("thieu_ft", "Thiếu FT", False, "1"),
+            ("trung_tam", "Trung tâm (tên hoặc mã, vd THA)", True, "THA"),
+            ("nt_ft_dinh_bien", "Nhà trạm — FT tối thiểu", False, "14"),
+            ("nt_ft_hien_tai", "Nhà trạm — FT hiện tại", False, "12"),
+            ("dm_ft_dinh_bien", "Dây máy — FT tối thiểu", False, "20"),
+            ("dm_ft_hien_tai", "Dây máy — FT hiện tại", False, "19"),
+            ("dm_oft_dinh_bien", "Dây máy — OFT tối thiểu", False, "8"),
+            ("dm_oft_hien_tai", "Dây máy — OFT hiện tại", False, "3"),
             ("da_dang_kenh", "Đã đăng Zalo/FB/Hội nhóm (luỹ kế)", False, "3"),
             ("tiep_xuc_truong", "Tiếp xúc trường/BCHQS (luỹ kế)", False, "1"),
             ("bang_ron", "Dán băng rôn tuyển dụng (luỹ kế)", False, "2"),
@@ -128,7 +132,9 @@ KINDS = {
             ("ghi_chu", "Ghi chú", False, ""),
         ],
         "note": "Trùng cả ngày chốt số liệu và trung tâm thì cập nhật, không tạo thêm bản ghi mới. "
-                "Cột hồ sơ nhận trong tháng không cần nhập — hệ thống tự đếm từ danh sách Ứng viên.",
+                "Cột hồ sơ nhận trong tháng không cần nhập — hệ thống tự đếm từ danh sách Ứng viên. "
+                "Số thiếu FT/OFT cũng KHÔNG nhập tay: hệ thống lấy định biên trừ hiện tại "
+                "(âm nghĩa là đang thừa người).",
     },
     "incidents": {
         "label": "Sự cố kỹ thuật",
@@ -988,7 +994,9 @@ def _check_staffing(row, db, models, auth):
         "_key": f"{report_date.isoformat()}|{_key(center)}", "_action": "update" if existing else "create",
         "id": existing.id if existing else None,
         "report_date": report_date, "center": center,
-        "oft_gap": num("thieu_oft"), "ft_gap": num("thieu_ft"),
+        "nt_ft_dinh_bien": num("nt_ft_dinh_bien", None), "nt_ft_hien_tai": num("nt_ft_hien_tai", None),
+        "dm_ft_dinh_bien": num("dm_ft_dinh_bien", None), "dm_ft_hien_tai": num("dm_ft_hien_tai", None),
+        "dm_oft_dinh_bien": num("dm_oft_dinh_bien", None), "dm_oft_hien_tai": num("dm_oft_hien_tai", None),
         "posted_channels": num("da_dang_kenh"),
         "school_contacts": num("tiep_xuc_truong"), "banners_posted": num("bang_ron"),
         "banner_location": _clean(row.get("vi_tri_bang_ron")), "note": _clean(row.get("ghi_chu")),
@@ -997,9 +1005,14 @@ def _check_staffing(row, db, models, auth):
 
 def _apply_staffing(item, db, models, auth):
     s = db.get(models.CenterStaffing, item["id"]) if item["id"] else models.CenterStaffing()
-    for f in ("report_date", "center", "oft_gap", "ft_gap",
+    for f in ("report_date", "center",
+              "nt_ft_dinh_bien", "nt_ft_hien_tai", "dm_ft_dinh_bien", "dm_ft_hien_tai",
+              "dm_oft_dinh_bien", "dm_oft_hien_tai",
               "posted_channels", "school_contacts", "banners_posted", "banner_location", "note"):
         setattr(s, f, item[f])
+    # Số thiếu luôn tính lại từ định biên, không nhận từ tệp nhập.
+    from .recruitment import _tinh_thieu
+    _tinh_thieu(s)
     if not item["id"]:
         db.add(s)
 

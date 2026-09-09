@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2, Download, MapPin, Plus, RefreshCw, TrendingDown, Trash2, UserCheck, Users } from "lucide-react";
-import { api, getUser } from "./api";
+import { api, getUser, useCenters } from "./api";
 import { Card, Empty, Field, RED } from "./ui";
 
 const EDU_OPTIONS = ["THPT", "Trung cấp", "Cao đẳng", "Đại học", "Sau đại học"];
@@ -148,7 +148,10 @@ function BirthYearField({ form, setForm }) {
 }
 
 const blankStaffing = {
-  report_date: new Date().toISOString().slice(0, 10), center: "", oft_gap: 0, ft_gap: 0,
+  report_date: new Date().toISOString().slice(0, 10), center: "",
+  nt_ft_dinh_bien: 0, nt_ft_hien_tai: 0,
+  dm_ft_dinh_bien: 0, dm_ft_hien_tai: 0,
+  dm_oft_dinh_bien: 0, dm_oft_hien_tai: 0,
   posted_channels: 0, school_contacts: 0, banners_posted: 0,
   banner_location: "", note: "",
 };
@@ -214,6 +217,7 @@ export function RecruitmentView() {
   const [summary, setSummary] = useState(null);
   const user = getUser();
   const staffing = summary?.staffing;
+  const { tenTrungTam } = useCenters();
 
   const load = () => api.get("/api/recruitment/summary").then(setSummary).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -270,7 +274,7 @@ export function RecruitmentView() {
             <tbody>
               {(staffing?.centers || []).map((c) => (
                 <tr key={c.center}>
-                  <td><b>{c.center}</b></td>
+                  <td><b>{tenTrungTam(c.center)}</b></td>
                   <td>{c.oft_gap}</td>
                   <td>{c.ft_gap}</td>
                   <td><span className={`tag ${c.total_gap >= 8 ? "tag-red" : c.total_gap > 0 ? "tag-amber" : "tag-grey"}`}>{c.total_gap}</span></td>
@@ -495,6 +499,7 @@ export function AdminStaffing() {
     .then((x) => setRows(Array.isArray(x) ? x : []))
     .catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
+  const { danhSach: danhSachTrungTam, tenTrungTam } = useCenters();
 
   const save = async () => {
     try {
@@ -557,16 +562,29 @@ export function AdminStaffing() {
         <Card title={form.id ? "Cập nhật báo cáo trung tâm" : "Thêm báo cáo trung tâm"} icon={Building2}>
           <div className="grid md:grid-cols-2 gap-3">
             {field("Ngày chốt số liệu", "report_date", "date")}
-            {field("Trung tâm", "center")}
-            {field("Thiếu OFT", "oft_gap", "number")}
-            {field("Thiếu FT", "ft_gap", "number")}
+            <Field label="Trung tâm">
+              <select className="inp" value={form.center || ""}
+                onChange={(e) => setForm({ ...form, center: e.target.value })}>
+                <option value="">— Chọn trung tâm —</option>
+                {danhSachTrungTam.map((c) => (
+                  <option key={c.code} value={c.code}>{c.code} — {c.short || c.name}</option>
+                ))}
+              </select>
+            </Field>
+            {field("Nhà trạm — FT tối thiểu", "nt_ft_dinh_bien", "number")}
+            {field("Nhà trạm — FT hiện tại", "nt_ft_hien_tai", "number")}
+            {field("Dây máy — FT tối thiểu", "dm_ft_dinh_bien", "number")}
+            {field("Dây máy — FT hiện tại", "dm_ft_hien_tai", "number")}
+            {field("Dây máy — OFT tối thiểu", "dm_oft_dinh_bien", "number")}
+            {field("Dây máy — OFT hiện tại", "dm_oft_hien_tai", "number")}
             {field("Đã đăng Zalo/FB/Hội nhóm (luỹ kế)", "posted_channels", "number")}
             {field("Tiếp xúc trường/BCHQS (luỹ kế)", "school_contacts", "number")}
             {field("Dán băng rôn (luỹ kế)", "banners_posted", "number")}
             {field("Vị trí treo băng rôn", "banner_location")}
           </div>
           <p className="muted" style={{ fontSize: 12, marginTop: -6, marginBottom: 14 }}>
-            Không cần nhập "Hồ sơ nhận trong tháng" — hệ thống tự đếm từ danh sách Ứng viên có Khu vực mong muốn khớp trung tâm này.
+            Không nhập số thiếu FT/OFT — hệ thống lấy định biên trừ hiện tại (âm nghĩa là đang thừa người).
+            Cũng không cần nhập "Hồ sơ nhận trong tháng" — hệ thống tự đếm từ danh sách Ứng viên có Khu vực mong muốn khớp trung tâm này.
           </p>
           <Field label="Ghi chú">
             <textarea className="inp" rows="3" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} />
@@ -591,7 +609,7 @@ export function AdminStaffing() {
               {filteredRows.map((x) => (
                 <tr key={x.id}>
                   <td className="mono">{fmtDay(x.report_date)}</td>
-                  <td><b>{x.center}</b></td>
+                  <td><b>{tenTrungTam(x.center)}</b></td>
                   <td>{x.oft_gap}</td>
                   <td>{x.ft_gap}</td>
                   <td><span className={`tag ${x.total_gap >= 8 ? "tag-red" : x.total_gap > 0 ? "tag-amber" : "tag-grey"}`}>{x.total_gap}</span></td>

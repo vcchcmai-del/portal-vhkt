@@ -5,7 +5,7 @@
  * thay vì trắng màn hình. Nhờ vậy anh em có thể xem giao diện trước khi
  * hạ tầng sẵn sàng.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const BASE = import.meta.env.VITE_API_BASE || "";
 const TOKEN_KEY = "portal_token";
@@ -223,6 +223,35 @@ export const api = {
     }
   },
 };
+
+/**
+ * Danh mục trung tâm dùng chung: mã viết tắt -> tên đầy đủ.
+ *
+ * Cơ sở dữ liệu lưu theo mã (THA, CHP...) để các phân hệ đối chiếu được với
+ * nhau; màn hình hiển thị "THA — Thới Hòa" cho người đọc. Gọi một lần rồi dùng
+ * lại, vì danh mục gần như không đổi.
+ */
+let _dsTrungTam = null;
+
+export function useCenters() {
+  const [ds, setDs] = useState(_dsTrungTam || []);
+  useEffect(() => {
+    if (_dsTrungTam) return;
+    api.get("/api/centers")
+      .then((x) => { _dsTrungTam = Array.isArray(x) ? x : []; setDs(_dsTrungTam); })
+      .catch(() => {});
+  }, []);
+  const tra = useMemoMap(ds);
+  return { danhSach: ds, tenTrungTam: tra };
+}
+
+function useMemoMap(ds) {
+  return useMemo(() => {
+    const m = Object.fromEntries(ds.map((c) => [c.code, c.short || c.name]));
+    /** "THA" -> "THA — Thới Hòa"; giá trị lạ thì giữ nguyên để không giấu dữ liệu. */
+    return (ma) => (ma && m[ma] ? `${ma} — ${m[ma]}` : (ma || "—"));
+  }, [ds]);
+}
 
 /**
  * Hook lấy dữ liệu từ API, có sẵn dữ liệu dự phòng.

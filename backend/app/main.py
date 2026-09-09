@@ -191,6 +191,12 @@ def on_startup():
         apply_once()
     chay("Cập nhật KPI báo cáo T8/2026", buoc_kpi_t8_2026)
 
+    # Chuẩn hoá tên trung tâm về mã viết tắt, chạy một lần sau khi đã có danh mục.
+    def buoc_ma_trung_tam():
+        from .center_codes import apply_once
+        apply_once()
+    chay("Chuẩn hoá mã trung tâm", buoc_ma_trung_tam)
+
     # Nạp danh mục đầu việc/hạng mục tiến độ mảng kỹ thuật nếu bảng còn trống.
     def buoc_dau_viec():
         from .database import SessionLocal
@@ -1225,6 +1231,20 @@ def public_events(kind: str = "culture", db: Session = Depends(get_db),
              "meeting_info": e.meeting_info,
              "meeting_id": e.meeting_id,
              "meeting_pass": e.meeting_pass} for e in rows]
+
+
+@app.get("/api/centers", tags=["Hệ thống"])
+def public_centers(db: Session = Depends(get_db)):
+    """Danh mục trung tâm: mã viết tắt + tên đầy đủ.
+
+    Dữ liệu lưu theo mã (THA, CHP...) cho gọn và để đối chiếu được giữa các phân
+    hệ; giao diện dùng danh mục này hiển thị "THA — Thới Hòa" cho người đọc.
+    """
+    rows = (db.query(models.InfraCenterCode)
+            .order_by(models.InfraCenterCode.code).all())
+    return [{"code": c.code, "name": c.name,
+             "short": c.name.replace("Trung tâm", "").strip(" -") or c.name}
+            for c in rows]
 
 
 @app.get("/api/birthdays", tags=["Góc văn hoá"])

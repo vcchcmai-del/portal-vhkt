@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Download, ExternalLink, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
-import { api } from "./api";
+import { api, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Empty, Field, RED } from "./ui";
 
@@ -296,6 +296,7 @@ function ProgressTab() {
   const [ftRows, setFtRows] = useState([]);
   const [ftForm, setFtForm] = useState(null);
 
+  const { danhSach: danhSachTrungTam, tenTrungTam } = useCenters();
   const [newItemCat, setNewItemCat] = useState(null);  // đầu việc đang thêm hạng mục
   const [newItem, setNewItem] = useState("");
   const [assignees, setAssignees] = useState([]);
@@ -487,7 +488,15 @@ function ProgressTab() {
             {centerForm && (
               <div className="card" style={{ padding: 12, marginBottom: 12 }}>
                 <div className="grid md:grid-cols-2 gap-3">
-                  <Field label="Trung tâm"><input className="inp" value={centerForm.center} onChange={(e) => setCenterForm({ ...centerForm, center: e.target.value })} /></Field>
+                  <Field label="Trung tâm">
+                    <select className="inp" value={centerForm.center}
+                      onChange={(e) => setCenterForm({ ...centerForm, center: e.target.value })}>
+                      <option value="">— Chọn trung tâm —</option>
+                      {danhSachTrungTam.map((c) => (
+                        <option key={c.code} value={c.code}>{c.code} — {c.short || c.name}</option>
+                      ))}
+                    </select>
+                  </Field>
                   {numField(centerForm, setCenterForm, "Kế hoạch", "plan_qty")}
                   {numField(centerForm, setCenterForm, "Thực hiện", "done_qty")}
                   <Field label="Ghi chú"><input className="inp" value={centerForm.note || ""} onChange={(e) => setCenterForm({ ...centerForm, note: e.target.value })} /></Field>
@@ -505,7 +514,7 @@ function ProgressTab() {
                   {centers.map((c, i) => (
                     <tr key={c.id}>
                       <td className="mono">{i + 1}</td>
-                      <td><button className="btn btn-sm" style={{ border: "none", padding: 0, fontWeight: 700 }} onClick={() => openCenter(c.center)}>{c.center}</button></td>
+                      <td><button className="btn btn-sm" style={{ border: "none", padding: 0, fontWeight: 700 }} onClick={() => openCenter(c.center)}>{tenTrungTam(c.center)}</button></td>
                       <td>{c.plan_qty}</td>
                       <td>{c.done_qty}</td>
                       <td>{c.remaining}</td>

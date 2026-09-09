@@ -224,7 +224,35 @@ def export_candidates_csv(db: Session = Depends(get_db), _=Depends(require_modul
 
 # --------------------------------------------------- Định biên thiếu theo trung tâm
 
+def _tinh_thieu(row) -> None:
+    """Tính lại số thiếu từ định biên và nhân sự hiện có.
+
+    Số thiếu = định biên - hiện có, giữ cả giá trị âm (đang thừa người). Chỉ
+    tính khi dòng đã có định biên; dòng cũ nhập tay từ trước vẫn giữ nguyên số
+    đã nhập để không xoá mất dữ liệu lịch sử.
+    """
+    def hieu(dinh_bien, hien_tai):
+        if dinh_bien is None and hien_tai is None:
+            return None
+        return (dinh_bien or 0) - (hien_tai or 0)
+
+    nha_tram = hieu(row.nt_ft_dinh_bien, row.nt_ft_hien_tai)
+    day_may_ft = hieu(row.dm_ft_dinh_bien, row.dm_ft_hien_tai)
+    day_may_oft = hieu(row.dm_oft_dinh_bien, row.dm_oft_hien_tai)
+
+    if nha_tram is not None or day_may_ft is not None:
+        row.ft_gap = (nha_tram or 0) + (day_may_ft or 0)
+    if day_may_oft is not None:
+        row.oft_gap = day_may_oft
+
+
 def _staffing_out(row, db: Session):
+    thieu_nt = (row.nt_ft_dinh_bien or 0) - (row.nt_ft_hien_tai or 0)
+    thieu_dm_ft = (row.dm_ft_dinh_bien or 0) - (row.dm_ft_hien_tai or 0)
+    thieu_dm_oft = (row.dm_oft_dinh_bien or 0) - (row.dm_oft_hien_tai or 0)
+    co_dinh_bien = any(v is not None for v in (
+        row.nt_ft_dinh_bien, row.nt_ft_hien_tai, row.dm_ft_dinh_bien,
+        row.dm_ft_hien_tai, row.dm_oft_dinh_bien, row.dm_oft_hien_tai))
     return {
         "id": row.id, "report_date": row.report_date, "center": row.center,
         "oft_gap": row.oft_gap, "ft_gap": row.ft_gap, "total_gap": row.oft_gap + row.ft_gap,
@@ -232,6 +260,18 @@ def _staffing_out(row, db: Session):
         "posted_channels": row.posted_channels,
         "school_contacts": row.school_contacts, "banners_posted": row.banners_posted,
         "banner_location": row.banner_location, "note": row.note,
+        # Định biên chi tiết theo mảng — số thiếu kèm theo là giá trị tính sẵn
+        # cho giao diện, không lưu trong cơ sở dữ liệu.
+        "co_dinh_bien": co_dinh_bien,
+        "nha_tram": {"dinh_bien": row.nt_ft_dinh_bien, "hien_tai": row.nt_ft_hien_tai,
+                     "can_tuyen": thieu_nt if co_dinh_bien else None},
+        "day_may": {
+            "ft_dinh_bien": row.dm_ft_dinh_bien, "ft_hien_tai": row.dm_ft_hien_tai,
+            "oft_dinh_bien": row.dm_oft_dinh_bien, "oft_hien_tai": row.dm_oft_hien_tai,
+            "ft_can_tuyen": thieu_dm_ft if co_dinh_bien else None,
+            "oft_can_tuyen": thieu_dm_oft if co_dinh_bien else None,
+            "can_tuyen": (thieu_dm_ft + thieu_dm_oft) if co_dinh_bien else None,
+        },
     }
 
 
@@ -240,6 +280,12 @@ class StaffingIn(BaseModel):
     center: Optional[str] = None
     oft_gap: Optional[int] = None
     ft_gap: Optional[int] = None
+    nt_ft_dinh_bien: Optional[int] = None
+    nt_ft_hien_tai: Optional[int] = None
+    dm_ft_dinh_bien: Optional[int] = None
+    dm_ft_hien_tai: Optional[int] = None
+    dm_oft_dinh_bien: Optional[int] = None
+    dm_oft_hien_tai: Optional[int] = None
     posted_channels: Optional[int] = None
     school_contacts: Optional[int] = None
     banners_posted: Optional[int] = None
@@ -270,10 +316,14 @@ def admin_create_staffing(data: StaffingIn, db: Session = Depends(get_db),
     row = models.CenterStaffing(
         report_date=data.report_date or models.today(), center=data.center.strip(),
         oft_gap=data.oft_gap or 0, ft_gap=data.ft_gap or 0,
+        nt_ft_dinh_bien=data.nt_ft_dinh_bien, nt_ft_hien_tai=data.nt_ft_hien_tai,
+        dm_ft_dinh_bien=data.dm_ft_dinh_bien, dm_ft_hien_tai=data.dm_ft_hien_tai,
+        dm_oft_dinh_bien=data.dm_oft_dinh_bien, dm_oft_hien_tai=data.dm_oft_hien_tai,
         posted_channels=data.posted_channels or 0,
         school_contacts=data.school_contacts or 0, banners_posted=data.banners_posted or 0,
         banner_location=(data.banner_location or "").strip(), note=data.note or "",
     )
+    _tinh_thieu(row)
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "recruitment", row.id, row.center, request=request)
     return _staffing_out(row, db)
@@ -284,6 +334,7 @@ def admin_update_staffing(item_id: int, data: StaffingIn, db: Session = Depends(
                           user=Depends(require_module("recruitment", "update")), request: Request = None):
     row = _get_staffing(db, item_id)
     _apply(row, data.model_dump(exclude_unset=True))
+    _tinh_thieu(row)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "recruitment", row.id, row.center, request=request)
     return _staffing_out(row, db)
