@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Download, RefreshCw, Upload } from "lucide-react";
-import { api, getToken } from "./api";
+import { API_BASE, api, getToken } from "./api";
 import { Card, Empty, Field, RED } from "./ui";
 
 async function uploadCsdl(file, commit) {
@@ -9,7 +9,7 @@ async function uploadCsdl(file, commit) {
   if (token) headers.Authorization = `Bearer ${token}`;
   const form = new FormData();
   form.append("file", file);
-  const res = await fetch(`/api/admin/csdl-ht/import?commit=${commit ? "true" : "false"}`, {
+  const res = await fetch(`${API_BASE}/api/admin/csdl-ht/import?commit=${commit ? "true" : "false"}`, {
     method: "POST", headers, body: form,
   });
   const data = await res.json().catch(() => null);

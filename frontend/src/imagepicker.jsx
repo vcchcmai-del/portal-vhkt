@@ -5,7 +5,7 @@
 import React, { useRef, useState } from "react";
 import { Image as ImageIcon, Link2, Loader2, Trash2, Upload, X } from "lucide-react";
 
-import { api } from "./api";
+import { api, assetUrl } from "./api";
 import { RED, RED_DARK } from "./ui";
 
 const boxStyle = {
@@ -36,7 +36,7 @@ export function ImagePicker({ value, onChange, label = "Ảnh đại diện", hi
 
       {value ? (
         <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid #E7E3E4" }}>
-          <img src={value} alt="Xem trước" style={{ width: "100%", maxHeight: 190, objectFit: "cover", display: "block" }} />
+          <img src={assetUrl(value)} alt="Xem trước" style={{ width: "100%", maxHeight: 190, objectFit: "cover", display: "block" }} />
           <button type="button" className="btn btn-sm" onClick={() => onChange("")}
             style={{ position: "absolute", top: 8, right: 8, background: "rgba(255,255,255,.94)" }}>
             <Trash2 size={13} /> Bỏ ảnh
@@ -112,7 +112,7 @@ export function GalleryPicker({ value = [], onChange, label = "Ảnh đính kèm
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2" style={{ marginBottom: 10 }}>
           {list.map((url, i) => (
             <div key={url + i} style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: "1px solid #E7E3E4" }}>
-              <img src={url} alt="" style={{ width: "100%", height: 78, objectFit: "cover", display: "block" }} />
+              <img src={assetUrl(url)} alt="" style={{ width: "100%", height: 78, objectFit: "cover", display: "block" }} />
               <button type="button" onClick={() => onChange(list.filter((_, k) => k !== i))}
                 title="Xoá ảnh này"
                 style={{ position: "absolute", top: 3, right: 3, border: 0, borderRadius: 6, cursor: "pointer",

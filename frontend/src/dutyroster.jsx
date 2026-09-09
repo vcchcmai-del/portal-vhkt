@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Building2, CalendarClock, ChevronLeft, ChevronRight, Download, Phone, Search, Upload, Users,
 } from "lucide-react";
-import { api, getToken } from "./api";
+import { API_BASE, api, getToken } from "./api";
 import { Card, Empty, Field, RED, RED_DARK } from "./ui";
 
 const SHIFT_COLORS = {
@@ -236,7 +236,7 @@ export function AdminDutyRosterImport() {
       const headers = {};
       const token = getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch(`/api/admin/duty-roster/template?month=${templateMonth}`, { headers });
+      const res = await fetch(`${API_BASE}/api/admin/duty-roster/template?month=${templateMonth}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail || "Không tải được tệp mẫu.");
@@ -258,7 +258,7 @@ export function AdminDutyRosterImport() {
       const headers = {};
       const token = getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
-      const res = await fetch("/api/admin/duty-roster/import", { method: "POST", headers, body: fd });
+      const res = await fetch(`${API_BASE}/api/admin/duty-roster/import`, { method: "POST", headers, body: fd });
       const r = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(r.detail || `Máy chủ báo lỗi ${res.status}.`);
       setMsg(`Đã nhập ${r.rows} dòng · ${r.people} người · ${r.blocks.length} khối · từ ${r.date_from} đến ${r.date_to}.`);

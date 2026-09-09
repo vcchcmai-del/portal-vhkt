@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, RefreshCw, X, XCircle } from "lucide-react";
 
-import { API_CAN_CO, api } from "./api";
+import { API_BASE, API_CAN_CO, api } from "./api";
 import { BUILD_ID } from "./build";
 import { dsLoi, theoDoiLoi } from "./errors";
 import { RED, RED_DARK } from "./ui";
@@ -44,7 +44,7 @@ export function BangKiemTra({ onClose }) {
 
   const kiemTra = () => {
     setDangTai(true);
-    fetch("/api/health")
+    fetch(`${API_BASE}/api/health`)
       .then((r) => r.json().then((d) => ({ ok: r.ok, ...d })))
       .catch((e) => ({ ok: false, loiMang: e.message }))
       .then((d) => { setTt(d); setDangTai(false); });

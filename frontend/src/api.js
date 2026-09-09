@@ -11,6 +11,36 @@ const BASE = import.meta.env.VITE_API_BASE || "";
 const TOKEN_KEY = "portal_token";
 
 /**
+ * Địa chỉ gốc của backend — dùng khi phải gọi fetch() trực tiếp thay vì qua
+ * lớp api.* (ví dụ tải tệp lên/xuống). Frontend và backend có thể nằm khác
+ * domain (xem VITE_API_BASE), nên KHÔNG được gọi fetch("/api/...") bằng
+ * đường dẫn tương đối — sẽ gọi nhầm vào domain đang phục vụ giao diện tĩnh.
+ */
+export const API_BASE = BASE;
+
+/**
+ * Vá đường dẫn tệp tải lên (/uploads/...) thành URL đầy đủ trỏ về đúng
+ * backend. Cần thiết vì frontend/backend có thể khác domain (xem BASE ở
+ * trên) — chuỗi tương đối "/uploads/xxx.jpg" nếu để nguyên sẽ bị trình
+ * duyệt hiểu là thuộc domain đang phục vụ giao diện tĩnh, không phải nơi
+ * thực sự lưu tệp, nên ảnh/tệp sẽ vỡ. An toàn khi BASE rỗng (cùng domain)
+ * hoặc URL đã là tuyệt đối — không đổi gì trong hai trường hợp đó.
+ */
+export const assetUrl = (u) => (u && typeof u === "string" && u.startsWith("/uploads/")) ? BASE + u : u;
+
+/** Duyệt đệ quy một object/mảng JSON và vá mọi chuỗi /uploads/... bên trong. */
+function vaDuongDanTepTrongDuLieu(value) {
+  if (Array.isArray(value)) return value.map(vaDuongDanTepTrongDuLieu);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = vaDuongDanTepTrongDuLieu(v);
+    return out;
+  }
+  if (typeof value === "string") return assetUrl(value);
+  return value;
+}
+
+/**
  * Phiên bản API mà giao diện này cần.
  * Máy chủ báo số nhỏ hơn nghĩa là backend chưa được triển khai lại,
  * một số chức năng sẽ báo "Not Found" khi bấm vào.
@@ -89,7 +119,8 @@ async function request(path, options = {}) {
   if (!res.ok) throw new Error(await describeError(res));
 
   if (res.status === 204) return null;
-  return res.json().catch(() => null);
+  const data = await res.json().catch(() => null);
+  return BASE && data ? vaDuongDanTepTrongDuLieu(data) : data;
 }
 
 export const api = {

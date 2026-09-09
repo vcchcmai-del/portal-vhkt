@@ -15,7 +15,7 @@ import {
   Loader2, RefreshCw, Table2, Upload, X,
 } from "lucide-react";
 
-import { api, getToken } from "./api";
+import { API_BASE, api, getToken } from "./api";
 import { Card, Check as CheckBox, Empty, Field, RED, RED_DARK } from "./ui";
 
 const STATUS = {
@@ -69,7 +69,7 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
     if (token) headers.Authorization = `Bearer ${token}`;
     try {
       const res = await fetch(
-        `/api/admin/import/file?kind=${kind}&mode=${mode}&commit=${commit}`,
+        `${API_BASE}/api/admin/import/file?kind=${kind}&mode=${mode}&commit=${commit}`,
         { method: "POST", headers, body: form }
       );
       const data = await res.json().catch(() => ({}));
@@ -91,7 +91,7 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
       const path = dinhDang === "xlsx"
         ? `/api/admin/import/template-xlsx/${kind}${qs}`
         : `/api/admin/import/template/${kind}${qs}`;
-      const res = await fetch(path, { headers });
+      const res = await fetch(`${API_BASE}${path}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail || "Không tải được tệp mẫu.");
@@ -117,7 +117,7 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
       const token = getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
       const qs = `?board=${encodeURIComponent(boardScope.map((b) => b.value).join(","))}${nhomLabel ? `&nhom=${encodeURIComponent(nhomLabel)}` : ""}`;
-      const res = await fetch(`/api/admin/metrics/export${qs}`, { headers });
+      const res = await fetch(`${API_BASE}/api/admin/metrics/export${qs}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail || "Không xuất được báo cáo.");
