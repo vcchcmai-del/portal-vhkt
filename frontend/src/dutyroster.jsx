@@ -22,9 +22,9 @@ const WEEKDAY_FULL = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Th�
  * huy nằm lẫn trong trung tâm của mình). Đọc được cả hai kiểu file.
  */
 const KHOI_CHINH = [
-  { id: "CH", khoi: "Chỉ Huy", ma: "CH", nhan: "Trực chỉ huy", icon: Building2 },
-  { id: "TB", khoi: "PVHKT", ma: "TB", nhan: "Trực ban PVHKT", icon: Users },
-  { id: "LX", khoi: "Lái xe", ma: "LX", nhan: "Trực lái xe", icon: Phone },
+  { id: "CH", khoi: "Chỉ Huy", ma: "CH", nhan: "Trực chỉ huy", nhanNgan: "Chỉ huy", icon: Building2 },
+  { id: "TB", khoi: "PVHKT", ma: "TB", nhan: "Trực ban PVHKT", nhanNgan: "PVHKT", icon: Users },
+  { id: "LX", khoi: "Lái xe", ma: "LX", nhan: "Trực lái xe", nhanNgan: "Lái xe", icon: Phone },
 ];
 const MAIN_BLOCKS = KHOI_CHINH.map((k) => k.khoi);
 
@@ -197,7 +197,7 @@ export function DutyRosterView() {
             {KHOI_CHINH.map((k) => (
               <button key={k.id} className={`btn btn-sm ${subTab === k.id ? "btn-red" : ""}`}
                 onClick={() => setSubTab(k.id)}>
-                {k.nhan.replace("Trực ", "")}
+                {k.nhanNgan}
               </button>
             ))}
             <span style={{ width: 1, background: "#E5E0E1", margin: "0 2px" }} />

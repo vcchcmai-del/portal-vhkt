@@ -1314,6 +1314,10 @@ export const ADMIN_PAGES = [
     group: "account", groupLabel: "Quản lý tài khoản", groupIcon: UserCog },
   { id: "adm-users-import", label: "Nhập từ Excel", icon: Upload, comp: () => <AdminImport fixedKind="users" />, adminOnly: true,
     group: "account", groupLabel: "Quản lý tài khoản", groupIcon: UserCog },
+  // Nhập nhiều nhóm bằng một tệp. Mọi màn hình nhập khác đều cố định một nhóm,
+  // nên đây là chỗ duy nhất AdminImport chạy ở chế độ tự nhận nhóm theo trang tính.
+  { id: "adm-import-all", label: "Nhập tổng hợp một tệp", icon: Upload, comp: AdminImport,
+    adminOnly: true, group: "sysconfig", groupLabel: "Cấu hình website", groupIcon: Settings },
   { id: "adm-logs", label: "Nhật ký hệ thống", icon: History, comp: AdminLogs, adminOnly: true,
     group: "sysconfig", groupLabel: "Cấu hình website", groupIcon: Settings },
   { id: "adm-trash", label: "Thùng rác", icon: Trash, comp: AdminTrash, adminOnly: true,

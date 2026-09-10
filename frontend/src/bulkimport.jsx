@@ -37,6 +37,10 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
   const fileRef = useRef(null);
   const [fileName, setFileName] = useState("");
   const [pendingFile, setPendingFile] = useState(null);
+  // Tệp mẫu tổng hợp gồm nhiều trang, mỗi trang một nhóm — nộp không kèm "kind"
+  // để máy chủ tự đọc từng trang.
+  const [tepTongHop, setTepTongHop] = useState(null);
+  const fileTongHopRef = useRef(null);
 
   useEffect(() => {
     api.get("/api/admin/import/kinds").then(setKinds).catch((e) => setErr(e.message));
@@ -78,6 +82,44 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
       if (commit) setPendingFile(null);
     } catch (e) { setErr(e.message); setResult(null); }
     setBusy(false);
+  };
+
+  const runFileTongHop = async (file, commit) => {
+    if (!file) return;
+    setBusy(true); setErr("");
+    const form = new FormData();
+    form.append("file", file);
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/import/file?mode=${mode}&commit=${commit}`,
+        { method: "POST", headers, body: form },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || `Máy chủ báo lỗi ${res.status}.`);
+      setResult(data);
+      if (commit) setTepTongHop(null);
+    } catch (e) { setErr(e.message); setResult(null); }
+    setBusy(false);
+  };
+
+  const taiMauTongHop = async () => {
+    try {
+      const headers = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/api/admin/import/template-xlsx-tong-hop`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || "Không tải được tệp mẫu tổng hợp.");
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      a.href = url; a.download = "mau-nhap-tong-hop.xlsx"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
   };
 
   const downloadTemplate = async (dinhDang) => {
@@ -136,7 +178,7 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
   const rows = result?.chi_tiet || [];
   const shown = onlyProblems ? rows.filter((r) => r.trang_thai === "loi" || r.trang_thai === "bo_qua") : rows;
   const coTheGhi = t && (t.them_moi > 0 || t.cap_nhat > 0);
-  const coDuLieu = text.trim() || pendingFile;
+  const coDuLieu = text.trim() || pendingFile || tepTongHop;
 
   // Dòng nào có cột "bang" nằm ngoài phạm vi màn này — chặn hẳn, không cho xem
   // trước/ghi, để đúng yêu cầu "chỉ nhập được dữ liệu của đúng tab đang mở".
@@ -291,6 +333,37 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
             }} />
         </div>
 
+        {!fixedKind && (
+          <div style={{ border: "1px solid #E7E3E4", borderRadius: 10, padding: "12px 14px",
+                        marginBottom: 16, background: "#FBFAFA" }}>
+            <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+              Hoặc nhập nhiều nhóm bằng một tệp duy nhất
+            </p>
+            <p className="dim" style={{ fontSize: 12.5, marginBottom: 10 }}>
+              Tệp mẫu tổng hợp có sẵn mỗi nhóm một trang. Điền trang nào thì nhóm đó được cập nhật,
+              trang để trống thì bỏ qua — không phải tải và nộp từng tệp riêng nữa.
+            </p>
+            <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+              <button className="btn btn-sm" onClick={taiMauTongHop}>
+                <Download size={14} /> Tải tệp mẫu tổng hợp
+              </button>
+              <button className="btn btn-sm" onClick={() => fileTongHopRef.current?.click()}>
+                <Upload size={14} /> Chọn tệp tổng hợp đã điền
+              </button>
+              {tepTongHop && <span className="tag tag-grey">{tepTongHop.name}</span>}
+              <input ref={fileTongHopRef} type="file" accept=".xlsx,.xlsm" style={{ display: "none" }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    setTepTongHop(f); setPendingFile(null); setText(""); setFileName("");
+                    runFileTongHop(f, false);
+                  }
+                  e.target.value = "";
+                }} />
+            </div>
+          </div>
+        )}
+
         <p className="eyebrow-grey" style={{ marginBottom: 8 }}>Khi gặp dòng đã có sẵn</p>
         <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
           <button className={`chip ${mode === "upsert" ? "on" : ""}`} onClick={() => { setMode("upsert"); setResult(null); }}>
@@ -345,6 +418,37 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
             ))}
           </div>
 
+          {result.nhieu_nhom && (
+            <div style={{ border: "1px solid #E7E3E4", borderRadius: 10, marginBottom: 14,
+                          overflowX: "auto" }}>
+              <table className="tbl">
+                <thead><tr>
+                  <th>Nhóm dữ liệu</th>
+                  <th style={{ textAlign: "right" }}>Dòng</th>
+                  <th style={{ textAlign: "right" }}>Thêm mới</th>
+                  <th style={{ textAlign: "right" }}>Cập nhật</th>
+                  <th style={{ textAlign: "right" }}>Lỗi</th>
+                </tr></thead>
+                <tbody>
+                  {(result.theo_nhom || []).map((n) => (
+                    <tr key={n.kind}>
+                      <td style={{ fontWeight: 600 }}>{n.nhan_nhom}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{n.tom_tat.tong_dong}</td>
+                      <td className="mono" style={{ textAlign: "right", color: "#0A7A50" }}>{n.tom_tat.them_moi}</td>
+                      <td className="mono" style={{ textAlign: "right", color: "#95610A" }}>{n.tom_tat.cap_nhat}</td>
+                      <td className="mono" style={{ textAlign: "right", color: n.tom_tat.loi ? RED : undefined }}>{n.tom_tat.loi}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {(result.trang_bo_qua || []).length > 0 && (
+                <p className="muted" style={{ fontSize: 12.5, padding: "9px 12px" }}>
+                  Trang bỏ qua: {result.trang_bo_qua.map((x) => `${x.kind} (${x.ly_do})`).join("; ")}
+                </p>
+              )}
+            </div>
+          )}
+
           {result.da_ghi ? (
             <p style={{ background: "#EEF8F1", color: "#0A7A50", padding: "11px 13px",
                         borderRadius: 10, fontSize: 13.5, fontWeight: 600, marginBottom: 14 }}>
@@ -362,7 +466,8 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
               )}
               <div className="flex gap-2" style={{ marginBottom: 16, flexWrap: "wrap" }}>
                 <button className="btn btn-red" disabled={busy || !coTheGhi || maBangNgoaiPhamKetQua.length > 0}
-                  onClick={() => (pendingFile ? runFile(pendingFile, true) : runText(true))}>
+                  onClick={() => (tepTongHop ? runFileTongHop(tepTongHop, true)
+                    : pendingFile ? runFile(pendingFile, true) : runText(true))}>
                   {busy ? <Loader2 size={15} className="spin" /> : <Check size={15} />}
                   Xác nhận ghi {t.them_moi + t.cap_nhat} dòng vào hệ thống
                 </button>

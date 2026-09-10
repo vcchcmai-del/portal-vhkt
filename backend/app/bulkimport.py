@@ -498,6 +498,146 @@ def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
     return buf.getvalue()
 
 
+# ---------------------------------------------- Tệp mẫu tổng hợp (một tệp duy nhất)
+
+def _ten_trang(kind: str) -> str:
+    """Tên trang tính cho một nhóm dữ liệu. Excel giới hạn 31 ký tự."""
+    return KINDS[kind]["label"][:31]
+
+
+def build_template_xlsx_tong_hop(chi_gom=None) -> bytes:
+    """Một workbook chứa TẤT CẢ nhóm dữ liệu, mỗi nhóm một trang.
+
+    Trước đây mỗi nhóm một tệp mẫu riêng: muốn cập nhật số liệu, nhân sự và
+    định biên là ba lần tải mẫu, ba lần điền, ba lần nộp. Nay điền một tệp rồi
+    nộp một lần; trang nào để trống thì bỏ qua, không đụng tới dữ liệu đang có.
+
+    Lịch trực toàn chi nhánh và CSDL hạ tầng KHÔNG nằm ở đây: hai thứ đó là
+    bảng ngang (mỗi ngày/mỗi cụm một cột) chứ không phải mỗi dòng một bản ghi,
+    nhét chung vào sẽ phải bịa ra một khuôn dạng thứ ba cho chúng.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    do_bat_buoc = PatternFill("solid", fgColor="C8102E")
+    xam_nhat = PatternFill("solid", fgColor="6B7280")
+    chu_trang = Font(bold=True, color="FFFFFF", size=11)
+    chu_vi_du = Font(italic=True, color="8A8A8A")
+
+    wb = Workbook()
+    hd = wb.active
+    hd.title = "Huong dan"
+    hd.column_dimensions["A"].width = 30
+    hd.column_dimensions["B"].width = 86
+    hd["A1"] = "TỆP MẪU TỔNG HỢP — nhập nhiều nhóm dữ liệu trong một lần"
+    hd["A1"].font = Font(bold=True, size=14, color="C8102E")
+    dong = 3
+    for dong_hd in [
+        "Mỗi trang bên dưới là một nhóm dữ liệu. Điền trang nào thì nhóm đó được cập nhật;",
+        "trang để trống (chỉ còn tiêu đề, hoặc chỉ còn dòng ví dụ) thì bỏ qua.",
+        "",
+        "Cột tô ĐỎ là bắt buộc, tô XÁM là tuỳ chọn. Xoá dòng ví dụ (chữ nghiêng, xám) trước khi nhập thật.",
+        "Đừng đổi tên trang và đừng đổi dòng tiêu đề — hệ thống dựa vào đó để biết trang nào là nhóm nào.",
+        "",
+        "Nộp tại: Quản trị › Nhập dữ liệu hàng loạt › chọn tệp này (không cần chọn nhóm).",
+        "Luôn xem trước rồi mới ghi: màn hình sẽ báo từng trang thêm mới bao nhiêu, cập nhật bao nhiêu, lỗi dòng nào.",
+        "",
+        "KHÔNG nhập ở đây: Lịch trực toàn chi nhánh và CSDL hạ tầng — hai thứ đó là bảng ngang",
+        "(mỗi ngày, mỗi cụm một cột) nên có tệp mẫu riêng ở đúng màn hình của chúng.",
+    ]:
+        hd.cell(row=dong, column=1, value=dong_hd).alignment = Alignment(wrap_text=True)
+        hd.merge_cells(start_row=dong, start_column=1, end_row=dong, end_column=2)
+        dong += 1
+
+    dong += 1
+    hd.cell(row=dong, column=1, value="Trang").font = Font(bold=True)
+    hd.cell(row=dong, column=2, value="Nhập cái gì").font = Font(bold=True)
+    dong += 1
+    cac_nhom = [k for k in KINDS if not chi_gom or k in chi_gom]
+    for kind in cac_nhom:
+        spec = KINDS[kind]
+        hd.cell(row=dong, column=1, value=_ten_trang(kind))
+        o = hd.cell(row=dong, column=2, value=spec["note"])
+        o.alignment = Alignment(wrap_text=True)
+        dong += 1
+
+    for kind in cac_nhom:
+        spec = KINDS[kind]
+        ws = wb.create_sheet(_ten_trang(kind))
+        cols = _cot_theo_pham_vi(spec, None)
+        dropdowns = spec.get("dropdowns", {})
+        for i, (name, _label, required, example) in enumerate(cols, start=1):
+            o = ws.cell(row=1, column=i, value=name)
+            o.fill = do_bat_buoc if required else xam_nhat
+            o.font = chu_trang
+            o.alignment = Alignment(horizontal="center", vertical="center")
+            ws.cell(row=2, column=i, value=example).font = chu_vi_du
+            ws.column_dimensions[get_column_letter(i)].width = max(len(name), len(str(example)), 14) + 4
+            if name in dropdowns:
+                dv = DataValidation(type="list",
+                                    formula1='"{}"'.format(",".join(dropdowns[name])),
+                                    allow_blank=True, showDropDown=False)
+                dv.error = "Chọn một giá trị trong danh sách thả xuống."
+                dv.errorTitle = "Giá trị không hợp lệ"
+                ws.add_data_validation(dv)
+                cot = get_column_letter(i)
+                dv.add(f"{cot}2:{cot}1000")
+        ws.row_dimensions[1].height = 24
+        ws.freeze_panes = "A3"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def doc_workbook_tong_hop(content: bytes):
+    """Đọc tệp mẫu tổng hợp -> [(kind, header, rows)] cho những trang có dữ liệu.
+
+    Nhận diện trang theo tên: khớp với nhãn nhóm hoặc thẳng mã nhóm, bỏ dấu và
+    bỏ phân biệt hoa thường để người dùng đổi hoa/thường hay thiếu dấu vẫn nhận ra.
+    """
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        raise ImportError_("Máy chủ chưa cài thư viện đọc Excel (openpyxl).")
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as e:  # noqa: BLE001
+        raise ImportError_(f"Không đọc được tệp Excel: {e}")
+
+    tra = {}
+    for kind in KINDS:
+        tra[_key(_ten_trang(kind))] = kind
+        tra[_key(kind)] = kind
+
+    ra = []
+    for ten in wb.sheetnames:
+        kind = tra.get(_key(ten))
+        if not kind:
+            continue
+        hang = [r for r in wb[ten].iter_rows(values_only=True)
+                if any(_clean(c) for c in (r or []))]
+        if len(hang) < 2:
+            continue          # chỉ có tiêu đề -> trang bỏ trống, không đụng tới
+        # Bỏ dòng ví dụ nếu người dùng quên xoá: tệp mẫu nào cũng có sẵn một
+        # dòng minh hoạ, để nguyên mà nộp thì mọi trang đều "có dữ liệu" và
+        # nhập thẳng dữ liệu bịa vào hệ thống.
+        vi_du = [_clean(e) for _c, _l, _r, e in _cot_theo_pham_vi(KINDS[kind], None)]
+        giu = [hang[0]] + [r for r in hang[1:]
+                           if [_clean(c) for c in r][:len(vi_du)] != vi_du]
+        if len(giu) < 2:
+            continue
+        # Dùng chung _to_dicts với đường nhập một nhóm, để hai lối vào hiểu dữ
+        # liệu y hệt nhau (khoá cột bỏ dấu, cắt khoảng trắng, bỏ dòng rỗng).
+        header, rows = _to_dicts([[("" if c is None else str(c)) for c in r] for r in giu])
+        if not rows:
+            continue
+        ra.append((kind, header, rows))
+    return ra
+
+
 # --------------------------------------------------- Kiểm tra và áp dụng
 
 def _yes(v) -> bool:

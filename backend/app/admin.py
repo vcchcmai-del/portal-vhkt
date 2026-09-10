@@ -1438,6 +1438,34 @@ def import_kinds(kind: Optional[str] = None, user: models.User = Depends(current
     ]
 
 
+@router.get("/import/template-xlsx-tong-hop")
+def import_template_xlsx_tong_hop(user: models.User = Depends(current_user)):
+    """Một tệp Excel chứa tất cả nhóm dữ liệu, mỗi nhóm một trang.
+
+    Chỉ đưa vào những nhóm tài khoản này được phép nhập, để người dùng không
+    ngồi điền một trang rồi mới bị máy chủ từ chối lúc nộp.
+    """
+    duoc_phep = []
+    for kind in bi.KINDS:
+        try:
+            check_import_kind_permission(user, kind, "view")
+            duoc_phep.append(kind)
+        except HTTPException:
+            continue
+    if not duoc_phep:
+        raise HTTPException(403, "Tài khoản không có quyền nhập nhóm dữ liệu nào.")
+    try:
+        content = bi.build_template_xlsx_tong_hop(chi_gom=duoc_phep)
+    except ImportError:
+        raise HTTPException(500, "Máy chủ chưa cài thư viện tạo tệp Excel (openpyxl).")
+    from fastapi.responses import Response
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="mau-nhap-tong-hop.xlsx"'},
+    )
+
+
 @router.get("/import/template-xlsx/{kind}")
 def import_template_xlsx(kind: str, boards: Optional[str] = None, nhom: Optional[str] = None,
                          user: models.User = Depends(current_user)):
@@ -1533,7 +1561,7 @@ def import_from_text(data: ImportIn, db: Session = Depends(get_db), user: models
 
 @router.post("/import/file")
 async def import_from_file(
-    kind: str,
+    kind: Optional[str] = None,
     mode: str = "upsert",
     commit: bool = False,
     file: UploadFile = File(...),
@@ -1541,20 +1569,65 @@ async def import_from_file(
     user: models.User = Depends(current_user),
     request: Request = None,
 ):
-    """Nhập từ tệp CSV hoặc Excel tải lên."""
-    if kind not in bi.KINDS:
-        raise HTTPException(400, "Nhóm dữ liệu không hợp lệ.")
-    check_import_kind_permission(user, kind, "create")
+    """Nhập từ tệp CSV hoặc Excel tải lên.
 
+    Không truyền `kind` thì hiểu là tệp mẫu TỔNG HỢP: đọc mọi trang có tên khớp
+    một nhóm dữ liệu và nhập lần lượt từng trang, trả về kết quả của từng nhóm.
+    """
     content = await file.read(6 * 1024 * 1024 + 1)
     if len(content) > 6 * 1024 * 1024:
         raise HTTPException(400, "Tệp vượt quá 6 MB. Hãy chia nhỏ rồi nhập nhiều lần.")
 
+    if kind:
+        if kind not in bi.KINDS:
+            raise HTTPException(400, "Nhóm dữ liệu không hợp lệ.")
+        check_import_kind_permission(user, kind, "create")
+        try:
+            header, rows = bi.read_table(content, file.filename or "")
+            return _run_import(kind, header, rows, mode, commit, db, user, request)
+        except bi.ImportError_ as e:
+            raise HTTPException(400, str(e))
+
+    if not (file.filename or "").lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(400, "Tệp tổng hợp phải là Excel nhiều trang (.xlsx). "
+                                 "Nếu nộp CSV thì phải chọn rõ nhóm dữ liệu.")
     try:
-        header, rows = bi.read_table(content, file.filename or "")
-        return _run_import(kind, header, rows, mode, commit, db, user, request)
+        cac_trang = bi.doc_workbook_tong_hop(content)
     except bi.ImportError_ as e:
         raise HTTPException(400, str(e))
+    if not cac_trang:
+        raise HTTPException(
+            400,
+            "Chưa trang nào trong tệp có dữ liệu thật. Điền vào trang của nhóm cần nhập "
+            "rồi nộp lại — dòng ví dụ in nghiêng sẵn trong tệp mẫu được bỏ qua, nên để "
+            "nguyên tệp mẫu thì không có gì để nhập. Nếu tệp do nơi khác gửi, kiểm tra "
+            "tên trang có khớp tên nhóm dữ liệu không.",
+        )
+
+    ket_qua, bo_qua = [], []
+    for kind_trang, header, rows in cac_trang:
+        try:
+            check_import_kind_permission(user, kind_trang, "create")
+        except HTTPException:
+            bo_qua.append({"kind": kind_trang, "ly_do": "Tài khoản không có quyền nhập nhóm này."})
+            continue
+        try:
+            kq = _run_import(kind_trang, header, rows, mode, commit, db, user, request)
+        except bi.ImportError_ as e:
+            bo_qua.append({"kind": kind_trang, "ly_do": str(e)})
+            continue
+        except HTTPException as e:
+            bo_qua.append({"kind": kind_trang, "ly_do": e.detail})
+            continue
+        kq["nhan_nhom"] = bi.KINDS[kind_trang]["label"]
+        ket_qua.append(kq)
+
+    tong = {"tong_dong": 0, "them_moi": 0, "cap_nhat": 0, "bo_qua": 0, "loi": 0}
+    for kq in ket_qua:
+        for k in tong:
+            tong[k] += kq["tom_tat"].get(k, 0)
+    return {"nhieu_nhom": True, "da_ghi": commit, "tom_tat": tong,
+            "theo_nhom": ket_qua, "trang_bo_qua": bo_qua}
 
 
 # ==================================== Kiểm tra hệ thống
