@@ -1365,13 +1365,29 @@ def admin_create_metric(data: MetricIn, db: Session = Depends(get_db),
         raise HTTPException(400, "Chưa nhập tên chỉ tiêu.")
     if data.value is None:
         raise HTTPException(400, "Chưa nhập giá trị.")
-    row = models.Metric(
-        board=data.board.strip().upper(), period=data.period.strip(), label=data.label.strip(),
-        unit_name=(data.unit_name or "").strip() or None, value=data.value,
-    )
-    db.add(row); db.commit(); db.refresh(row)
-    log_action(db, user, "create", "dashboard", row.id, f"{row.board}/{row.period}/{row.label}", request=request)
-    return metric_out(row)
+    board = data.board.strip().upper()
+    period = data.period.strip()
+    label = data.label.strip()
+    unit = (data.unit_name or "").strip() or None
+
+    # Đã có đúng dòng đó thì SỬA, không thêm dòng thứ hai. Trước đây thêm tay
+    # hai lần cùng một (bảng, kỳ, chỉ tiêu, đơn vị) là ra hai dòng trùng khoá —
+    # biểu đồ lấy nhầm dòng nào không đoán được, và bảng đối chiếu cộng cả hai.
+    row = (db.query(models.Metric)
+           .filter(models.Metric.board == board, models.Metric.period == period,
+                   models.Metric.label == label, models.Metric.unit_name == unit)
+           .first())
+    da_co = row is not None
+    if row is None:
+        row = models.Metric(board=board, period=period, label=label, unit_name=unit)
+        db.add(row)
+    row.value = data.value
+    db.commit(); db.refresh(row)
+    log_action(db, user, "update" if da_co else "create", "dashboard", row.id,
+              f"{board}/{period}/{label}", request=request)
+    ra = metric_out(row)
+    ra["da_cap_nhat"] = da_co
+    return ra
 
 
 @router.put("/metrics/{item_id}")

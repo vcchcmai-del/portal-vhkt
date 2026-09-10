@@ -1102,6 +1102,14 @@ const DASHBOARD_IMPORT_TABS = [
 
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };
 
+// Ba mức đơn vị chuẩn luôn gợi ý sẵn, kể cả khi bảng đó chưa có dòng nào —
+// để người nhập không tự đặt ra cách viết thứ tư cho cùng một đơn vị.
+const DON_VI_CHUAN = ["VCC HCM", "BDG", "VTU"];
+const sapXepDonViAdmin = (a, b) => {
+  const t = (v) => (DON_VI_CHUAN.indexOf(v) + 1 || 50);
+  return t(a) - t(b) || String(a).localeCompare(String(b), "vi");
+};
+
 export function AdminMetrics() {
   const { rows, loading, error, reload } = useAdminList("/api/admin/metrics");
   const [edit, setEdit] = useState(null);
@@ -1137,6 +1145,27 @@ export function AdminMetrics() {
     return r;
   }, [rowsTheoBangHoacHangMuc, filterLabel, search]);
 
+  // Gợi ý cho hộp thoại thêm/sửa: lấy thẳng từ dữ liệu đang có của ĐÚNG bảng
+  // đang chọn, để không phải nhớ tên chỉ tiêu hay gõ lại mã đơn vị.
+  const goiY = useMemo(() => {
+    const cuaBang = rows.filter((x) => x.board === edit?.board);
+    const gom = (lay) => [...new Set(cuaBang.map(lay).filter(Boolean))];
+    return {
+      ky: gom((x) => x.period).sort().reverse(),
+      chiTieu: gom((x) => x.label).sort((a, b) => a.localeCompare(b, "vi")),
+      donVi: gom((x) => x.unit_name).sort(sapXepDonViAdmin),
+    };
+  }, [rows, edit?.board]);
+
+  // Dòng đã có sẵn đúng khoá này chưa — báo trước để người nhập biết là sẽ ghi
+  // đè chứ không thêm mới, và thấy luôn giá trị cũ.
+  const dongDaCo = useMemo(() => {
+    if (!edit || edit.id || !edit.board || !edit.period || !edit.label) return null;
+    return rows.find((x) => x.board === edit.board && x.period === edit.period.trim()
+      && x.label === edit.label.trim()
+      && (x.unit_name || "") === (edit.unit_name || "").trim()) || null;
+  }, [rows, edit]);
+
   const save = async () => {
     if (!edit.board) { setMsg("Chưa chọn bảng."); return; }
     if (!edit.period?.trim()) { setMsg("Chưa nhập kỳ (ví dụ 2026-08)."); return; }
@@ -1145,9 +1174,11 @@ export function AdminMetrics() {
     setSaving(true); setMsg("");
     try {
       const payload = { ...edit, value: Number(edit.value) };
+      let ghiDe = false;
       if (edit.id) await api.put(`/api/admin/metrics/${edit.id}`, payload);
-      else await api.post("/api/admin/metrics", payload);
+      else ghiDe = (await api.post("/api/admin/metrics", payload))?.da_cap_nhat === true;
       setEdit(null); reload();
+      if (ghiDe) setMsg("Dòng này đã có sẵn nên giá trị cũ được ghi đè, không thêm dòng mới.");
     } catch (e) { setMsg(e.message); }
     setSaving(false);
   };
@@ -1181,7 +1212,17 @@ export function AdminMetrics() {
   return (
     <div className="flex flex-col gap-4">
       <Toolbar title="Số liệu Dashboard" onReload={reload} addLabel="Thêm chỉ số"
-        onAdd={() => { setEdit({ ...blankMetric }); setMsg(""); }}
+        onAdd={() => {
+          // Mở ra đúng bảng đang xem, không nhảy về bảng đầu danh sách: người
+          // dùng đang lọc Ksub*min mà hộp thoại mặc định "Tiền phạt & Doanh thu"
+          // thì rất dễ lưu nhầm sang bảng khác.
+          const bangMacDinh = filterBoard || tabBoardCodes(filterTab)[0] || blankMetric.board;
+          const kyMoiNhat = [...new Set(rows.filter((x) => x.board === bangMacDinh)
+            .map((x) => x.period))].sort().reverse()[0] || "";
+          setEdit({ ...blankMetric, board: bangMacDinh, period: kyMoiNhat,
+                    label: filterLabel || "" });
+          setMsg("");
+        }}
         onExport={exportCsv} exportLabel={exportLabel}
         hint="Kỳ nhập dạng YYYY-MM, ví dụ 2026-08. Đặt cùng tên chỉ tiêu + cùng kỳ ở bảng Target thì Dashboard tự đối chiếu.
               Xuất báo cáo để lấy đúng khuôn cột nhập Excel — sửa/lọc trong Excel rồi nhập ngược lên sẽ ghi đè đúng dòng cũ.
@@ -1240,14 +1281,54 @@ export function AdminMetrics() {
       {edit && (
         <Modal title={edit.id ? "Sửa chỉ số" : "Thêm chỉ số"} saving={saving} onSave={save} onClose={() => setEdit(null)}>
           {msg && <p style={{ background: "#FBF4F5", color: RED_DARK, padding: "9px 12px", borderRadius: 9, fontSize: 13, marginBottom: 14 }}>{msg}</p>}
-          <Field label="Bảng">
+          <Field label="Bảng — gom theo đúng hạng mục trên Dashboard">
             <select className="inp" value={edit.board} onChange={(e) => setEdit({ ...edit, board: e.target.value })}>
-              {DASHBOARD_BOARDS.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+              {DASHBOARD_IMPORT_TABS.map((t) => (
+                <optgroup key={t.id} label={t.label}>
+                  {t.boards.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </optgroup>
+              ))}
+              {/* Bảng chưa thuộc hạng mục nào thì vẫn phải chọn được */}
+              {DASHBOARD_BOARDS.filter((b) => !DASHBOARD_IMPORT_TABS.some(
+                (t) => t.boards.some((x) => x.value === b.value))).length > 0 && (
+                <optgroup label="Khác">
+                  {DASHBOARD_BOARDS.filter((b) => !DASHBOARD_IMPORT_TABS.some(
+                    (t) => t.boards.some((x) => x.value === b.value)))
+                    .map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </optgroup>
+              )}
             </select>
           </Field>
-          <Field label="Kỳ (YYYY-MM)"><input className="inp" value={edit.period || ""} onChange={(e) => setEdit({ ...edit, period: e.target.value })} placeholder="2026-08" /></Field>
-          <Field label="Tên chỉ tiêu"><input className="inp" value={edit.label || ""} onChange={(e) => setEdit({ ...edit, label: e.target.value })} placeholder="Cell*h" /></Field>
-          <Field label="Đơn vị / trung tâm (nếu có)"><input className="inp" value={edit.unit_name || ""} onChange={(e) => setEdit({ ...edit, unit_name: e.target.value })} placeholder="Trung tâm Thới Hòa" /></Field>
+          <Field label="Kỳ (YYYY-MM)">
+            <input className="inp" list="ds-ky-chi-so" value={edit.period || ""}
+              onChange={(e) => setEdit({ ...edit, period: e.target.value })} placeholder="2026-08" />
+            <datalist id="ds-ky-chi-so">
+              {goiY.ky.map((k) => <option key={k} value={k} />)}
+            </datalist>
+          </Field>
+          <Field label="Tên chỉ tiêu — chọn trong danh sách hoặc gõ tên mới">
+            <input className="inp" list="ds-chi-tieu" value={edit.label || ""}
+              onChange={(e) => setEdit({ ...edit, label: e.target.value })}
+              placeholder={goiY.chiTieu[0] || "Cell*h"} />
+            <datalist id="ds-chi-tieu">
+              {goiY.chiTieu.map((l) => <option key={l} value={l} />)}
+            </datalist>
+          </Field>
+          <Field label="Đơn vị / trung tâm (để trống nếu tính chung toàn chi nhánh)">
+            <input className="inp" list="ds-don-vi" value={edit.unit_name || ""}
+              onChange={(e) => setEdit({ ...edit, unit_name: e.target.value })}
+              placeholder={goiY.donVi[0] || "VCC HCM"} />
+            <datalist id="ds-don-vi">
+              {[...new Set([...DON_VI_CHUAN, ...goiY.donVi])].map((d) => <option key={d} value={d} />)}
+            </datalist>
+          </Field>
+          {dongDaCo && (
+            <p style={{ background: "#FFF8E8", color: "#8A5A08", padding: "9px 12px",
+                        borderRadius: 9, fontSize: 12.5 }}>
+              Đã có dòng này (giá trị hiện tại {dongDaCo.value}). Lưu lại sẽ ghi đè lên nó,
+              không tạo thêm dòng mới.
+            </p>
+          )}
           <Field label="Giá trị"><input className="inp" type="number" value={edit.value ?? ""} onChange={(e) => setEdit({ ...edit, value: e.target.value })} /></Field>
         </Modal>
       )}
