@@ -39,7 +39,13 @@ class Bang:
 
 # CỐ Ý không có: people, users, duty_roster_shifts, duty_schedules, audit_logs,
 # threads, replies, ideas, uploads — đều chứa thông tin cá nhân.
-# ProgressEntry cũng bỏ cột ft_name vì đó là tên người phụ trách.
+#
+# ProgressEntry cũng không có, dù thoạt nhìn chỉ là số kế hoạch/thực hiện: một
+# trung tâm có thể có nhiều dòng cùng đầu việc, cùng kỳ, phân biệt nhau bằng
+# ft_name (người phụ trách). Bỏ cột đó đi thì khoá nhận diện hết phân biệt được,
+# nạp lại sẽ dồn nhiều giá trị vào một dòng — đã xảy ra thật, mất số 21/4 của
+# THA. Mà giữ lại cột đó thì đưa tên người lên repo công khai. Nên để cả bảng
+# ngoài ảnh chụp.
 CAC_BANG = [
     Bang("so-lieu-dashboard.csv", models.Metric,
          ["board", "period", "label", "unit_name", "value"],
@@ -50,9 +56,6 @@ CAC_BANG = [
           "oft_gap", "ft_gap", "applications_received", "posted_channels",
           "school_contacts", "banners_posted", "banner_location", "note"],
          ["report_date", "center"]),
-    Bang("tien-do-ky-thuat.csv", models.ProgressEntry,
-         ["category", "item", "period", "center", "plan_qty", "done_qty", "note"],
-         ["category", "item", "period", "center"]),
     Bang("danh-muc-trung-tam.csv", models.InfraCenterCode,
          ["code", "name", "old_code", "old_name"], ["code"]),
     Bang("danh-muc-dau-viec.csv", models.TechCategory,
@@ -100,8 +103,10 @@ def xuat(thu_muc=THU_MUC) -> dict:
     try:
         for b in CAC_BANG:
             hang = db.query(b.model).all()
-            # Sắp xếp cố định để lần xuất sau không sinh ra khác biệt giả trong Git.
-            hang.sort(key=lambda r: [_chuoi(getattr(r, k)) for k in b.khoa])
+            # Sắp xếp theo TOÀN BỘ cột, không chỉ khoá: nếu còn dòng trùng khoá
+            # thì sắp theo khoá thôi sẽ để chúng đảo chỗ nhau mỗi lần xuất, sinh
+            # ra khác biệt giả trong Git tuy dữ liệu chẳng đổi gì.
+            hang.sort(key=lambda r: [_chuoi(getattr(r, c)) for c in b.cot])
             with open(os.path.join(thu_muc, b.tep), "w",
                       encoding="utf-8-sig", newline="") as f:
                 w = csv.writer(f)
@@ -118,6 +123,7 @@ def nap(thu_muc=THU_MUC) -> dict:
     """CSV -> CSDL, ghi đè theo khoá nhận diện. Trả về {tệp: (thêm, cập nhật)}."""
     db = SessionLocal()
     ket_qua = {}
+    bo_qua = []
     try:
         for b in CAC_BANG:
             duong_dan = os.path.join(thu_muc, b.tep)
@@ -129,7 +135,14 @@ def nap(thu_muc=THU_MUC) -> dict:
                     gia_tri = {c: _doc_lai(b.model, c, dong.get(c, "") or "")
                                for c in b.cot}
                     loc = [getattr(b.model, k) == gia_tri[k] for k in b.khoa]
-                    row = db.query(b.model).filter(*loc).first()
+                    trung = db.query(b.model).filter(*loc).all()
+                    if len(trung) > 1:
+                        # Khoá không còn phân biệt được thì mọi dòng trong tệp sẽ
+                        # cùng ghi đè lên một bản ghi, làm mất số của các bản ghi
+                        # kia. Thà bỏ qua và báo ra còn hơn.
+                        bo_qua.append({c: gia_tri[c] for c in b.khoa})
+                        continue
+                    row = trung[0] if trung else None
                     if row is None:
                         db.add(b.model(**gia_tri))
                         them += 1
@@ -141,6 +154,9 @@ def nap(thu_muc=THU_MUC) -> dict:
             ket_qua[b.tep] = (them, sua)
     finally:
         db.close()
+    if bo_qua:
+        print(f"CẢNH BÁO: bỏ qua {len(bo_qua)} dòng vì khoá khớp nhiều bản ghi "
+              f"trong CSDL — {bo_qua[:3]}")
     return ket_qua
 
 

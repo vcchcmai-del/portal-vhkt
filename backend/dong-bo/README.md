@@ -12,7 +12,6 @@ mỗi lần cập nhật số liệu đều để lại dấu vết trong lịch
 |---|---|
 | `so-lieu-dashboard.csv` | Toàn bộ chỉ số Dashboard: KPI, tiền phạt, doanh thu, Cell\*h, Ksub\*min, XLCS, TKM, rời mạng… |
 | `dinh-bien-trung-tam.csv` | Định biên và số thiếu theo trung tâm |
-| `tien-do-ky-thuat.csv` | Tiến độ hạng mục mảng kỹ thuật |
 | `danh-muc-trung-tam.csv` | Danh mục mã trung tâm (THA, CHP, DTG…) |
 | `danh-muc-dau-viec.csv` | Danh mục đầu việc kỹ thuật |
 | `danh-muc-hang-muc.csv` | Danh mục hạng mục tiến độ |
@@ -37,7 +36,8 @@ không bao giờ ghi đè.
 Repo này đang ở chế độ **công khai**. Chỉ được thêm bảng vào đây sau khi soát lại
 **từng cột** và chắc chắn không có thông tin cá nhân. Các bảng cố ý để ngoài:
 hồ sơ nhân viên, tài khoản đăng nhập, lịch trực (có số điện thoại của 287 người),
-nhật ký thao tác, diễn đàn, sáng kiến, tệp tải lên.
+nhật ký thao tác, diễn đàn, sáng kiến, tệp tải lên, và tiến độ mảng kỹ thuật
+(khoá nhận diện của nó gồm cả tên người phụ trách).
 
 Danh sách bảng được đồng bộ khai báo tại `backend/app/dongbo.py`.
 

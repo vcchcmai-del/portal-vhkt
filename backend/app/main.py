@@ -13,7 +13,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -123,6 +123,16 @@ app.include_router(csdlht_admin_router)
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
     """Không để lỗi CSDL chưa bắt được làm request rơi thành lỗi proxy khó hiểu."""
+    # Vi phạm ràng buộc là lỗi của yêu cầu, không phải máy chủ bận: xoá một
+    # người còn đứng tên ở sáng kiến hay tài khoản thì báo "CSDL đang bận" khiến
+    # người dùng thử đi thử lại mãi không ra — đã mất hai phiên mới tìm ra.
+    if isinstance(exc, IntegrityError):
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "Không xoá/sửa được vì bản ghi này đang được nơi khác "
+                               "tham chiếu tới (sáng kiến, tài khoản, bài viết…). "
+                               "Gỡ liên kết ở đó trước rồi thử lại."},
+        )
     return JSONResponse(
         status_code=503,
         content={"detail": "Cơ sở dữ liệu đang bận hoặc chưa sẵn sàng. Vui lòng thử lại sau vài giây."},
