@@ -1075,6 +1075,8 @@ const DASHBOARD_BOARDS = [
   { value: "NETWORK_TARGET", label: "Chỉ tiêu/Target XLCS CĐBR" },
   { value: "VHKT", label: "TKM CĐBR (Triển khai mới, KPI TKM 3h/10h/24h)" },
   { value: "VHKT_TARGET", label: "Chỉ tiêu/Target TKM CĐBR" },
+  { value: "CSKH", label: "PAKH & CSKH (PAKH 10k/TB, Tỉ lệ lặp, Tỉ lệ đáp ứng)" },
+  { value: "CSKH_TARGET", label: "Chỉ tiêu/Target PAKH & CSKH" },
   { value: "KPI", label: "Tiền phạt & Doanh thu" },
   { value: "KPI_TARGET", label: "Chỉ tiêu/Target Tiền phạt & Doanh thu" },
   { value: "KPI_VTNET", label: "Nguyên nhân phạt — nhóm VTNet" },
@@ -1098,6 +1100,7 @@ const DASHBOARD_IMPORT_TABS = [
   { id: "output", label: "GĐTT & Cell*h", boards: boardsOf("OUTPUT", "OUTPUT_TARGET") },
   { id: "network", label: "XLCS CĐBR", boards: boardsOf("NETWORK", "NETWORK_TARGET") },
   { id: "vhkt", label: "TKM CĐBR", boards: boardsOf("VHKT", "VHKT_TARGET") },
+  { id: "cskh", label: "PAKH & CSKH", boards: boardsOf("CSKH", "CSKH_TARGET") },
 ];
 
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };

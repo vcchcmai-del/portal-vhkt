@@ -456,6 +456,17 @@ def _so_lieu_moi_nhat(db: Session, board: str, label: str):
 DON_VI_TOAN_CHI_NHANH = province_codes.TOAN_CHI_NHANH
 
 
+# Chỉ tiêu dạng tỷ lệ hoặc mật độ: cộng hai tỉnh lại là vô nghĩa. Biết trước thì
+# khỏi phải chờ bằng chứng — chỉ tiêu mới nhập mà chưa có dòng tổng nào thì
+# _cong_duoc_theo_tinh không có gì để đối chiếu, và mặc định lại là "cộng được".
+CHI_TIEU_TY_LE = {"Ksub*min", "PAKH 10k/TB"}
+
+
+def _la_chi_tieu_ty_le(label) -> bool:
+    t = (label or "").strip()
+    return (t in CHI_TIEU_TY_LE or t.startswith(("Tỷ lệ", "Tỉ lệ", "XLCS", "KPI TKM")))
+
+
 def _cong_duoc_theo_tinh(rows) -> bool:
     """Chỉ tiêu này cộng các tỉnh lại có ra số toàn chi nhánh không?
 
@@ -468,6 +479,8 @@ def _cong_duoc_theo_tinh(rows) -> bool:
     thay vì đoán theo tên chỉ tiêu. Chưa có bằng chứng thì cho là cộng được, giữ
     nguyên nếp cũ với các chỉ tiêu đếm được vốn chỉ nhập theo tỉnh.
     """
+    if rows and _la_chi_tieu_ty_le(getattr(rows[0], "label", None)):
+        return False
     theo_ky = {}
     for r in rows:
         theo_ky.setdefault(r.period, []).append(r)
@@ -655,6 +668,11 @@ def tinh_chi_so_trang_chu(db: Session):
     _them("kpi_tkm_3h", "KPI TKM 3H", "VHKT", "KPI TKM 3H", "%", "blue", huong_tot="cao")
     _them("kpi_tkm_10h", "KPI TKM 10H", "VHKT", "KPI TKM 10H", "%", "blue", huong_tot="cao")
     _them("kpi_tkm_24h", "KPI TKM 24H", "VHKT", "KPI TKM 24H", "%", "blue", huong_tot="cao")
+    # PAKH & CSKH — chưa có số thì _chi_so_home trả None và ô tự ẩn, nhập số
+    # vào bảng CSKH là ô hiện ra, không phải sửa code.
+    _them("pakh_10k", "PAKH 10K/TB", "CSKH", "PAKH 10k/TB", "", "orange")
+    _them("ty_le_lap", "TỈ LỆ LẶP", "CSKH", "Tỉ lệ lặp", "%", "orange")
+    _them("ty_le_dap_ung", "TỈ LỆ ĐÁP ỨNG", "CSKH", "Tỉ lệ đáp ứng", "%", "green", huong_tot="cao")
 
     return out
 
@@ -835,9 +853,10 @@ class _NhuMetric:
     """Bọc dict đã làm phẳng cho giống bản ghi Metric, để _cong_duoc_theo_tinh
     dùng chung được cho cả hai đường dữ liệu."""
 
-    __slots__ = ("period", "unit_name", "value")
+    __slots__ = ("period", "unit_name", "value", "label")
 
     def __init__(self, r):
+        self.label = r.get("chi_tieu")
         self.period = r["ky"]
         self.unit_name = r.get("don_vi")
         self.value = r.get("gia_tri")

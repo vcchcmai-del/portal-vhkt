@@ -26,6 +26,7 @@ TAB_DASHBOARD = [
     ("GĐTT & Cell-h", ["OUTPUT", "OUTPUT_TARGET"]),
     ("XLCS CĐBR", ["NETWORK", "NETWORK_TARGET"]),
     ("TKM CĐBR", ["VHKT", "VHKT_TARGET"]),
+    ("PAKH & CSKH", ["CSKH", "CSKH_TARGET"]),
     ("Tuyển dụng (số liệu)", ["HIRE"]),
 ]
 

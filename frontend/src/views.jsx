@@ -9,7 +9,7 @@ import {
   Image as ImageIcon, Lightbulb, Lock, MapPin, Megaphone, MessageSquare, PartyPopper,
   Plus, Rocket, Send, Signal, Star, ThumbsUp, TrendingUp, Trophy, UserPlus, Users,
   Video, Wind, Wrench, X, Quote, Pin,
-  Activity, CalendarDays, ClipboardList, Coins, ShieldCheck,
+  Activity, CalendarDays, ClipboardList, Coins, ShieldCheck, Headphones, Repeat,
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend,
@@ -82,6 +82,7 @@ const STAT_ICONS = {
   su_co_ngay: CalendarDays, wo_qua_han: Wrench, an_toan: ShieldCheck,
   xlcs_3h: Signal, kpi_tkm_3h: Activity, kpi_tkm_10h: Activity, kpi_tkm_24h: Activity,
   cell_h_tong: Wrench, ksub_min: Clock,
+  pakh_10k: MessageSquare, ty_le_lap: Repeat, ty_le_dap_ung: Headphones,
 };
 
 function StatIcon({ ma, size = 26 }) {
@@ -203,6 +204,7 @@ const O_CHI_SO_TOI_BANG = {
   cell_h_tong: "OUTPUT", su_co_ngay: "PAKH", ksub_min: "FUEL", wo_qua_han: "WO",
   xlcs_3h: "NETWORK", xlcs_10h: "NETWORK", an_toan: "NETWORK",
   kpi_tkm_3h: "VHKT", kpi_tkm_10h: "VHKT", kpi_tkm_24h: "VHKT",
+  pakh_10k: "CSKH", ty_le_lap: "CSKH", ty_le_dap_ung: "CSKH",
 };
 
 export function HomeView({ onGo, onOpenNews, config }) {
@@ -899,6 +901,13 @@ const BOARDS = {
   VHKT: {
     nhan: "TKM CĐBR", ma: "VHKT", icon: Activity,
     tieuDe: "Triển khai mới CĐBR theo tháng (dây mới/dây sẵn, KPI TKM 3h/10h/24h)",
+    mau: [],
+    ve: "duong",
+  },
+  CSKH: {
+    nhan: "PAKH & CSKH", ma: "CSKH", icon: MessageSquare,
+    tieuDe: "PAKH 10k/TB, Tỉ lệ lặp, Tỉ lệ đáp ứng — VCC HCM / BDG / VTU",
+    // Không có số liệu mẫu: thà để trống còn hơn hiện số bịa trông như thật.
     mau: [],
     ve: "duong",
   },
@@ -1630,10 +1639,30 @@ const DON_VI_CHI_TIEU = {
   "XLCS 3h": "%", "XLCS 10h": "%", "XLCS 24h": "%",
   "KPI TKM 3H": "%", "KPI TKM 10H": "%", "KPI TKM 24H": "%",
   "Doanh thu": "triệu đ",
+  "PAKH 10k/TB": "/10k TB", "Tỉ lệ lặp": "%", "Tỉ lệ đáp ứng": "%",
 };
 export function donViChiTieu(ct) {
-  return DON_VI_CHI_TIEU[ct] ?? (/^Tỷ lệ/.test(ct || "") ? "%" : "");
+  // Nhận cả "Tỷ lệ" lẫn "Tỉ lệ" — hai cách viết đều đang có trong dữ liệu.
+  return DON_VI_CHI_TIEU[ct] ?? (/^T[ỷỉ] lệ/.test(ct || "") ? "%" : "");
 }
+
+/**
+ * Chỉ tiêu dạng tỷ lệ/mật độ: gộp nhiều tháng thì lấy bình quân, không cộng.
+ * PAKH 10k/TB là số phản ánh trên mười nghìn thuê bao — cộng ba tháng lại
+ * không ra số phản ánh của quý, cũng như cộng ba tháng XLCS không ra 290%.
+ */
+function laChiTieuTyLe(ct) {
+  return ["%", "/10k TB"].includes(donViChiTieu(ct));
+}
+
+/**
+ * Chiều "tốt" của từng chỉ tiêu, dùng khi một tab trộn cả hai chiều: PAKH và
+ * tỉ lệ lặp càng thấp càng tốt, tỉ lệ đáp ứng càng cao càng tốt. Không có ở đây
+ * thì theo chiều chung của tab như trước.
+ */
+const HUONG_TOT_CHI_TIEU = {
+  "PAKH 10k/TB": "thap", "Tỉ lệ lặp": "thap", "Tỉ lệ đáp ứng": "cao",
+};
 /**
  * Ghi chú "(N th)" khi chỉ tiêu chỉ có số ở một phần các tháng của kỳ.
  *
@@ -1721,7 +1750,7 @@ function gopTheoKy(compare, cheDo) {
   const gop = (chiTieu, ds) => {
     if (!ds.length) return null;
     const tong = ds.reduce((a, b) => a + b, 0);
-    const v = donViChiTieu(chiTieu) === "%" ? tong / ds.length : tong;
+    const v = laChiTieuTyLe(chiTieu) ? tong / ds.length : tong;
     return Math.round(v * 100) / 100;
   };
 
@@ -1817,7 +1846,8 @@ export function DashView({ bangMoSan }) {
   const laFUEL = ma === "FUEL";   // Ksub*min — theo tỉnh
   const laOUTPUT = ma === "OUTPUT"; // GĐTT & Cell*h — theo tỉnh
   const laNETWORK = ma === "NETWORK"; // XLCS CĐBR — Số PA phát sinh + XLCS 3h/10h/24h
-  const laTheoTinh = laPAKH || laFUEL || laOUTPUT;
+  const laCSKH = ma === "CSKH";   // PAKH & CSKH — theo tỉnh, trộn hai chiều tốt
+  const laTheoTinh = laPAKH || laFUEL || laOUTPUT || laCSKH;
   // Chiều "tốt" của bảng đang xem — dùng để tô màu/đánh giá đúng chiều ở bảng đối chiếu nhiều tháng bên dưới.
   const huongTotHienTai = (laPAKH || laFUEL || laOUTPUT || laWO || laKPI) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
 
@@ -1901,6 +1931,21 @@ export function DashView({ bangMoSan }) {
           </Card>
           <BangDanhGiaKPI compare={compareXem} chiTieuList={["Tỷ lệ rời mạng CĐBR"]} huongTot="thap" />
           <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
+        </>
+      ) : laCSKH ? (
+        <>
+          {[
+            ["PAKH 10k/TB", "PAKH trên 10.000 thuê bao theo tháng", "thap"],
+            ["Tỉ lệ lặp", "Tỉ lệ lặp theo tháng", "thap"],
+            ["Tỉ lệ đáp ứng", "Tỉ lệ đáp ứng theo tháng", "cao"],
+          ].map(([chiTieu, tieuDe, huong]) => (
+            <React.Fragment key={chiTieu}>
+              <Card title={tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+                <BieuDoTheoTinh compare={duLieu?.compare} chiTieu={chiTieu} nam={NAM_HIEN_TAI} />
+              </Card>
+              <BangDanhGiaKPI compare={compareXem} chiTieuList={[chiTieu]} huongTot={huong} />
+            </React.Fragment>
+          ))}
         </>
       ) : laPAKH ? (
         <>
@@ -2004,7 +2049,7 @@ export function DashView({ bangMoSan }) {
                   return hang.map((c, i) => {
                     // Chênh lệch thô: dương = thực hiện vượt target/cùng kỳ trước. huongTot quyết định
                     // vượt là tốt (huongTot="cao") hay xấu (huongTot="thap", mặc định khi chưa rõ bảng).
-                    const hg = huongTotHienTai || "thap";
+                    const hg = HUONG_TOT_CHI_TIEU[c.chi_tieu] || huongTotHienTai || "thap";
                     const soTarget = c.target ? ((c.thuc_hien - c.target) / c.target) * 100 : null;
                     const dat = soTarget == null ? null : (hg === "thap" ? soTarget <= 0 : soTarget >= 0);
                     const kqCk = c.chenh_lech_cung_ky_phan_tram;
