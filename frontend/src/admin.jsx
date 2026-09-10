@@ -1368,17 +1368,27 @@ function PermissionMatrix({ role, modules, roleDefaults, value, onChange }) {
           Đặt lại về mặc định của quyền
         </button>
       </div>
-      <p className="dim" style={{ fontSize: 12, margin: "0 0 9px" }}>Bỏ quyền Xem sẽ ẩn mục đó ở menu trái. Thêm, Sửa và Xóa luôn tự kèm quyền Xem.</p>
+      <p className="dim" style={{ fontSize: 12, margin: "0 0 9px" }}>
+        Bỏ quyền Xem sẽ ẩn mục đó ở menu trái. Thêm, Sửa và Xóa luôn tự kèm quyền Xem.
+        {modules.some((m) => m.ai_cung_xem) && (
+          <> Riêng mục có dấu <b>*</b> thì ai đăng nhập cũng xem được (dữ liệu tra cứu
+          chung của phòng), ở đây chỉ cấp quyền Thêm, Sửa, Xóa.</>
+        )}
+      </p>
       <div style={{ overflowX: "auto", border: "1px solid #E7E3E4", borderRadius: 9 }}>
         <table className="tbl" style={{ minWidth: 560 }}>
           <thead><tr><th>Mục menu</th>{["view", "create", "update", "delete"].map((a) => <th key={a} style={{ textAlign: "center" }}>{ACTION_LABELS[a]}</th>)}</tr></thead>
           <tbody>
         {modules.map((m) => (
           <tr key={m.id}>
-            <td>{m.label}</td>
+            <td>{m.label}{m.ai_cung_xem && <b title="Ai đăng nhập cũng xem được"> *</b>}</td>
             {["view", "create", "update", "delete"].map((action) => (
               <td key={action} style={{ textAlign: "center" }}>
-                <input type="checkbox" checked={(matrix[m.id] || []).includes(action)} onChange={() => toggle(m.id, action)} aria-label={`${ACTION_LABELS[action]} ${m.label}`} />
+                <input type="checkbox"
+                  checked={(matrix[m.id] || []).includes(action) || (m.ai_cung_xem && action === "view")}
+                  disabled={m.ai_cung_xem && action === "view"}
+                  onChange={() => toggle(m.id, action)}
+                  aria-label={`${ACTION_LABELS[action]} ${m.label}`} />
               </td>
             ))}
           </tr>

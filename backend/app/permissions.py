@@ -70,6 +70,12 @@ ADMIN_ONLY_MODULES = [
 # dùng cho màn hình Nhật ký hệ thống và email cảnh báo.
 ALL_MODULE_LABELS = {**MODULE_LABELS, **dict(ADMIN_ONLY_MODULES)}
 
+# Hai mục tra cứu dùng chung của phòng: AI ĐĂNG NHẬP CŨNG XEM ĐƯỢC, không cần
+# quản trị viên cấp riêng từng tài khoản — đây là dữ liệu để cả phòng tra, giữ
+# kín chỉ làm mọi người phải đi hỏi nhau. Thêm/sửa/xoá thì vẫn phải cấp riêng,
+# và vẫn bật/tắt được cho từng tài khoản ở màn hình Quản lý tài khoản.
+MODULE_AI_CUNG_XEM = {"csdl_ht", "tech_tasks"}
+
 ACTIONS = ("view", "create", "update", "delete")
 ACTION_LABELS = {
     "view": "xem", "create": "thêm", "update": "sửa", "delete": "xóa",
@@ -84,6 +90,8 @@ ROLE_DEFAULT_PERMISSIONS = {
         "news": FULL_ACCESS,
         "documents": FULL_ACCESS,
         "uploads": ["view", "create", "delete"],
+        "csdl_ht": FULL_ACCESS,
+        "tech_tasks": FULL_ACCESS,
     },
     "staff": {},
 }
@@ -131,8 +139,15 @@ def effective_permission_matrix(user: User) -> dict:
     if user.role == "admin":
         return {module_id: list(FULL_ACCESS) for module_id in MODULE_IDS}
     if user.permissions is not None:
-        return parse_permissions(user.permissions)
-    return normalize_permissions(ROLE_DEFAULT_PERMISSIONS.get(user.role, {}))
+        ma_tran = parse_permissions(user.permissions)
+    else:
+        ma_tran = normalize_permissions(ROLE_DEFAULT_PERMISSIONS.get(user.role, {}))
+    # Quyền xem của hai mục tra cứu chung cộng thêm vào, không ghi đè phần
+    # thêm/sửa/xoá mà quản trị viên đã cấp riêng.
+    for module_id in MODULE_AI_CUNG_XEM:
+        if "view" not in ma_tran.get(module_id, []):
+            ma_tran[module_id] = ["view"] + ma_tran.get(module_id, [])
+    return ma_tran
 
 
 def get_permissions(user: User) -> set:
@@ -186,3 +201,35 @@ def check_import_kind_permission(user: User, kind: str, action: str = "view") ->
             detail=(f"Tài khoản không có quyền {ACTION_LABELS[action]} "
                     f"ở mục “{MODULE_LABELS[module_id]}”."),
         )
+
+
+RELEASE_KEY_BIEN_TAP = "_system_quyen_bien_tap_csdl_tech_v1"
+
+
+def cap_quyen_bien_tap_once() -> None:
+    """Cấp quyền thêm/sửa/xoá hai mục tra cứu chung cho các biên tập viên đã có.
+
+    Quyền mặc định theo vai trò chỉ áp cho tài khoản CHƯA được cấu hình riêng;
+    tài khoản đang dùng đều đã có danh sách quyền lưu sẵn nên sẽ không nhận
+    được gì. Chạy một lần để những người đang làm biên tập có ngay quyền này,
+    sau đó quản trị viên vẫn bật/tắt lại được cho từng người.
+    """
+    from .database import SessionLocal
+    from .models import SiteConfig
+
+    db = SessionLocal()
+    try:
+        if db.query(SiteConfig).filter(SiteConfig.key == RELEASE_KEY_BIEN_TAP).first():
+            return
+        for u in db.query(User).filter(User.role == "editor").all():
+            if u.permissions is None:
+                continue          # đang theo mặc định vai trò, đã có sẵn quyền
+            ma_tran = parse_permissions(u.permissions)
+            for module_id in MODULE_AI_CUNG_XEM:
+                ma_tran[module_id] = list(FULL_ACCESS)
+            u.permissions = dump_permissions(ma_tran)
+        db.add(SiteConfig(key=RELEASE_KEY_BIEN_TAP, value="applied",
+                          label="Cấp quyền CSDL hạ tầng & công việc kỹ thuật cho biên tập viên"))
+        db.commit()
+    finally:
+        db.close()

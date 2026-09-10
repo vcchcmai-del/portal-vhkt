@@ -27,7 +27,8 @@ from .auditlog import log_action
 from .auth import current_user
 from .database import engine, get_db
 from .permissions import (
-    ADMIN_ONLY_MODULES, ALL_MODULE_LABELS, IMPORT_KIND_MODULE, MODULES, MODULE_LABELS,
+    ADMIN_ONLY_MODULES, ALL_MODULE_LABELS, IMPORT_KIND_MODULE, MODULE_AI_CUNG_XEM,
+    MODULES, MODULE_LABELS,
     ROLE_DEFAULT_PERMISSIONS, check_import_kind_permission, dump_permissions,
     effective_permission_matrix, effective_permissions_list, get_permissions,
     parse_permissions, require_module,
@@ -990,7 +991,8 @@ def admin_list_roles(_=Depends(require_admin)):
 def admin_permission_modules(_=Depends(require_admin)):
     """Danh sách module có thể cấp riêng cho từng tài khoản, dùng cho ô tick chọn."""
     return {
-        "modules": [{"id": m, "label": l} for m, l in MODULES],
+        "modules": [{"id": m, "label": l, "ai_cung_xem": m in MODULE_AI_CUNG_XEM}
+                    for m, l in MODULES],
         "actions": ["view", "create", "update", "delete"],
         "admin_only_modules": [{"id": m, "label": l} for m, l in ADMIN_ONLY_MODULES],
         "role_defaults": ROLE_DEFAULT_PERMISSIONS,

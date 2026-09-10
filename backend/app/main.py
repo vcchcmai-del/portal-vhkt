@@ -234,6 +234,12 @@ def on_startup():
             db.close()
     chay("Nạp danh mục đầu việc kỹ thuật", buoc_dau_viec)
 
+    # Cấp quyền hai mục tra cứu chung cho các biên tập viên đang có.
+    def buoc_quyen_bien_tap():
+        from .permissions import cap_quyen_bien_tap_once
+        cap_quyen_bien_tap_once()
+    chay("Cấp quyền CSDL hạ tầng & công việc kỹ thuật", buoc_quyen_bien_tap)
+
     # Tạo tài khoản quản trị. Đây là bước quan trọng nhất: hỏng thì không ai
     # đăng nhập được, nên ghi rõ vào danh sách lỗi.
     def buoc_tai_khoan():
