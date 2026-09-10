@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Download, ExternalLink, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
-import { api, useCenters } from "./api";
+import { api, laNguoiQuanLy, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Empty, Field, RED } from "./ui";
 
@@ -141,7 +141,7 @@ function TaskListTab() {
         </div>
         <div className="flex gap-2">
           <button className="btn btn-sm" onClick={() => { load(); loadSummary(); loadCategories(); }}><RefreshCw size={14} />Tải lại</button>
-          <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>
+          {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
           <button className="btn btn-red btn-sm" onClick={() => setForm(blankTask(categories))}><Plus size={14} />Giao việc mới</button>
         </div>
       </div>
@@ -415,7 +415,7 @@ function ProgressTab() {
         </Field>
         <datalist id="progress-periods">{periods.map((p) => <option key={p} value={p} />)}</datalist>
         <button className="btn btn-sm" onClick={() => { loadSummary(); if (selected) loadCenters(); if (selectedCenter) loadFt(); }}><RefreshCw size={14} />Tải lại</button>
-        <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>
+        {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
         <button className="btn btn-sm" onClick={() => setShowImport((s) => !s)}><Upload size={14} />Nhập Excel</button>
       </div>
 

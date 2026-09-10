@@ -1829,6 +1829,44 @@ const TRASH_MODULE_ICON = { news: FileText, documents: BookOpen };
 export function AdminTrash() {
   const { rows, loading, error, reload } = useAdminList("/api/admin/trash");
   const [busyId, setBusyId] = useState(null);
+  const [chon, setChon] = useState([]);          // khoá "module-id" đang tích
+  const [dangChay, setDangChay] = useState("");
+
+  const khoa = (item) => `${item.module}-${item.id}`;
+  const daChon = new Set(chon);
+  const dsChon = rows.filter((r) => daChon.has(khoa(r)));
+  const tichHet = rows.length > 0 && dsChon.length === rows.length;
+
+  const doiTich = (item) => setChon((cu) => (
+    cu.includes(khoa(item)) ? cu.filter((k) => k !== khoa(item)) : [...cu, khoa(item)]));
+  const tichTatCa = () => setChon(tichHet ? [] : rows.map(khoa));
+
+  /**
+   * Làm lần lượt từng mục đã tích, gom lỗi lại báo một lần.
+   *
+   * Chạy tuần tự chứ không bắn song song: mỗi mục là một yêu cầu ghi, bắn cả
+   * chục cái cùng lúc dễ dựng khoá cơ sở dữ liệu và khó nói được cái nào hỏng.
+   */
+  const lamHangLoat = async (viec, xacNhan) => {
+    if (!dsChon.length || !window.confirm(xacNhan(dsChon.length))) return;
+    const loi = [];
+    for (const item of dsChon) {
+      setDangChay(item.title);
+      try { await viec(item); } catch (e) { loi.push(`${item.title}: ${e.message}`); }
+    }
+    setDangChay(""); setChon([]); reload();
+    if (loi.length) {
+      window.alert(`${loi.length}/${dsChon.length} mục không xử lý được:\n\n${loi.join("\n")}`);
+    }
+  };
+
+  const khoiPhucDaChon = () => lamHangLoat(
+    (item) => api.post(`/api/admin/trash/${item.module}/${item.id}/restore`),
+    (n) => `Khôi phục ${n} mục đã chọn?`);
+
+  const xoaDaChon = () => lamHangLoat(
+    (item) => api.del(`/api/admin/trash/${item.module}/${item.id}`),
+    (n) => `Xoá vĩnh viễn ${n} mục đã chọn?\n\nKhông thể khôi phục sau khi xoá.`);
 
   const restore = async (item) => {
     if (!window.confirm(`Khôi phục "${item.title}"?`)) return;
@@ -1854,11 +1892,31 @@ export function AdminTrash() {
       <Card pad={false}>
         <Status loading={loading} error={error} empty={!loading && !error && rows.length === 0}
           emptyHint="Thùng rác đang trống." />
+        {dsChon.length > 0 && (
+          <div className="flex items-center gap-2"
+            style={{ flexWrap: "wrap", padding: "10px 16px", borderBottom: "1px solid #EFECED",
+                     background: "#FBF4F5" }}>
+            <b style={{ fontSize: 13 }}>Đã chọn {dsChon.length} mục</b>
+            <button className="btn btn-sm" disabled={!!dangChay} onClick={khoiPhucDaChon}>
+              <RotateCcw size={13} /> Khôi phục
+            </button>
+            <button className="btn btn-sm" style={{ color: RED_DARK }} disabled={!!dangChay}
+              onClick={xoaDaChon}><Trash2 size={13} /> Xoá vĩnh viễn</button>
+            <button className="btn btn-sm" disabled={!!dangChay} onClick={() => setChon([])}>
+              Bỏ chọn
+            </button>
+            {dangChay && <span className="muted" style={{ fontSize: 12.5 }}>Đang xử lý: {dangChay}…</span>}
+          </div>
+        )}
         {rows.length > 0 && (
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead>
                 <tr>
+                  <th style={{ width: 34 }}>
+                    <input type="checkbox" checked={tichHet} onChange={tichTatCa}
+                      aria-label="Chọn tất cả" />
+                  </th>
                   <th>Hạng mục</th><th>Tiêu đề</th><th>Người xoá</th><th>Ngày xoá</th>
                   <th>Còn lại</th><th style={{ textAlign: "right" }}>Thao tác</th>
                 </tr>
@@ -1869,6 +1927,10 @@ export function AdminTrash() {
                   const busy = busyId === `${item.module}-${item.id}`;
                   return (
                     <tr key={`${item.module}-${item.id}`}>
+                      <td>
+                        <input type="checkbox" checked={daChon.has(khoa(item))}
+                          onChange={() => doiTich(item)} aria-label={`Chọn ${item.title}`} />
+                      </td>
                       <td className="flex items-center gap-2" style={{ fontSize: 12.5 }}>
                         <I size={14} style={{ color: RED }} /> {item.module_label}
                       </td>

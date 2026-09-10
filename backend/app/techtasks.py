@@ -287,7 +287,8 @@ def admin_delete_task(item_id: int, db: Session = Depends(get_db),
 
 
 @admin_router.get("/tech-tasks/export")
-def export_tasks_csv(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
+def export_tasks_csv(db: Session = Depends(get_db),
+                     _=Depends(require_module("tech_tasks", "update"))):
     """Xuất toàn bộ công việc ra tệp CSV để báo cáo."""
     rows = db.query(models.TechTask).order_by(models.TechTask.category, models.TechTask.due_at).all()
     header = ["Đầu việc", "Nội dung công việc", "Mô tả", "Phụ trách", "Mục tiêu/chỉ tiêu",
@@ -733,7 +734,7 @@ def delete_progress_ft(item_id: int, db: Session = Depends(get_db),
 
 @admin_router.get("/progress/export")
 def export_progress_csv(period: Optional[str] = None, db: Session = Depends(get_db),
-                        _=Depends(require_module("tech_tasks", "view"))):
+                        _=Depends(require_module("tech_tasks", "update"))):
     """Xuất toàn bộ dòng tiến độ theo Trung tâm (không gồm dòng chi tiết FT)."""
     q = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None))
     if period:

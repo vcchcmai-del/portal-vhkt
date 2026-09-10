@@ -337,6 +337,7 @@ export default function Portal() {
   const [openNewsId, setOpenNewsId] = useState(null);   // bản tin cần mở từ trang chủ
   const [bangKT, setBangKT] = useState(false);          // bảng kiểm tra tình trạng
   const [user, setUser] = useState(getUser());
+  const [bangDashboard, setBangDashboard] = useState(null);
   const [cfgRemote] = useRemote("/api/config", null);
   const [srv, setSrv] = useState(null);   // null = đang kiểm tra
 
@@ -378,7 +379,10 @@ export default function Portal() {
     }
   }, []);
 
-  const go = (v) => {
+  const go = (v, bangDashboard) => {
+    // Bấm một ô chỉ số ở trang chủ thì sang Dashboard mở sẵn đúng tab của chỉ
+    // tiêu đó, không bắt người đọc dò lại.
+    setBangDashboard(bangDashboard || null);
     setView(v); setMenu(false);
     if (v.startsWith("adm-") || v.startsWith("grp-")) setAdmOpen(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -612,7 +616,9 @@ export default function Portal() {
                     onOpenNews={(id) => { setOpenNewsId(id); go("news"); }} />
                 : view === "news"
                   ? <NewsView openId={openNewsId} onOpened={() => setOpenNewsId(null)} />
-                  : PublicView ? <PublicView /> : null}
+                  : PublicView
+                ? (view === "dash" ? <PublicView bangMoSan={bangDashboard} /> : <PublicView />)
+                : null}
 
           <footer style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid #E7E3E4" }}
             className="flex items-center justify-between gap-3 flex-wrap">

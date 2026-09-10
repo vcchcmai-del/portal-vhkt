@@ -969,7 +969,7 @@ def _ro_mang_dia_ban(db: Session):
                 "theo_thang": [{"ky": k, "gia_tri": theo_ky[k]} for k in sorted(theo_ky)],
                 "binh_quan": _binh_quan(theo_ky.values()),
             })
-        return sorted(out, key=lambda x: x["ten"])
+        return sorted(out, key=lambda x: _khoa_don_vi(x["ten"]))
 
     def _theo_huyen(rows, ten_tinh):
         theo: dict = {}

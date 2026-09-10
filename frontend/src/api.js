@@ -53,6 +53,25 @@ export const clearToken = () => { localStorage.removeItem(TOKEN_KEY); localStora
 export const getUser = () => { try { return JSON.parse(localStorage.getItem("portal_user")); } catch { return null; } };
 
 /**
+ * Tài khoản đang đăng nhập có quyền `thaoTac` ở `module` không.
+ *
+ * Dùng để ẩn những nút chỉ dành cho người quản lý dữ liệu (xuất báo cáo, thêm,
+ * xoá) khỏi màn hình mà cả phòng đều xem được. Ẩn nút chỉ là cho gọn mắt — máy
+ * chủ vẫn kiểm tra lại quyền, xem require_module().
+ */
+export function coQuyen(module, thaoTac = "view") {
+  const u = getUser();
+  if (!u) return false;
+  if (u.role === "admin") return true;
+  return ((u.permission_actions || {})[module] || []).includes(thaoTac);
+}
+
+/** Có quản lý được dữ liệu của module không (thêm, sửa hoặc xoá). */
+export function laNguoiQuanLy(module) {
+  return ["create", "update", "delete"].some((t) => coQuyen(module, t));
+}
+
+/**
  * Đọc lỗi từ máy chủ và diễn giải thành câu tiếng Việt dễ hiểu.
  * Nguyên tắc: không bao giờ giấu nguyên nhân thật sau một câu chung chung.
  */

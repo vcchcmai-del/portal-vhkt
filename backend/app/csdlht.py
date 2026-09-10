@@ -325,7 +325,11 @@ def section_table(section: str, period: Optional[str] = None, db: Session = Depe
 
 @admin_router.get("/csdl-ht/export")
 def export_csdl_csv(period: Optional[str] = None, center: Optional[str] = None,
-                    db: Session = Depends(get_db), _=Depends(require_module("csdl_ht", "view"))):
+                    db: Session = Depends(get_db),
+                    # Xuất báo cáo là việc của người quản lý dữ liệu, không phải
+                    # của mọi người vào tra cứu — nay ai đăng nhập cũng xem được
+                    # mục này, nên phải chặn ở đây chứ không chỉ ẩn nút.
+                    _=Depends(require_module("csdl_ht", "update"))):
     q = db.query(models.InfraStat)
     if period:
         q = q.filter(models.InfraStat.period == period)

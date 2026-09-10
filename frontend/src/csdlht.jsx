@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Download, RefreshCw, Upload } from "lucide-react";
-import { API_BASE, api, getToken } from "./api";
+import { API_BASE, api, getToken, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, RED } from "./ui";
 
 async function uploadCsdl(file, commit) {
@@ -151,7 +151,7 @@ function SectionTable({ periods, period, setPeriod }) {
           </select>
         </Field>
         <button className="btn btn-sm" onClick={load}><RefreshCw size={14} />Tải lại</button>
-        <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>
+        {laNguoiQuanLy("csdl_ht") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
       </div>
       {err && <p style={{ color: RED }}>{err}</p>}
       {data && (

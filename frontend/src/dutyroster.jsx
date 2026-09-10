@@ -95,7 +95,15 @@ export function DutyRosterView() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    api.get("/api/duty-roster/months").then((m) => { setMonths(m); if (m.length) setMonth(m[0]); }).catch(() => {});
+    api.get("/api/duty-roster/months").then((m) => {
+      setMonths(m);
+      if (!m.length) return;
+      // Mở ra là thấy ngay ca trực hôm nay: chọn tháng đang sống, không phải
+      // tháng mới nhất có dữ liệu — lịch tháng sau thường nhập trước cả tuần,
+      // nên mặc định lấy m[0] sẽ nhảy sang tháng chưa tới.
+      const thangNay = todayISO().slice(0, 7);
+      setMonth(m.includes(thangNay) ? thangNay : m[0]);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {

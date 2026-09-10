@@ -191,12 +191,27 @@ function ChiSoGhiChu({ s }) {
   );
 }
 
+/**
+ * Ô chỉ số trang chủ nào mở ra tab Dashboard nào.
+ *
+ * Người đọc thấy một con số bất thường ở trang chủ thì việc tiếp theo luôn là
+ * đi tìm biểu đồ của chính chỉ tiêu đó — trước đây phải tự vào Dashboard rồi
+ * dò lại đúng tab.
+ */
+const O_CHI_SO_TOI_BANG = {
+  kpi: "KPI", wo_dung_han: "KPI", tien_phat: "KPI",
+  cell_h_tong: "OUTPUT", su_co_ngay: "PAKH", ksub_min: "FUEL", wo_qua_han: "WO",
+  xlcs_3h: "NETWORK", xlcs_10h: "NETWORK", an_toan: "NETWORK",
+  kpi_tkm_3h: "VHKT", kpi_tkm_10h: "VHKT", kpi_tkm_24h: "VHKT",
+};
+
 export function HomeView({ onGo, onOpenNews, config }) {
   const [home] = useRemote("/api/home", null);
   const [APPS] = useRemote("/api/apps", D.APPS_FB, adapt.apps);
 
   // Chỉ số lấy từ Google Sheet nếu đã cấu hình, chưa có thì dùng số mặc định
   const stats = home?.home_stats?.length ? home.home_stats : STAT_FB;
+  const moBang = (ma) => { if (O_CHI_SO_TOI_BANG[ma]) onGo("dash", O_CHI_SO_TOI_BANG[ma]); };
   const soLaMau = !!home && !home.home_stats?.length;
   const big = stats.slice(0, 2);
   const small = stats.slice(2);
@@ -215,7 +230,12 @@ export function HomeView({ onGo, onOpenNews, config }) {
     <div className="cnct-home-v2">
       <div className="cnct-kpi-row">
         {big.map((s) => (
-          <section key={s.ma} className={`cnct-kpi-card ${s.mau || "green"}`}>
+          <section key={s.ma} className={`cnct-kpi-card ${s.mau || "green"}`}
+            onClick={() => moBang(s.ma)} role={O_CHI_SO_TOI_BANG[s.ma] ? "button" : undefined}
+            tabIndex={O_CHI_SO_TOI_BANG[s.ma] ? 0 : undefined}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && moBang(s.ma)}
+            title={O_CHI_SO_TOI_BANG[s.ma] ? "Xem biểu đồ ở Dashboard" : undefined}
+            style={O_CHI_SO_TOI_BANG[s.ma] ? { cursor: "pointer" } : undefined}>
             <div className="cnct-kpi-icon"><StatIcon ma={s.ma} size={26} /></div>
             <div className="cnct-kpi-label">{s.nhan}</div>
             <div className="cnct-kpi-value">{s.gia_tri}{hauToDonVi(s.don_vi)}</div>
@@ -240,7 +260,12 @@ export function HomeView({ onGo, onOpenNews, config }) {
 
       <div className="cnct-stats">
         {small.map((s) => (
-          <section key={s.ma} className={`cnct-stat ${s.mau || ""}`}>
+          <section key={s.ma} className={`cnct-stat ${s.mau || ""}`}
+            onClick={() => moBang(s.ma)} role={O_CHI_SO_TOI_BANG[s.ma] ? "button" : undefined}
+            tabIndex={O_CHI_SO_TOI_BANG[s.ma] ? 0 : undefined}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && moBang(s.ma)}
+            title={O_CHI_SO_TOI_BANG[s.ma] ? "Xem biểu đồ ở Dashboard" : undefined}
+            style={O_CHI_SO_TOI_BANG[s.ma] ? { cursor: "pointer" } : undefined}>
             <div className="cnct-stat-icon"><StatIcon ma={s.ma} size={22} /></div>
             <div className="cnct-stat-label">{s.nhan}</div>
             <div className="cnct-stat-value">{s.gia_tri}{hauToDonVi(s.don_vi)}</div>
@@ -1572,8 +1597,8 @@ export function soTheoChiTieu(v, ct) {
   return dv === "%" ? `${so}%` : dv ? `${so} ${dv}` : so;
 }
 
-export function DashView() {
-  const [ma, setMa] = useState("KPI");
+export function DashView({ bangMoSan }) {
+  const [ma, setMa] = useState(bangMoSan || "KPI");
   const [duLieu, setDuLieu] = useState(null);
   const [dangTai, setDangTai] = useState(true);
   const [loi, setLoi] = useState("");
