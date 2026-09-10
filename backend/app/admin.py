@@ -1438,6 +1438,23 @@ def import_kinds(kind: Optional[str] = None, user: models.User = Depends(current
     ]
 
 
+@router.get("/export/tong-hop")
+def export_tong_hop(db: Session = Depends(get_db), user: models.User = Depends(current_user)):
+    """Xuất toàn bộ dữ liệu ra một tệp Excel, mỗi mục một trang."""
+    from . import xuatexcel
+    try:
+        content = xuatexcel.build_workbook(db, user)
+    except ImportError:
+        raise HTTPException(500, "Máy chủ chưa cài thư viện tạo tệp Excel (openpyxl).")
+    from fastapi.responses import Response
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":
+                 f'attachment; filename="du-lieu-tong-hop-{models.today()}.xlsx"'},
+    )
+
+
 @router.get("/import/template-xlsx-tong-hop")
 def import_template_xlsx_tong_hop(user: models.User = Depends(current_user)):
     """Một tệp Excel chứa tất cả nhóm dữ liệu, mỗi nhóm một trang.

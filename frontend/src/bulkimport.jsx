@@ -105,6 +105,25 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
     setBusy(false);
   };
 
+  const taiDuLieuTongHop = async () => {
+    try {
+      const headers = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE}/api/admin/export/tong-hop`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || "Không xuất được dữ liệu.");
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement("a");
+      const dat = res.headers.get("content-disposition") || "";
+      const khop = dat.match(/filename="?([^"]+)"?/);
+      a.href = url; a.download = khop ? khop[1] : "du-lieu-tong-hop.xlsx"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
+  };
+
   const taiMauTongHop = async () => {
     try {
       const headers = {};
@@ -342,10 +361,15 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
             <p className="dim" style={{ fontSize: 12.5, marginBottom: 10 }}>
               Tệp mẫu tổng hợp có sẵn mỗi nhóm một trang. Điền trang nào thì nhóm đó được cập nhật,
               trang để trống thì bỏ qua — không phải tải và nộp từng tệp riêng nữa.
+              Nút xuất dữ liệu cho ra tệp Excel chia sẵn mỗi tab Dashboard một trang, kèm định biên,
+              tiến độ và CSDL hạ tầng ở mức trung tâm.
             </p>
             <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
               <button className="btn btn-sm" onClick={taiMauTongHop}>
                 <Download size={14} /> Tải tệp mẫu tổng hợp
+              </button>
+              <button className="btn btn-sm" onClick={taiDuLieuTongHop}>
+                <Download size={14} /> Xuất toàn bộ dữ liệu đang có
               </button>
               <button className="btn btn-sm" onClick={() => fileTongHopRef.current?.click()}>
                 <Upload size={14} /> Chọn tệp tổng hợp đã điền
