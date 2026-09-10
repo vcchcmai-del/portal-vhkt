@@ -1397,28 +1397,24 @@ function NhomPhatTrend({ xuHuong, nam }) {
  * thay vì nhãn chồng nhau trên lát cắt — nhóm có tới 14-15 nguyên nhân nên
  * nhãn trực tiếp trên biểu đồ tròn rất dễ đè lên nhau.
  */
-function NhomPhatPie({ title, nhom }) {
+function NhomPhatPie({ title, nhom, kyGop }) {
   const kyList = nhom?.ky_list || [];
-  const [locTheo, setLocTheo] = useState(kyList.length ? kyList[kyList.length - 1] : "luy_ke_6t");
-  useEffect(() => {
-    if (kyList.length) setLocTheo(kyList[kyList.length - 1]);
-  }, [kyList.length ? kyList[kyList.length - 1] : null]);
-
   if (!kyList.length) return null;
-  const coCau = locTheo === "luy_ke_6t" ? (nhom.luy_ke_6_thang || []) : (nhom.theo_ky?.[locTheo] || []);
-  const sapXep = [...coCau].sort((a, b) => b.value - a.value);
+
+  // Không còn bộ lọc riêng: lấy đúng kỳ đang chọn ở đầu trang. Chưa chọn kỳ gộp
+  // thì hiện tháng mới nhất, như nếp cũ.
+  const cacKy = kyGop ? kyGop.ky.filter((k) => kyList.includes(k)) : [kyList[kyList.length - 1]];
+  const nhanBoLoc = kyGop ? kyGop.nhan : `Kỳ ${cacKy[0]}`;
+  const cong = {};
+  for (const k of cacKy) {
+    for (const x of nhom.theo_ky?.[k] || []) cong[x.name] = (cong[x.name] || 0) + x.value;
+  }
+  const sapXep = Object.entries(cong).map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
   const tong = sapXep.reduce((s, x) => s + x.value, 0);
-  const soKyLuyKe = Math.min(kyList.length, 6);
-  const nhanBoLoc = locTheo === "luy_ke_6t" ? `Luỹ kế ${soKyLuyKe} tháng gần nhất` : `Kỳ ${locTheo}`;
   return (
     <Card title={title} pad={false}
-      action={
-        <select className="inp" value={locTheo} onChange={(e) => setLocTheo(e.target.value)}
-          style={{ maxWidth: 190, fontSize: 12.5, padding: "5px 9px" }}>
-          {[...kyList].reverse().map((k) => <option key={k} value={k}>Kỳ {k}</option>)}
-          <option value="luy_ke_6t">Luỹ kế {soKyLuyKe} tháng gần nhất</option>
-        </select>
-      }>
+      action={<span className="muted" style={{ fontSize: 12.5 }}>{nhanBoLoc}</span>}>
       {!sapXep.length ? (
         <p className="muted" style={{ padding: "16px 18px" }}>Chưa có số liệu cho {nhanBoLoc.toLowerCase()}.</p>
       ) : (
@@ -1451,8 +1447,12 @@ function NhomPhatPie({ title, nhom }) {
  * phạt/doanh thu từng tháng và tỷ lệ phạt trung bình lũy kế (trung bình cộng
  * các tháng đã có số liệu, không phải tổng — tỷ lệ % không cộng dồn được).
  */
-function BangChiTietPhat({ xuHuong, compare, nam }) {
-  const loc = (xuHuong || []).filter((r) => !nam || nam === "all" || r.name?.startsWith(nam));
+function BangChiTietPhat({ xuHuong, compare, nam, kyGop }) {
+  const loc = (xuHuong || [])
+    .filter((r) => !nam || nam === "all" || r.name?.startsWith(nam))
+    // Chọn quý hay một tháng thì bảng chỉ giữ đúng các tháng đó; luỹ kế thì
+    // vẫn là T1..TN nên bảng gần như không đổi, đúng nghĩa "luỹ kế".
+    .filter((r) => !kyGop || kyGop.ky.includes(r.name));
   if (!loc.length) return null;
   const tiLeTheoKy = {};
   (compare || []).forEach((c) => { if (c.chi_tieu === "Tiền phạt/Doanh thu") tiLeTheoKy[c.ky] = c.thuc_hien; });
@@ -1664,21 +1664,46 @@ export function soTheoChiTieu(v, ct) {
  *
  * Target và cùng kỳ năm trước gộp y hệt, để ba cột vẫn so được với nhau.
  */
-function gopTheoKy(compare, cheDo) {
-  if (!compare?.length || cheDo === "thang") return compare || [];
-  const nam = Math.max(...compare.map((c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0));
-  let cacThang, nhanKy;
+/**
+ * Kỳ đối chiếu đang chọn gồm những tháng nào.
+ *
+ * Một chỗ duy nhất quyết định phạm vi, để bảng đối chiếu, bảng đánh giá KPI và
+ * cả khu tiền phạt (biểu đồ tròn cơ cấu nguyên nhân, bảng chi tiết) cùng nói về
+ * một khoảng thời gian — trước đây mỗi biểu đồ tròn có bộ lọc riêng nên đang
+ * xem quý 3 ở bảng mà biểu đồ vẫn là "luỹ kế 6 tháng gần nhất".
+ *
+ * Trả null khi xem theo từng tháng, nghĩa là không gộp gì cả.
+ */
+function kyCuaCheDo(cheDo, nam) {
+  if (!cheDo || cheDo === "thang" || !nam) return null;
+  if (cheDo.startsWith("thang")) {
+    const ky = cheDo.slice(5);
+    return { ky: [ky], nhan: `Tháng ${ky}`, soThang: 1 };
+  }
+  let cacThang, nhan;
   if (cheDo.startsWith("quy")) {
     const q = parseInt(cheDo.slice(3), 10);
     cacThang = [q * 3 - 2, q * 3 - 1, q * 3];
-    nhanKy = `Quý ${q}/${nam}`;
+    nhan = `Quý ${q}/${nam}`;
   } else {
     const n = parseInt(cheDo.slice(5), 10);
     cacThang = Array.from({ length: n }, (_, i) => i + 1);
-    nhanKy = `Luỹ kế T1–T${n}/${nam}`;
+    nhan = `Luỹ kế T1–T${n}/${nam}`;
   }
-  const trongKy = new Set(cacThang.map((m) => `${nam}-${String(m).padStart(2, "0")}`));
-  const soThangCuaKy = cacThang.length;
+  return {
+    ky: cacThang.map((m) => `${nam}-${String(m).padStart(2, "0")}`),
+    nhan, soThang: cacThang.length,
+  };
+}
+
+function gopTheoKy(compare, cheDo) {
+  if (!compare?.length || cheDo === "thang") return compare || [];
+  const nam = Math.max(...compare.map((c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0));
+  const phamVi = kyCuaCheDo(cheDo, nam);
+  if (!phamVi) return compare;
+  const nhanKy = phamVi.nhan;
+  const trongKy = new Set(phamVi.ky);
+  const soThangCuaKy = phamVi.soThang;
 
   const nhom = new Map();
   for (const c of compare) {
@@ -1757,8 +1782,14 @@ export function DashView({ bangMoSan }) {
       .map((c) => parseInt(c.ky.split("-")[1], 10)));
   }, [duLieu]);
   const thangLonNhat = thangCoSo.size ? Math.max(...thangCoSo) : 0;
+  const namXem = useMemo(() => Math.max(...(duLieu?.compare || []).map(
+    (c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0), 0), [duLieu]);
   const cacCheDo = [
     { id: "thang", nhan: "Theo từng tháng" },
+    ...[...thangCoSo].sort((a, b) => b - a).map((m) => ({
+      id: `thang${namXem}-${String(m).padStart(2, "0")}`,
+      nhan: `Riêng tháng ${m}/${namXem}`,
+    })),
     ...Array.from({ length: Math.max(0, thangLonNhat - 1) },
       (_, i) => ({ id: `luyke${i + 2}`, nhan: `Luỹ kế ${i + 2} tháng` })),
     ...[1, 2, 3, 4].filter((q) => [q * 3 - 2, q * 3 - 1, q * 3].some((m) => thangCoSo.has(m)))
@@ -1767,6 +1798,7 @@ export function DashView({ bangMoSan }) {
   const cheDoHopLe = cacCheDo.some((c) => c.id === cheDo) ? cheDo : "thang";
   const compareXem = useMemo(
     () => gopTheoKy(duLieu?.compare, cheDoHopLe), [duLieu, cheDoHopLe]);
+  const kyGop = kyCuaCheDo(cheDoHopLe, namXem);
   const dangGop = cheDoHopLe !== "thang";
 
   const coSoThat = duLieu?.series?.length > 0;
@@ -1846,10 +1878,11 @@ export function DashView({ bangMoSan }) {
                 <NhomPhatTrend xuHuong={duLieu.nhom_phat.xu_huong} nam={NAM_HIEN_TAI} />
               </Card>
               <div className="grid lg:grid-cols-2 gap-4">
-                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" nhom={duLieu.nhom_phat.vtnet} />
-                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" nhom={duLieu.nhom_phat.vtt} />
+                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTNet" nhom={duLieu.nhom_phat.vtnet} kyGop={kyGop} />
+                <NhomPhatPie title="Cơ cấu nguyên nhân phạt VTT" nhom={duLieu.nhom_phat.vtt} kyGop={kyGop} />
               </div>
-              <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} nam={NAM_HIEN_TAI} />
+              <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare}
+                nam={NAM_HIEN_TAI} kyGop={kyGop} />
             </>
           )}
           <BangDanhGiaKPI compare={compareXem} huongTot="thap"
