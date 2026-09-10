@@ -926,6 +926,39 @@ function mauTinh(ten, idx) { return MAU_THEO_TINH[ten] || MAU_VE[idx % MAU_VE.le
 
 const dinhDangPhanTram = (v) => (v == null ? "" : `${Number(v).toFixed(2)}%`);
 
+/**
+ * Miền trục Y bám sát số liệu, thay cho mặc định luôn bắt đầu từ 0.
+ *
+ * Bắt đầu từ 0 thì mọi chuỗi bị dồn vào một dải hẹp phía trên: XLCS 97,4% và
+ * 99,6% trông như một đường thẳng, còn sự cố truyền dẫn 54-81 nằm lọt thỏm
+ * giữa trục 0-100 nên chênh lệch với target gần như không thấy.
+ *
+ * CỐ Ý chỉ dùng cho biểu đồ ĐƯỜNG và VÙNG. Biểu đồ cột mà cắt gốc 0 thì chiều
+ * dài cột không còn tỉ lệ với giá trị — cột 99 sẽ trông gấp đôi cột 98 — đó là
+ * nhìn ra sai lệch chứ không phải rõ hơn.
+ */
+function mienTruc(data, cacKhoa) {
+  const so = [];
+  (data || []).forEach((r) => cacKhoa.forEach((k) => {
+    if (typeof r[k] === "number" && Number.isFinite(r[k])) so.push(r[k]);
+  }));
+  if (!so.length) return [0, "auto"];
+  const nho = Math.min(...so), lon = Math.max(...so);
+  if (nho === lon) return [nho - 1, lon + 1];
+
+  // Chừa 15% mỗi đầu cho nhãn số khỏi chạm mép.
+  const dem = (lon - nho) * 0.15;
+  const duoi = nho - dem, tren = lon + dem;
+  // Làm tròn theo ĐỘ RỘNG của miền (không theo độ lớn của số) để mốc trục vẫn
+  // đẹp mà không nới miền ra quá rộng.
+  const buoc = Math.pow(10, Math.floor(Math.log10(tren - duoi))) / 2 || 1;
+  return [
+    // Số liệu không âm thì đừng để trục âm, nhìn vô lý.
+    Math.max(nho >= 0 ? 0 : -Infinity, Math.floor(duoi / buoc) * buoc),
+    Math.ceil(tren / buoc) * buoc,
+  ];
+}
+
 /** Danh sách năm (giảm dần) xuất hiện trong một tập kỳ "YYYY-MM". */
 /**
  * Danh sách biểu đồ nhỏ xếp dọc, mỗi biểu đồ vẽ đúng một chuỗi số liệu — dùng khi
@@ -941,6 +974,7 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
         const mau = (mauMap && mauMap[chuoi]) || MAU_VE[i % MAU_VE.length];
         const coTarget = data.some((r) => r[`${chuoi}__target`] != null);
         const coCungKy = data.some((r) => r[`${chuoi}__cungky`] != null);
+        const mien = mienTruc(data, [chuoi, `${chuoi}__target`, `${chuoi}__cungky`]);
         return (
           <div key={chuoi}>
             <p style={{ fontSize: 12.5, fontWeight: 700, color: "#57494B", marginBottom: 2 }}>{nhanChuoi?.[chuoi] || chuoi}</p>
@@ -948,7 +982,7 @@ function DanhSachBieuDoDoc({ data, dsChuoi, nhanChuoi, mauMap, dinhDang = (v) =>
               <LineChart data={data} margin={{ top: 18, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
                 <XAxis dataKey="name" {...truc} />
-                <YAxis {...truc} width={40} />
+                <YAxis {...truc} width={44} domain={mien} />
                 <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
                 {(coTarget || coCungKy) && <Legend wrapperStyle={{ fontSize: 11 }} height={20} />}
                 {coTarget && (
@@ -1040,7 +1074,7 @@ function BieuDo({ kieu, series }) {
           </defs>
           {luoi}
           <XAxis dataKey="name" {...truc} />
-          <YAxis {...truc} />
+          <YAxis {...truc} domain={mienTruc(series, cot)} />
           <Tooltip {...tooltipStyle} />
           <Legend wrapperStyle={{ fontSize: 12.5 }} />
           {cot.map((c, i) => (
@@ -1058,7 +1092,7 @@ function BieuDo({ kieu, series }) {
         <LineChart data={series}>
           {luoi}
           <XAxis dataKey="name" {...truc} />
-          <YAxis {...truc} />
+          <YAxis {...truc} domain={mienTruc(series, cot)} />
           <Tooltip {...tooltipStyle} />
           {cot.length > 1 && <Legend wrapperStyle={{ fontSize: 12.5 }} />}
           {cot.map((c, i) => (
@@ -1076,7 +1110,7 @@ function BieuDo({ kieu, series }) {
         <ComposedChart data={series}>
           {luoi}
           <XAxis dataKey="name" {...truc} />
-          <YAxis yAxisId="l" {...truc} />
+          <YAxis yAxisId="l" {...truc} domain={mienTruc(series, [cot[0]])} />
           <YAxis yAxisId="r" orientation="right" {...truc} />
           <Tooltip {...tooltipStyle} />
           <Legend wrapperStyle={{ fontSize: 12.5 }} />
@@ -1142,7 +1176,7 @@ function TrendChart({ compare, chiTieu, hienSo = true, namHienTai, dinhDang = (v
       <LineChart data={data} margin={{ top: 22, right: 12, left: 4, bottom: 4 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
         <XAxis dataKey="name" {...truc} />
-        <YAxis {...truc} />
+        <YAxis {...truc} domain={mienTruc(data, ["Target", nhanNamNay, nhanNamTruoc])} />
         <Tooltip {...tooltipStyle} formatter={(v) => dinhDang(v)} />
         <Legend wrapperStyle={{ fontSize: 12.5 }} />
         <Line type="monotone" dataKey="Target" stroke={MAU_TARGET} strokeDasharray="4 4" dot={false} strokeWidth={1.5} />
@@ -1336,7 +1370,8 @@ function NhomPhatTrend({ xuHuong, nam }) {
         <LineChart data={data} margin={{ top: 22, right: 14, left: 4, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#EFECED" vertical={false} />
           <XAxis dataKey="name" {...truc} interval={loc.length > 12 ? 1 : 0} />
-          <YAxis {...truc} label={{ value: "Triệu đồng", angle: -90, position: "insideLeft", fontSize: 11, fill: "#A9A3A5" }} />
+          <YAxis {...truc} domain={mienTruc(data, ["Tổng", "VTNet", "VTT"])}
+            label={{ value: "Triệu đồng", angle: -90, position: "insideLeft", fontSize: 11, fill: "#A9A3A5" }} />
           <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu`} />
           <Legend wrapperStyle={{ fontSize: 12.5 }} />
           <Line type="monotone" dataKey="Tổng" stroke={RED} strokeDasharray="4 3" dot={{ r: 3 }} strokeWidth={2}>
