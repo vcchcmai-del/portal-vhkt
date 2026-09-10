@@ -16,6 +16,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY app /app/app
 COPY static /app/static
+# Số liệu Dashboard đi kèm mã nguồn — nạp khi CSDL còn trống (app/dongbo.py).
+COPY dong-bo /app/dong-bo
 COPY reset_password.py /app/reset_password.py
 
 RUN mkdir -p /app/data

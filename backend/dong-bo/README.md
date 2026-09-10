@@ -40,3 +40,6 @@ hồ sơ nhân viên, tài khoản đăng nhập, lịch trực (có số điệ
 nhật ký thao tác, diễn đàn, sáng kiến, tệp tải lên.
 
 Danh sách bảng được đồng bộ khai báo tại `backend/app/dongbo.py`.
+
+Thư mục nằm trong `backend/` chứ không phải gốc repo vì nền tảng triển khai
+dựng image từ đúng thư mục `backend/` — để ở ngoài thì tệp không lên máy chủ.

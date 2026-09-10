@@ -6,12 +6,12 @@ tác. Nhưng như thế thì clone repo về lại ra một cổng thông tin tr
 mọi thay đổi số liệu không để lại dấu vết nào trong lịch sử Git.
 
 Nên tách đôi: phần số liệu Dashboard — không có tên, số điện thoại hay email của
-ai — thì kết xuất ra CSV trong data/dong-bo/ và commit; phần dữ liệu cá nhân vẫn
+ai — thì kết xuất ra CSV trong backend/dong-bo/ và commit; phần dữ liệu cá nhân vẫn
 nằm ngoài Git. Repo hiện ở chế độ công khai, nên ranh giới này là bắt buộc, đừng
 thêm bảng mới vào đây mà chưa soát lại từng cột.
 
-    python scripts/xuat_so_lieu.py     # CSDL -> data/dong-bo/*.csv
-    python scripts/nap_so_lieu.py      # data/dong-bo/*.csv -> CSDL
+    python scripts/xuat_so_lieu.py     # CSDL -> backend/dong-bo/*.csv
+    python scripts/nap_so_lieu.py      # backend/dong-bo/*.csv -> CSDL
 
 Lúc khởi động, nếu bảng số liệu còn trống thì tự nạp (xem main.py) — máy mới
 clone về là có sẵn số liệu, còn máy đã có dữ liệu thì không bị đụng vào.
@@ -22,10 +22,12 @@ import os
 from . import models
 from .database import SessionLocal
 
+# Nằm trong backend/ chứ không phải gốc repo: nền tảng triển khai dựng image từ
+# ĐÚNG thư mục backend/ (xem backend/Dockerfile), nên tệp nào ở ngoài đó sẽ không
+# có mặt trên máy chủ thật. Đường dẫn này ra backend/dong-bo ở cả hai nơi —
+# chạy cục bộ lẫn trong container (/app/dong-bo).
 THU_MUC = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data", "dong-bo",
-)
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dong-bo")
 
 
 class Bang:
@@ -145,7 +147,7 @@ def nap(thu_muc=THU_MUC) -> dict:
 def _dong_dau_moc(db) -> None:
     """Đánh dấu các bước một-lần là đã chạy.
 
-    Số liệu trong data/dong-bo đã là KẾT QUẢ sau khi các bước ấy chạy: tên đơn vị
+    Số liệu trong dong-bo đã là KẾT QUẢ sau khi các bước ấy chạy: tên đơn vị
     đã là mã, tên trung tâm đã là mã, KPI T8/2026 đã cập nhật. Để chúng chạy lại
     trên bộ số liệu này thì chúng sẽ ghi đè, thậm chí dựng lại những dòng đã cố ý
     bỏ đi (dòng tổng Ksub*min T08/2026 là một ví dụ đã xảy ra).
@@ -174,7 +176,7 @@ def nap_neu_trong() -> str:
     finally:
         db.close()
     if not os.path.isdir(THU_MUC):
-        return "Chưa có thư mục data/dong-bo, bỏ qua."
+        return "Chưa có thư mục dong-bo, bỏ qua."
     kq = nap()
     db = SessionLocal()
     try:
