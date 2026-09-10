@@ -1519,6 +1519,9 @@ function BangChiTietPhat({ xuHuong, compare, nam }) {
  * KPI TKM).
  */
 function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }) {
+  // Kỳ gộp (luỹ kế / theo quý) mới cần cột bình quân; xem từng tháng thì bình
+  // quân chính là con số đang đứng cạnh, thêm cột chỉ tổ rườm rà.
+  const hienBinhQuan = (compare || []).some((c) => c.so_thang > 1);
   const rowsCa = (compare || []).filter((c) => chiTieuList.includes(c.chi_tieu));
   if (!rowsCa.length) return null;
   const kyMoiNhat = rowsCa.reduce((max, r) => (r.ky > max ? r.ky : max), rowsCa[0].ky);
@@ -1543,6 +1546,7 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
             <tr>
               <th>TT</th><th>KPI</th><th>Đơn vị</th>
               <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>Thực hiện</th>
+              {hienBinhQuan && <th style={{ textAlign: "right" }}>BQ/tháng</th>}
               <th style={{ textAlign: "right" }}>So target — Kết quả</th><th>So target — Đánh giá</th>
               <th style={{ textAlign: "right" }}>Cùng kỳ — Kết quả</th><th>Cùng kỳ — Đánh giá</th>
               <th style={{ textAlign: "right" }}>Cùng kỳ — Giá trị</th>
@@ -1565,6 +1569,12 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
                   <td className="muted">{r.don_vi || "Chi nhánh"}</td>
                   <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(r.target, n.chiTieu)}</td>
                   <td className="mono" style={{ textAlign: "right", fontWeight: 600 }}>{soTheoChiTieu(r.thuc_hien, n.chiTieu)}</td>
+                  {hienBinhQuan && (
+                    <td className="mono muted" style={{ textAlign: "right" }}
+                      title={r.so_thang ? `Bình quân ${r.so_thang} tháng` : undefined}>
+                      {soTheoChiTieu(r.binh_quan, n.chiTieu)}{soThangThieu(r)}
+                    </td>
+                  )}
                   <td className="mono" style={{ textAlign: "right" }}>{kq != null ? `${kq > 0 ? "+" : ""}${kq.toFixed(2)}%` : "—"}</td>
                   <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt" : "Chưa đạt"}</span>}</td>
                   <td className="mono" style={{ textAlign: "right" }}>{kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}</td>
@@ -1624,6 +1634,18 @@ const DON_VI_CHI_TIEU = {
 export function donViChiTieu(ct) {
   return DON_VI_CHI_TIEU[ct] ?? (/^Tỷ lệ/.test(ct || "") ? "%" : "");
 }
+/**
+ * Ghi chú "(N th)" khi chỉ tiêu chỉ có số ở một phần các tháng của kỳ.
+ *
+ * Không có nó thì một chỉ tiêu mới nhập tới tháng 4 vẫn nằm dưới nhãn "Luỹ kế
+ * T1–T8", người đọc dễ tưởng đó là tổng của cả tám tháng.
+ */
+function soThangThieu(dong) {
+  if (!dong?.so_thang || !dong?.so_thang_cua_ky) return null;
+  if (dong.so_thang >= dong.so_thang_cua_ky) return null;
+  return <span style={{ fontSize: 11 }}> ({dong.so_thang} th)</span>;
+}
+
 /** Số kèm đơn vị, hoặc "—" khi chưa có số. */
 export function soTheoChiTieu(v, ct) {
   if (v == null) return "—";
@@ -1656,6 +1678,7 @@ function gopTheoKy(compare, cheDo) {
     nhanKy = `Luỹ kế T1–T${n}/${nam}`;
   }
   const trongKy = new Set(cacThang.map((m) => `${nam}-${String(m).padStart(2, "0")}`));
+  const soThangCuaKy = cacThang.length;
 
   const nhom = new Map();
   for (const c of compare) {
@@ -1677,6 +1700,12 @@ function gopTheoKy(compare, cheDo) {
     return Math.round(v * 100) / 100;
   };
 
+  // Bình quân một tháng, luôn là tổng chia số tháng — với chỉ tiêu tỷ lệ thì
+  // trùng luôn với giá trị luỹ kế (vốn đã là bình quân), đó là điều đúng chứ
+  // không phải trùng lặp thừa.
+  const binhQuan = (ds) => (ds.length
+    ? Math.round((ds.reduce((a, b) => a + b, 0) / ds.length) * 100) / 100 : null);
+
   return [...nhom.values()].map((g) => {
     const th = gop(g.chi_tieu, g.th);
     const ck = gop(g.chi_tieu, g.ck);
@@ -1686,6 +1715,10 @@ function gopTheoKy(compare, cheDo) {
       chenh_lech_cung_ky_phan_tram:
         th != null && ck ? Math.round(((th - ck) / ck) * 1000) / 10 : null,
       so_thang: g.th.length,
+      so_thang_cua_ky: soThangCuaKy,
+      binh_quan: binhQuan(g.th),
+      binh_quan_target: binhQuan(g.tg),
+      binh_quan_cung_ky: binhQuan(g.ck),
     };
   });
 }
@@ -1775,7 +1808,8 @@ export function DashView({ bangMoSan }) {
           </select>
           {dangGop && (
             <span className="muted" style={{ fontSize: 12.5 }}>
-              Chỉ tiêu đếm được thì luỹ kế là tổng các tháng; chỉ tiêu tỷ lệ (%) lấy bình quân.
+              Chỉ tiêu đếm được thì luỹ kế là tổng các tháng, cột BQ/tháng là mức bình quân
+              một tháng. Chỉ tiêu tỷ lệ (%) thì luỹ kế chính là bình quân nên hai cột bằng nhau.
               Biểu đồ bên dưới vẫn vẽ theo từng tháng.
             </span>
           )}
@@ -1920,6 +1954,7 @@ export function DashView({ bangMoSan }) {
               <thead>
                 <tr>
                   <th>Kỳ</th><th>Chỉ tiêu</th><th>Đơn vị</th><th style={{ textAlign: "right" }}>Thực hiện</th>
+                  {dangGop && <th style={{ textAlign: "right" }}>BQ/tháng</th>}
                   <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>So target</th><th>Đánh giá</th>
                   <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
                 </tr>
@@ -1949,6 +1984,12 @@ export function DashView({ bangMoSan }) {
                       <td style={{ fontWeight: 600 }}>{c.chi_tieu}</td>
                       <td className="muted">{c.don_vi || "—"}</td>
                       <td className="mono" style={{ textAlign: "right" }}>{soTheoChiTieu(c.thuc_hien, c.chi_tieu)}</td>
+                      {dangGop && (
+                        <td className="mono muted" style={{ textAlign: "right" }}
+                          title={c.so_thang ? `Bình quân ${c.so_thang} tháng` : undefined}>
+                          {soTheoChiTieu(c.binh_quan, c.chi_tieu)}{soThangThieu(c)}
+                        </td>
+                      )}
                       <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(c.target, c.chi_tieu)}</td>
                       <td className="mono" style={{ textAlign: "right", color: dat == null ? undefined : (dat ? "#0A7A50" : RED) }}>
                         {soTarget != null ? `${soTarget > 0 ? "+" : ""}${soTarget.toFixed(2)}%` : "—"}
