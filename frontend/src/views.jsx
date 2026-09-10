@@ -2,7 +2,7 @@
  * Các phân hệ người dùng thường xem.
  * Dữ liệu lấy từ API, nếu API chưa sẵn sàng thì dùng dữ liệu dự phòng trong data.js
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, ArrowUpRight, Award, BarChart3, BookOpen, Building2, Cake, Calendar,
   Check, ChevronLeft, ChevronRight, Clock, CloudRain, Download, Droplets, FileText, Hash,
@@ -1632,8 +1632,67 @@ export function soTheoChiTieu(v, ct) {
   return dv === "%" ? `${so}%` : dv ? `${so} ${dv}` : so;
 }
 
+/**
+ * Gộp số liệu nhiều tháng thành một kỳ: luỹ kế từ đầu năm, hoặc trọn một quý.
+ *
+ * Chỉ tiêu ĐẾM ĐƯỢC (số sự cố, tiền phạt, Cell*h, khách rời mạng) thì luỹ kế là
+ * phép CỘNG. Chỉ tiêu TỶ LỆ (%) thì không: cộng tám tháng XLCS lại thành 780%
+ * là vô nghĩa, nên lấy BÌNH QUÂN các tháng. Nhận biết bằng đơn vị đo của chính
+ * chỉ tiêu đó (xem donViChiTieu), không đoán theo tên bảng.
+ *
+ * Target và cùng kỳ năm trước gộp y hệt, để ba cột vẫn so được với nhau.
+ */
+function gopTheoKy(compare, cheDo) {
+  if (!compare?.length || cheDo === "thang") return compare || [];
+  const nam = Math.max(...compare.map((c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0));
+  let cacThang, nhanKy;
+  if (cheDo.startsWith("quy")) {
+    const q = parseInt(cheDo.slice(3), 10);
+    cacThang = [q * 3 - 2, q * 3 - 1, q * 3];
+    nhanKy = `Quý ${q}/${nam}`;
+  } else {
+    const n = parseInt(cheDo.slice(5), 10);
+    cacThang = Array.from({ length: n }, (_, i) => i + 1);
+    nhanKy = `Luỹ kế T1–T${n}/${nam}`;
+  }
+  const trongKy = new Set(cacThang.map((m) => `${nam}-${String(m).padStart(2, "0")}`));
+
+  const nhom = new Map();
+  for (const c of compare) {
+    if (!trongKy.has(c.ky)) continue;
+    const khoa = `${c.chi_tieu}|${c.don_vi || ""}`;
+    if (!nhom.has(khoa)) {
+      nhom.set(khoa, { chi_tieu: c.chi_tieu, don_vi: c.don_vi, th: [], tg: [], ck: [] });
+    }
+    const g = nhom.get(khoa);
+    if (c.thuc_hien != null) g.th.push(c.thuc_hien);
+    if (c.target != null) g.tg.push(c.target);
+    if (c.cung_ky_truoc != null) g.ck.push(c.cung_ky_truoc);
+  }
+
+  const gop = (chiTieu, ds) => {
+    if (!ds.length) return null;
+    const tong = ds.reduce((a, b) => a + b, 0);
+    const v = donViChiTieu(chiTieu) === "%" ? tong / ds.length : tong;
+    return Math.round(v * 100) / 100;
+  };
+
+  return [...nhom.values()].map((g) => {
+    const th = gop(g.chi_tieu, g.th);
+    const ck = gop(g.chi_tieu, g.ck);
+    return {
+      ky: nhanKy, chi_tieu: g.chi_tieu, don_vi: g.don_vi,
+      thuc_hien: th, target: gop(g.chi_tieu, g.tg), cung_ky_truoc: ck,
+      chenh_lech_cung_ky_phan_tram:
+        th != null && ck ? Math.round(((th - ck) / ck) * 1000) / 10 : null,
+      so_thang: g.th.length,
+    };
+  });
+}
+
 export function DashView({ bangMoSan }) {
   const [ma, setMa] = useState(bangMoSan || "KPI");
+  const [cheDo, setCheDo] = useState("thang");
   const [duLieu, setDuLieu] = useState(null);
   const [dangTai, setDangTai] = useState(true);
   const [loi, setLoi] = useState("");
@@ -1654,6 +1713,28 @@ export function DashView({ bangMoSan }) {
       .finally(() => con && setDangTai(false));
     return () => { con = false; };
   }, [ma]);
+
+  // Chỉ mời những kỳ thật sự có số liệu: bảng mới nhập tới T3 thì không nên
+  // cho chọn luỹ kế 8 tháng rồi trả về một con số thiếu 5 tháng.
+  const thangCoSo = useMemo(() => {
+    const nam = Math.max(...(duLieu?.compare || []).map(
+      (c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0), 0);
+    return new Set((duLieu?.compare || [])
+      .filter((c) => (c.ky || "").startsWith(`${nam}-`))
+      .map((c) => parseInt(c.ky.split("-")[1], 10)));
+  }, [duLieu]);
+  const thangLonNhat = thangCoSo.size ? Math.max(...thangCoSo) : 0;
+  const cacCheDo = [
+    { id: "thang", nhan: "Theo từng tháng" },
+    ...Array.from({ length: Math.max(0, thangLonNhat - 1) },
+      (_, i) => ({ id: `luyke${i + 2}`, nhan: `Luỹ kế ${i + 2} tháng` })),
+    ...[1, 2, 3, 4].filter((q) => [q * 3 - 2, q * 3 - 1, q * 3].some((m) => thangCoSo.has(m)))
+      .map((q) => ({ id: `quy${q}`, nhan: `Quý ${q}` })),
+  ];
+  const cheDoHopLe = cacCheDo.some((c) => c.id === cheDo) ? cheDo : "thang";
+  const compareXem = useMemo(
+    () => gopTheoKy(duLieu?.compare, cheDoHopLe), [duLieu, cheDoHopLe]);
+  const dangGop = cheDoHopLe !== "thang";
 
   const coSoThat = duLieu?.series?.length > 0;
   const seriesGoc = coSoThat ? duLieu.series : board.mau;
@@ -1684,6 +1765,22 @@ export function DashView({ bangMoSan }) {
           </button>
         ))}
       </div>
+
+      {cacCheDo.length > 1 && (
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          <label style={{ fontSize: 12.5, fontWeight: 700, color: "#57494B" }}>Kỳ đối chiếu</label>
+          <select className="inp" style={{ maxWidth: 210 }} value={cheDoHopLe}
+            onChange={(e) => setCheDo(e.target.value)}>
+            {cacCheDo.map((c) => <option key={c.id} value={c.id}>{c.nhan}</option>)}
+          </select>
+          {dangGop && (
+            <span className="muted" style={{ fontSize: 12.5 }}>
+              Chỉ tiêu đếm được thì luỹ kế là tổng các tháng; chỉ tiêu tỷ lệ (%) lấy bình quân.
+              Biểu đồ bên dưới vẫn vẽ theo từng tháng.
+            </span>
+          )}
+        </div>
+      )}
 
       {loi && (
         <div className="card" style={{ padding: 14, borderLeft: `3px solid ${RED}` }}>
@@ -1721,7 +1818,7 @@ export function DashView({ bangMoSan }) {
               <BangChiTietPhat xuHuong={duLieu.nhom_phat.xu_huong} compare={duLieu?.compare} nam={NAM_HIEN_TAI} />
             </>
           )}
-          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="thap"
+          <BangDanhGiaKPI compare={compareXem} huongTot="thap"
             chiTieuList={["Tiền phạt/Doanh thu", "Tỷ lệ phạt/DT VTNet", "Tỷ lệ phạt/DT VTT"]}
             nhanChiTieu={{ "Tiền phạt/Doanh thu": "Tổng", "Tỷ lệ phạt/DT VTNet": "VTNet", "Tỷ lệ phạt/DT VTT": "VTT" }} />
         </>
@@ -1735,7 +1832,7 @@ export function DashView({ bangMoSan }) {
           <Card title="Tỷ lệ rời mạng CĐBR" icon={board.icon}>
             <TrendChart compare={duLieu?.compare} chiTieu="Tỷ lệ rời mạng CĐBR" namHienTai={2026} />
           </Card>
-          <BangDanhGiaKPI compare={duLieu?.compare} chiTieuList={["Tỷ lệ rời mạng CĐBR"]} huongTot="thap" />
+          <BangDanhGiaKPI compare={compareXem} chiTieuList={["Tỷ lệ rời mạng CĐBR"]} huongTot="thap" />
           <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
         </>
       ) : laPAKH ? (
@@ -1743,14 +1840,14 @@ export function DashView({ bangMoSan }) {
           <Card title="Số sự cố truyền dẫn theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
             <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Số sự cố truyền dẫn" nam={NAM_HIEN_TAI} />
           </Card>
-          <BangDanhGiaKPI compare={duLieu?.compare} chiTieuList={["Số sự cố truyền dẫn"]} huongTot="thap" />
+          <BangDanhGiaKPI compare={compareXem} chiTieuList={["Số sự cố truyền dẫn"]} huongTot="thap" />
         </>
       ) : laFUEL ? (
         <>
           <Card title="Ksub*min theo tháng" icon={board.icon} action={<NhanNguon nguon={nguon} />}>
             <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Ksub*min" nam={NAM_HIEN_TAI} />
           </Card>
-          <BangDanhGiaKPI compare={duLieu?.compare} chiTieuList={["Ksub*min"]} huongTot="thap" />
+          <BangDanhGiaKPI compare={compareXem} chiTieuList={["Ksub*min"]} huongTot="thap" />
         </>
       ) : laOUTPUT ? (
         <>
@@ -1763,7 +1860,7 @@ export function DashView({ bangMoSan }) {
           <Card title="GĐTT trạm ưu tiên" icon={board.icon}>
             <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="GĐTT trạm ưu tiên" nam={NAM_HIEN_TAI} />
           </Card>
-          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="thap"
+          <BangDanhGiaKPI compare={compareXem} huongTot="thap"
             chiTieuList={["Cell*h tổng", "GĐTT trạm thường", "GĐTT trạm ưu tiên"]} />
         </>
       ) : laNETWORK ? (
@@ -1778,7 +1875,7 @@ export function DashView({ bangMoSan }) {
               mauMap={{ "XLCS 3h": RED, "XLCS 10h": "#0E6CD6", "XLCS 24h": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
           </Card>
-          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="cao"
+          <BangDanhGiaKPI compare={compareXem} huongTot="cao"
             chiTieuList={["XLCS 3h", "XLCS 10h", "XLCS 24h"]} />
         </>
       ) : laVHKT ? (
@@ -1796,7 +1893,7 @@ export function DashView({ bangMoSan }) {
               mauMap={{ "KPI TKM 3H": RED, "KPI TKM 10H": "#0E6CD6", "KPI TKM 24H": "#0A7A50" }}
               dinhDang={dinhDangPhanTram} />
           </Card>
-          <BangDanhGiaKPI compare={duLieu?.compare} huongTot="cao"
+          <BangDanhGiaKPI compare={compareXem} huongTot="cao"
             chiTieuList={["KPI TKM 3H", "KPI TKM 10H", "KPI TKM 24H"]} />
         </>
       ) : (
@@ -1816,7 +1913,7 @@ export function DashView({ bangMoSan }) {
 
       {laVHKT && <CanhBaoTrungTam danhSach={duLieu?.canh_bao_trung_tam} />}
 
-      {duLieu?.compare?.length > 0 && (
+      {compareXem?.length > 0 && (
         <Card title="Đối chiếu chỉ tiêu & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
@@ -1829,7 +1926,7 @@ export function DashView({ bangMoSan }) {
               </thead>
               <tbody>
                 {(() => {
-                  const hang = [...duLieu.compare].sort((a, b) =>
+                  const hang = [...compareXem].sort((a, b) =>
                     b.ky.localeCompare(a.ky)
                     || (THU_TU_CHI_TIEU[a.chi_tieu] ?? 99) - (THU_TU_CHI_TIEU[b.chi_tieu] ?? 99)
                     || (a.chi_tieu || "").localeCompare(b.chi_tieu || "", "vi")

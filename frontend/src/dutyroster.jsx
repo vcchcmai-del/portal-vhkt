@@ -55,7 +55,14 @@ function personMatches(p, term) {
   return hay.includes(term);
 }
 
-/** `hienDonVi` dùng cho các bảng gom người từ nhiều trung tâm, để biết ai ở đâu. */
+/**
+ * `hienDonVi` dùng cho các bảng gom người từ nhiều trung tâm, để biết ai ở đâu.
+ *
+ * Khoá của mỗi dòng gồm CẢ mã lẫn tên: file lịch trực chi nhánh có vài mã nhân
+ * viên bị hai người dùng chung (444145 là Nguyễn Văn Phường và Phạm Đức Hiếu),
+ * lấy mỗi mã làm khoá thì React coi hai người là một, đổi tab hay đổi ngày là
+ * dòng giữ nguyên chỗ cũ nhưng đổi sang tên người khác.
+ */
 function RosterTable({ people, hienDonVi = false }) {
   if (!people.length) return <p className="muted" style={{ fontSize: 13, fontStyle: "italic", padding: "10px 0" }}>Không có ai trực.</p>;
   return (
@@ -67,7 +74,7 @@ function RosterTable({ people, hienDonVi = false }) {
       </tr></thead>
       <tbody>
         {people.map((p, i) => (
-          <tr key={p.code || p.name}>
+          <tr key={`${p.code}-${p.name}`}>
             <td className="mono muted">{i + 1}</td>
             <td>
               <b>{p.name}</b>
@@ -240,7 +247,7 @@ export function DutyRosterView() {
               </thead>
               <tbody>
                 {(data.blocks[gridBlock]?.people || []).filter((p) => personMatches(p, term)).map((p) => (
-                  <tr key={p.code || p.name}>
+                  <tr key={`${p.code}-${p.name}`}>
                     <td style={{ position: "sticky", left: 0, background: "#fff", textAlign: "left" }}>
                       <b>{p.name}</b><br /><span className="muted" style={{ fontSize: 11 }}>{p.title}</span>
                     </td>
