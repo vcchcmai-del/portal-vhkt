@@ -342,7 +342,19 @@ function QuanLyDauViec({ categories, onDoi, onDong, suaNgay }) {
 
 /* ---------------------------------------------------------------- danh sách */
 
-export function TaskListTab({ locDauViec, onMoTienDo }) {
+const VAI_TRO = { phu_trach: "Phụ trách", phoi_hop: "Phối hợp", bao_cao: "Báo cáo" };
+const chuanTen = (t) => (t || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** Vai trò của một người (tên đã chuẩn hoá) trong một việc. */
+function vaiTroCua(x, ten) {
+  const vai = [];
+  if (chuanTen(x.assignee) === ten) vai.push("phu_trach");
+  if ((x.coordinators || []).some((c) => chuanTen(c) === ten)) vai.push("phoi_hop");
+  if (chuanTen(x.reporter) === ten) vai.push("bao_cao");
+  return vai;
+}
+
+export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState([]);
   const [form, setForm] = useState(null);
@@ -366,6 +378,10 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
   const duocXoa = coQuyen("tech_tasks", "delete");
 
   useEffect(() => { if (locDauViec !== undefined) setFCategory(locDauViec || ""); }, [locDauViec]);
+  // Lọc theo người: chọn ở ô "Mọi nhân viên", hoặc được mở từ tab Theo nhân viên.
+  const [fNguoi, setFNguoi] = useState(locNguoi?.ten || "");
+  const [fVaiTro, setFVaiTro] = useState("");
+  useEffect(() => { if (locNguoi) { setFNguoi(locNguoi.ten || ""); setFVaiTro(""); setCuaToi(false); } }, [locNguoi]);
 
   const catLabels = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c.label])), [categories]);
   const catHint = useMemo(() => categories.find((c) => c.id === form?.category)?.hint || "", [categories, form?.category]);
@@ -462,12 +478,31 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
     } catch (e) { setErr(e.message); }
   };
 
+  /** Mọi người đang được gắn tên trong các việc đang tải, kèm số việc — cho ô lọc. */
+  const dsNguoi = useMemo(() => {
+    const dem = new Map();
+    for (const x of rows) {
+      const ten = new Map();
+      for (const t of [x.assignee, x.reporter, ...(x.coordinators || [])]) {
+        if (t && t.trim()) ten.set(chuanTen(t), t.replace(/\s+/g, " ").trim());
+      }
+      for (const [k, t] of ten) dem.set(k, { name: dem.get(k)?.name || t, n: (dem.get(k)?.n || 0) + 1 });
+    }
+    return [...dem.values()].sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  }, [rows]);
+
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return rows;
-    return rows.filter((x) => [x.title, x.assignee, x.reporter, ...(x.coordinators || []), x.target, x.description, x.note]
-      .filter(Boolean).join(" ").toLowerCase().includes(term));
-  }, [rows, search]);
+    const nguoi = chuanTen(fNguoi);
+    return rows.filter((x) => {
+      if (nguoi) {
+        const vai = vaiTroCua(x, nguoi);
+        if (!vai.length || (fVaiTro && !vai.includes(fVaiTro))) return false;
+      }
+      return !term || [x.title, x.assignee, x.reporter, ...(x.coordinators || []), x.target, x.description, x.note]
+        .filter(Boolean).join(" ").toLowerCase().includes(term);
+    });
+  }, [rows, search, fNguoi, fVaiTro]);
 
   const dangMo = rows.find((x) => x.id === moId);
   const suaViec = (x) => { setMoId(null); moForm({ ...x, due_at: day(x.due_at), coordinators: x.coordinators || [], progress_item: x.progress_item || "" }); };
@@ -550,8 +585,32 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
           <option value="">Mọi trạng thái</option>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        <button className={`btn btn-sm ${cuaToi ? "btn-red" : ""}`} onClick={() => setCuaToi((v) => !v)}
+        <select className="inp" style={{ maxWidth: 230 }} value={fNguoi} onChange={(e) => { setFNguoi(e.target.value); if (e.target.value) setCuaToi(false); }}
+          title="Lọc theo nhân viên được gắn tên trong việc">
+          <option value="">Mọi nhân viên</option>
+          {fNguoi && !dsNguoi.some((p) => chuanTen(p.name) === chuanTen(fNguoi)) && <option value={fNguoi}>{fNguoi} (0)</option>}
+          {dsNguoi.map((p) => <option key={p.name} value={p.name}>{p.name} ({p.n})</option>)}
+        </select>
+        {fNguoi && (
+          <select className="inp" style={{ maxWidth: 170 }} value={fVaiTro} onChange={(e) => setFVaiTro(e.target.value)}>
+            <option value="">Mọi vai trò</option>
+            {Object.entries(VAI_TRO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        )}
+        <button className={`btn btn-sm ${cuaToi ? "btn-red" : ""}`} onClick={() => { setCuaToi((v) => !v); setFNguoi(""); }}
           title="Việc tôi phụ trách, phối hợp hoặc báo cáo"><User size={14} />Việc của tôi</button>
+        {(fNguoi || fCategory || fStatus || cuaToi || search) && (
+          <button className="btn btn-sm" onClick={() => { setFNguoi(""); setFVaiTro(""); setFCategory(""); setFStatus(""); setCuaToi(false); setSearch(""); }}>
+            <X size={13} />Bỏ lọc
+          </button>
+        )}
+        {fNguoi && (
+          <span className="muted" style={{ fontSize: 12.5 }}>
+            {filteredRows.length} việc của <b>{fNguoi}</b>
+            {" · "}{filteredRows.filter((x) => effectiveStatus(x) === "done").length} xong
+            {" · "}{filteredRows.filter((x) => effectiveStatus(x) === "overdue").length} quá hạn
+          </span>
+        )}
       </div>
 
       {err && <p style={{ color: RED }}>{err}</p>}

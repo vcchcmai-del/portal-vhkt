@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronRight, Download, Link2, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { api, coQuyen, laNguoiQuanLy, useCenters } from "./api";
 import { STATUS_LABELS, TaskListTab } from "./techtasks-list";
+import { TheoNhanVienTab } from "./techtasks-person";
 import { AdminImport } from "./bulkimport";
 import { Card, Empty, Field, RED } from "./ui";
 
@@ -18,21 +19,34 @@ export function AdminTechTasks() {
   // từ một hạng mục quay về danh sách việc của đầu việc đó.
   const [moTienDo, setMoTienDo] = useState(null);
   const [locDauViec, setLocDauViec] = useState(undefined);
+  // Từ tab "Theo nhân viên" bấm "Xem việc" -> danh sách lọc sẵn theo người đó.
+  // Kèm mốc thời gian để bấm lại cùng một người vẫn áp lại bộ lọc.
+  const [locNguoi, setLocNguoi] = useState(undefined);
+  const nutTab = (ma, nhan, khiBam) => (
+    <button className={`btn btn-sm ${tab === ma ? "btn-red" : ""}`} onClick={() => { khiBam?.(); setTab(ma); }}>{nhan}</button>
+  );
   return (
     <div className="flex flex-col gap-4">
-      <div className="card flex gap-2" style={{ padding: 8 }}>
-        <button className={`btn btn-sm ${tab === "list" ? "btn-red" : ""}`} onClick={() => setTab("list")}>Danh sách công việc</button>
-        <button className={`btn btn-sm ${tab === "progress" ? "btn-red" : ""}`} onClick={() => { setMoTienDo(null); setTab("progress"); }}>Tiến độ</button>
+      <div className="card flex gap-2" style={{ padding: 8, flexWrap: "wrap" }}>
+        {nutTab("list", "Danh sách công việc")}
+        {nutTab("person", "Theo nhân viên")}
+        {nutTab("progress", "Tiến độ", () => setMoTienDo(null))}
       </div>
-      {tab === "list"
-        ? <TaskListTab locDauViec={locDauViec}
-            onMoTienDo={(t) => {
-              setMoTienDo({ category: t.category, category_label: t.category_label,
-                            item: t.progress_item, item_label: t.progress_item_label });
-              setTab("progress");
-            }} />
-        : <ProgressTab moSan={moTienDo}
-            onXemViec={(category) => { setLocDauViec(category); setTab("list"); }} />}
+      {tab === "list" && (
+        <TaskListTab locDauViec={locDauViec} locNguoi={locNguoi}
+          onMoTienDo={(t) => {
+            setMoTienDo({ category: t.category, category_label: t.category_label,
+                          item: t.progress_item, item_label: t.progress_item_label });
+            setTab("progress");
+          }} />
+      )}
+      {tab === "person" && (
+        <TheoNhanVienTab onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }} />
+      )}
+      {tab === "progress" && (
+        <ProgressTab moSan={moTienDo}
+          onXemViec={(category) => { setLocDauViec(category); setLocNguoi({ ten: "", luc: Date.now() }); setTab("list"); }} />
+      )}
     </div>
   );
 }

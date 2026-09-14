@@ -189,6 +189,13 @@ def _validate(data: TechTaskIn, db: Session, row=None):
             raise HTTPException(400, "Hạng mục tiến độ không thuộc đầu việc đã chọn.")
 
 
+def _trang_thai(row, today) -> str:
+    """Trạng thái hiệu lực: việc chưa xong mà đã qua hạn là "overdue"."""
+    if row.status != "done" and row.due_at and row.due_at < today:
+        return "overdue"
+    return row.status or "todo"
+
+
 def _duoc_sua(user) -> bool:
     return "update" in effective_permission_matrix(user).get("tech_tasks", [])
 
@@ -306,10 +313,13 @@ def admin_list_tasks(category: Optional[str] = None, status: Optional[str] = Non
     q = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
     if category:
         q = q.filter(models.TechTask.category == category)
-    if status:
-        q = q.filter(models.TechTask.status == status)
     rows = q.order_by(models.TechTask.due_at.is_(None), models.TechTask.due_at,
                        models.TechTask.created_at.desc()).limit(1000).all()
+    # Lọc theo trạng thái HIỆU LỰC: "Quá hạn" không bao giờ được lưu trong CSDL
+    # (là việc chưa xong mà đã qua hạn), lọc thẳng cột status thì luôn rỗng.
+    if status:
+        today = models.today()
+        rows = [r for r in rows if _trang_thai(r, today) == status]
     labels, it_labels, tien_do = category_labels(db), item_labels(db), _tien_do_moi_nhat(db)
     ra = [_out(x, labels, it_labels, tien_do, user) for x in rows]
     return [x for x in ra if x["cua_toi"]] if mine else ra
@@ -546,6 +556,97 @@ def export_tasks_csv(db: Session = Depends(get_db),
         content, media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="cong-viec-ky-thuat-{models.today()}.csv"'},
     )
+
+
+# ------------------------------------------------------- Tổng hợp theo nhân viên
+
+TON_NHIEU = 5        # tồn từ chừng này việc trở lên thì cảnh báo vàng
+SAP_HAN_NGAY = 3     # còn chừng này ngày tới hạn thì tính "sắp đến hạn"
+
+
+@admin_router.get("/tech-tasks/by-person")
+def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("tech_tasks", "view"))):
+    """Mỗi người được gắn tên (phụ trách/phối hợp/báo cáo) bao nhiêu việc, xong
+    bao nhiêu, tồn, quá hạn, sắp đến hạn — kèm cảnh báo và chia theo đầu việc.
+
+    Một việc chỉ tính MỘT lần cho mỗi người dù người đó vừa phụ trách vừa báo
+    cáo. Người quản lý (có quyền sửa module) thấy cả phòng; tài khoản chỉ có
+    quyền xem chỉ thấy dòng của chính mình."""
+    today = models.today()
+    han_gan = today + dt.timedelta(days=SAP_HAN_NGAY)
+    rows = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None)).all()
+    labels = category_labels(db)
+    thu_tu = {c.code: i for i, c in enumerate(categories(db))}
+
+    nguoi = {}
+
+    def gan(ten, vai, r):
+        ten = re.sub(r"\s+", " ", (ten or "")).strip()
+        if not ten:
+            return
+        p = nguoi.setdefault(ten.casefold(), {"name": ten, "viec": {}})
+        p["viec"].setdefault(r.id, {"row": r, "vai": set()})["vai"].add(vai)
+
+    chua_giao = 0
+    for r in rows:
+        if not (r.assignee or "").strip():
+            chua_giao += 1
+        gan(r.assignee, "phu_trach", r)
+        for ten in _ds_ten(r.coordinators):
+            gan(ten, "phoi_hop", r)
+        gan(r.reporter, "bao_cao", r)
+
+    ra = []
+    for p in nguoi.values():
+        m = {"tong": 0, "phu_trach": 0, "phoi_hop": 0, "bao_cao": 0,
+             "done": 0, "doing": 0, "todo": 0, "overdue": 0, "ton": 0, "sap_han": 0}
+        theo_dv = defaultdict(lambda: {"tong": 0, "done": 0, "ton": 0, "overdue": 0})
+        for v in p["viec"].values():
+            r, st = v["row"], _trang_thai(v["row"], today)
+            m["tong"] += 1
+            for vai in v["vai"]:
+                m[vai] += 1
+            m[st] = m.get(st, 0) + 1
+            d = theo_dv[r.category]
+            d["tong"] += 1
+            if st == "done":
+                d["done"] += 1
+            else:
+                m["ton"] += 1
+                d["ton"] += 1
+                if st == "overdue":
+                    d["overdue"] += 1
+                elif r.due_at and today <= r.due_at <= han_gan:
+                    m["sap_han"] += 1
+        canh_bao = []
+        if m["overdue"]:
+            canh_bao.append(f"{m['overdue']} việc quá hạn")
+        if m["ton"] >= TON_NHIEU:
+            canh_bao.append(f"tồn {m['ton']} việc")
+        if m["sap_han"]:
+            canh_bao.append(f"{m['sap_han']} việc sắp đến hạn")
+        ra.append({
+            "name": p["name"], **m,
+            "ty_le": (m["done"] / m["tong"]) if m["tong"] else None,
+            "muc": "do" if m["overdue"] else ("vang" if (m["ton"] >= TON_NHIEU or m["sap_han"]) else "xanh"),
+            "canh_bao": canh_bao,
+            "theo_dau_viec": sorted(
+                [{"category": c, "label": labels.get(c, c), **d} for c, d in theo_dv.items()],
+                key=lambda x: thu_tu.get(x["category"], 999)),
+        })
+    thu_tu_muc = {"do": 0, "vang": 1, "xanh": 2}
+    ra.sort(key=lambda x: (thu_tu_muc[x["muc"]], -x["overdue"], -x["ton"], x["name"]))
+
+    toan_phong = _duoc_sua(user)
+    if not toan_phong:
+        toi = (user.full_name or "").strip().casefold()
+        ra = [x for x in ra if x["name"].casefold() == toi]
+    return {
+        "nguoi": ra,
+        "toan_phong": toan_phong,
+        "chua_giao": chua_giao if toan_phong else None,
+        "nguong": {"ton_nhieu": TON_NHIEU, "sap_han_ngay": SAP_HAN_NGAY},
+    }
 
 
 # Đặt SAU các đường dẫn cố định /tech-tasks/summary, /tech-tasks/export...:
