@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Download, ExternalLink, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Download, Link2, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { api, laNguoiQuanLy, useCenters } from "./api";
+import { STATUS_LABELS, TaskListTab } from "./techtasks-list";
 import { AdminImport } from "./bulkimport";
 import { Card, Empty, Field, RED } from "./ui";
 
@@ -9,264 +10,29 @@ import { Card, Empty, Field, RED } from "./ui";
 // danh sách bị chép ở cả hai phía nên thêm đầu việc phải sửa code hai nơi và
 // rất dễ lệch với phần Tiến độ.
 
-const STATUS_LABELS = { todo: "Chưa bắt đầu", doing: "Đang thực hiện", done: "Hoàn thành", overdue: "Quá hạn" };
-const STATUS_TAG = { todo: "tag-grey", doing: "tag-amber", done: "tag-green", overdue: "tag-red" };
-
-const day = (v) => (v ? String(v).slice(0, 10) : "");
-const isOverdue = (task) => task.status !== "done" && task.due_at && task.due_at < new Date().toISOString().slice(0, 10);
-const effectiveStatus = (task) => (isOverdue(task) ? "overdue" : task.status);
-const fmtDay = (v) => (v ? new Date(v).toLocaleDateString("vi-VN") : "—");
 const pct = (rate) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
-
-function StatusTag({ task }) {
-  const s = effectiveStatus(task);
-  return <span className={`tag ${STATUS_TAG[s] || "tag-grey"}`}>{STATUS_LABELS[s] || s}</span>;
-}
-
-const blankTask = (categories) => ({
-  category: categories?.[0]?.id || "", title: "", description: "", assignee: "", target: "",
-  due_at: "", status: "todo", link_url: "", note: "",
-});
 
 export function AdminTechTasks() {
   const [tab, setTab] = useState("list");
+  // Liên kết hai chiều giữa hai tab: từ một việc mở thẳng hạng mục bên Tiến độ,
+  // từ một hạng mục quay về danh sách việc của đầu việc đó.
+  const [moTienDo, setMoTienDo] = useState(null);
+  const [locDauViec, setLocDauViec] = useState(undefined);
   return (
     <div className="flex flex-col gap-4">
       <div className="card flex gap-2" style={{ padding: 8 }}>
         <button className={`btn btn-sm ${tab === "list" ? "btn-red" : ""}`} onClick={() => setTab("list")}>Danh sách công việc</button>
-        <button className={`btn btn-sm ${tab === "progress" ? "btn-red" : ""}`} onClick={() => setTab("progress")}>Tiến độ</button>
+        <button className={`btn btn-sm ${tab === "progress" ? "btn-red" : ""}`} onClick={() => { setMoTienDo(null); setTab("progress"); }}>Tiến độ</button>
       </div>
-      {tab === "list" ? <TaskListTab /> : <ProgressTab />}
-    </div>
-  );
-}
-
-function TaskListTab() {
-  const [rows, setRows] = useState([]);
-  const [summary, setSummary] = useState([]);
-  const [form, setForm] = useState(null);
-  const [err, setErr] = useState("");
-  const [fCategory, setFCategory] = useState("");
-  const [fStatus, setFStatus] = useState("");
-  const [search, setSearch] = useState("");
-  const [categories, setCategories] = useState([]);
-  const [assignees, setAssignees] = useState([]);
-  const [newCat, setNewCat] = useState(null);   // tên đầu việc đang thêm, null = không mở ô
-
-  const catLabels = useMemo(
-    () => Object.fromEntries(categories.map((c) => [c.id, c.label])), [categories]);
-  const catHint = useMemo(
-    () => categories.find((c) => c.id === form?.category)?.hint || "", [categories, form?.category]);
-
-  const loadCategories = () => api.get("/api/admin/tech-tasks/categories")
-    .then((x) => setCategories(Array.isArray(x) ? x : []))
-    .catch((e) => setErr(e.message));
-
-  const load = () => {
-    const params = new URLSearchParams();
-    if (fCategory) params.set("category", fCategory);
-    if (fStatus) params.set("status", fStatus);
-    const qs = params.toString();
-    api.get(`/api/admin/tech-tasks${qs ? `?${qs}` : ""}`)
-      .then((x) => setRows(Array.isArray(x) ? x : []))
-      .catch((e) => setErr(e.message));
-  };
-  const loadSummary = () => api.get("/api/admin/tech-tasks/summary").then((x) => setSummary(Array.isArray(x) ? x : [])).catch(() => {});
-
-  useEffect(() => { load(); }, [fCategory, fStatus]);
-  useEffect(() => { loadSummary(); }, [rows.length]);
-  useEffect(() => {
-    loadCategories();
-    api.get("/api/admin/tech-tasks/assignees")
-      .then((x) => setAssignees(Array.isArray(x) ? x : [])).catch(() => {});
-  }, []);
-
-  /** Thêm đầu việc mới ngay trong form giao việc, rồi chọn luôn đầu việc đó. */
-  const themDauViec = async () => {
-    const label = (newCat || "").trim();
-    if (!label) { setNewCat(null); return; }
-    try {
-      const c = await api.post("/api/admin/tech-tasks/categories", { label });
-      await loadCategories();
-      setForm((f) => (f ? { ...f, category: c.id } : f));
-      setNewCat(null); setErr("");
-    } catch (e) { setErr(e.message); }
-  };
-
-  const save = async () => {
-    try {
-      if (!form.category) throw new Error("Chưa chọn đầu việc.");
-      if (!form.title.trim()) throw new Error("Chưa nhập nội dung công việc.");
-      const payload = { ...form, due_at: form.due_at || null };
-      if (form.id) await api.put(`/api/admin/tech-tasks/${form.id}`, payload);
-      else await api.post("/api/admin/tech-tasks", payload);
-      setForm(null); setErr(""); load(); loadSummary();
-    } catch (e) { setErr(e.message); }
-  };
-
-  const del = async (x) => {
-    if (!window.confirm(`Xóa công việc “${x.title}”?`)) return;
-    try { await api.del(`/api/admin/tech-tasks/${x.id}`); load(); loadSummary(); } catch (e) { setErr(e.message); }
-  };
-
-  const exportCsv = async () => {
-    try {
-      const { blob, filename } = await api.blob("/api/admin/tech-tasks/export");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename || "cong-viec-ky-thuat.csv"; a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) { setErr(e.message); }
-  };
-
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return rows;
-    return rows.filter((x) => [x.title, x.assignee, x.target, x.description, x.note]
-      .filter(Boolean).join(" ").toLowerCase().includes(term));
-  }, [rows, search]);
-
-  const field = (label, key, kind = "text") => (
-    <Field label={label}>
-      <input className="inp" type={kind} value={form?.[key] || ""} onChange={(e) => setForm({ ...form, [key]: e.target.value })} />
-    </Field>
-  );
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="card flex justify-between items-center" style={{ flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <b>Công việc mảng kỹ thuật</b>
-          <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>Giao và theo dõi tiến độ {categories.length} đầu việc.</p>
-        </div>
-        <div className="flex gap-2">
-          <button className="btn btn-sm" onClick={() => { load(); loadSummary(); loadCategories(); }}><RefreshCw size={14} />Tải lại</button>
-          {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
-          <button className="btn btn-red btn-sm" onClick={() => setForm(blankTask(categories))}><Plus size={14} />Giao việc mới</button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {categories.map((c) => {
-          const s = summary.find((x) => x.category === c.id) || { total: 0, overdue: 0 };
-          const on = fCategory === c.id;
-          return (
-            <button key={c.id} className="card" style={{ textAlign: "left", cursor: "pointer", padding: 12, border: on ? `1.5px solid ${RED}` : undefined }}
-              onClick={() => setFCategory(on ? "" : c.id)}>
-              <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30 }}>{c.label}</p>
-              <div className="flex items-center gap-2" style={{ marginTop: 6 }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: RED }}>{s.total}</span>
-                {!!s.overdue && <span className="tag tag-red">{s.overdue} quá hạn</span>}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-        <input className="inp" style={{ maxWidth: 280 }} placeholder="🔎 Tìm theo nội dung / phụ trách…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select className="inp" style={{ maxWidth: 240 }} value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
-          <option value="">Mọi đầu việc</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
-        <select className="inp" style={{ maxWidth: 180 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-          <option value="">Mọi trạng thái</option>
-          {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-      </div>
-
-      {err && <p style={{ color: RED }}>{err}</p>}
-
-      {form && (
-        <Card title={form.id ? "Cập nhật công việc" : "Giao việc mới"}>
-          <div className="grid md:grid-cols-2 gap-3">
-            <Field label="Đầu việc">
-              {newCat === null ? (
-                <div className="flex gap-2">
-                  <select className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    {!form.category && <option value="">— Chọn đầu việc —</option>}
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </select>
-                  <button type="button" className="btn btn-sm" title="Thêm đầu việc mới"
-                    onClick={() => setNewCat("")}><Plus size={14} /></button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input className="inp" autoFocus placeholder="Tên đầu việc mới, vd: 11. An toàn thông tin"
-                    value={newCat} onChange={(e) => setNewCat(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(); } }} />
-                  <button type="button" className="btn btn-red btn-sm" onClick={themDauViec}>Thêm</button>
-                  <button type="button" className="btn btn-sm" onClick={() => setNewCat(null)}>Hủy</button>
-                </div>
-              )}
-            </Field>
-            <Field label="Trạng thái">
-              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                {Object.entries(STATUS_LABELS).filter(([k]) => k !== "overdue").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </Field>
-          </div>
-          {catHint && (
-            <p className="muted" style={{ fontSize: 12, marginTop: 6, background: "#FAF9F9", padding: "8px 10px", borderRadius: 8 }}>
-              Gợi ý phạm vi: {catHint}
-            </p>
-          )}
-          <div style={{ marginTop: 12 }}>{field("Nội dung công việc", "title")}</div>
-          <Field label="Mô tả chi tiết"><textarea className="inp" rows="2" value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <div className="grid md:grid-cols-2 gap-3">
-            <Field label="Người/tổ phụ trách">
-              {/* Gõ để lọc, chọn từ danh sách nhân viên và tài khoản đã có; vẫn
-                  cho gõ tự do tên tổ/đội chưa lập hồ sơ. */}
-              <input className="inp" list="ds-phu-trach" placeholder="Chọn hoặc gõ tên…"
-                value={form.assignee || ""} onChange={(e) => setForm({ ...form, assignee: e.target.value })} />
-              <datalist id="ds-phu-trach">
-                {assignees.map((a) => (
-                  <option key={a.name} value={a.name}>
-                    {[a.role, a.dept, a.nguon].filter(Boolean).join(" · ")}
-                  </option>
-                ))}
-              </datalist>
-            </Field>
-            {field("Mục tiêu / chỉ tiêu", "target")}
-            {field("Hạn xử lý", "due_at", "date")}
-            {field("Link công cụ liên quan (nếu có)", "link_url")}
-          </div>
-          <Field label="Ghi chú tiến độ"><textarea className="inp" rows="3" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-          <div className="flex gap-2" style={{ marginTop: 10 }}>
-            <button className="btn" onClick={() => setForm(null)}>Hủy</button>
-            <button className="btn btn-red" onClick={save}>Lưu</button>
-          </div>
-        </Card>
-      )}
-
-      <Card pad={false}>
-        <div style={{ overflowX: "auto" }}>
-          <table className="tbl">
-            <thead><tr><th>Đầu việc</th><th>Nội dung</th><th>Phụ trách</th><th>Mục tiêu</th><th>Hạn xử lý</th><th>Trạng thái</th><th></th></tr></thead>
-            <tbody>
-              {filteredRows.map((x) => (
-                <tr key={x.id}>
-                  <td className="muted" style={{ fontSize: 12.5 }}>{catLabels[x.category] || x.category_label || x.category}</td>
-                  <td>
-                    <b>{x.title}</b>
-                    {x.link_url && <a href={x.link_url} target="_blank" rel="noreferrer" style={{ marginLeft: 6 }}><ExternalLink size={12} /></a>}
-                    {x.note && <><br /><span className="muted">{x.note}</span></>}
-                  </td>
-                  <td>{x.assignee || "—"}</td>
-                  <td>{x.target || "—"}</td>
-                  <td>{fmtDay(x.due_at)}</td>
-                  <td><StatusTag task={x} /></td>
-                  <td>
-                    <button className="btn btn-sm" onClick={() => setForm({ ...x, due_at: day(x.due_at) })}>Sửa</button>{" "}
-                    <button className="btn btn-sm" onClick={() => del(x)}><Trash2 size={13} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!filteredRows.length && <Empty title="Chưa có công việc." hint={rows.length ? "Không có dòng nào khớp bộ lọc." : "Bấm “Giao việc mới” để bắt đầu."} />}
-        </div>
-      </Card>
+      {tab === "list"
+        ? <TaskListTab locDauViec={locDauViec}
+            onMoTienDo={(t) => {
+              setMoTienDo({ category: t.category, category_label: t.category_label,
+                            item: t.progress_item, item_label: t.progress_item_label });
+              setTab("progress");
+            }} />
+        : <ProgressTab moSan={moTienDo}
+            onXemViec={(category) => { setLocDauViec(category); setTab("list"); }} />}
     </div>
   );
 }
@@ -280,7 +46,7 @@ const blankFtRow = (sel, period, center) => ({
   category: sel.category, item: sel.item, period, center, ft_name: "", plan_qty: "", done_qty: "", note: "",
 });
 
-function ProgressTab() {
+function ProgressTab({ moSan, onXemViec }) {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [periods, setPeriods] = useState([]);
   const [itemGroups, setItemGroups] = useState([]);
@@ -300,6 +66,7 @@ function ProgressTab() {
   const [newItemCat, setNewItemCat] = useState(null);  // đầu việc đang thêm hạng mục
   const [newItem, setNewItem] = useState("");
   const [assignees, setAssignees] = useState([]);
+  const [viecLienKet, setViecLienKet] = useState([]);   // công việc có gắn hạng mục
 
   const loadItems = () => api.get("/api/admin/progress/items")
     .then((x) => setItemGroups(Array.isArray(x) ? x : [])).catch((e) => setErr(e.message));
@@ -324,7 +91,13 @@ function ProgressTab() {
     loadItems();
     api.get("/api/admin/tech-tasks/assignees")
       .then((x) => setAssignees(Array.isArray(x) ? x : [])).catch(() => {});
+    api.get("/api/admin/tech-tasks")
+      .then((x) => setViecLienKet((Array.isArray(x) ? x : []).filter((t) => t.progress_item))).catch(() => {});
   }, []);
+
+  // Được mở từ một công việc: vào thẳng hạng mục đó.
+  useEffect(() => { if (moSan?.item) openItem(moSan.category, moSan.category_label, moSan.item, moSan.item_label); }, [moSan]);
+  const viecCuaHangMuc = (item) => viecLienKet.filter((t) => t.progress_item === item);
 
   const loadSummary = () => {
     if (!period) return;
@@ -466,9 +239,10 @@ function ProgressTab() {
                         <span style={{ fontSize: 20, fontWeight: 800, color: RED }}>{s.done_qty}</span>
                         <span className="muted" style={{ fontSize: 12 }}> / {s.plan_qty}</span>
                       </div>
-                      <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
+                      <div className="flex items-center gap-2" style={{ marginTop: 4, flexWrap: "wrap" }}>
                         <span className="tag tag-grey">Tồn {s.remaining}</span>
                         <span className="tag tag-green">{pct(s.rate)}</span>
+                        {!!viecCuaHangMuc(it.id).length && <span className="tag tag-amber"><Link2 size={10} /> {viecCuaHangMuc(it.id).length} việc</span>}
                       </div>
                     </button>
                   );
@@ -483,6 +257,20 @@ function ProgressTab() {
       {selected && !selectedCenter && (
         <>
           <button className="btn btn-sm" onClick={backToOverview}><ArrowLeft size={14} />Quay lại Tổng quan</button>
+          {!!viecCuaHangMuc(selected.item).length && (
+            <div className="card" style={{ padding: 12 }}>
+              <p className="eyebrow-grey" style={{ marginBottom: 6 }}>Công việc liên kết hạng mục này</p>
+              {viecCuaHangMuc(selected.item).map((t) => (
+                <div key={t.id} className="flex items-center gap-2" style={{ fontSize: 13, padding: "3px 0", flexWrap: "wrap" }}>
+                  <b>{t.title}</b>
+                  <span className="muted">— {t.assignee || "chưa giao"}{t.coordinators?.length ? ` · phối hợp: ${t.coordinators.join(", ")}` : ""}</span>
+                  <span className="tag tag-grey">{STATUS_LABELS[t.status] || t.status}</span>
+                  {!!t.attachments?.length && <span className="muted">· {t.attachments.length} đính kèm</span>}
+                </div>
+              ))}
+              {onXemViec && <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => onXemViec(selected.category)}>Xem ở danh sách công việc</button>}
+            </div>
+          )}
           <Card title={`${selected.item_label} — Kỳ ${period}`} icon={undefined}
             action={<button className="btn btn-sm" onClick={() => setCenterForm(blankCenterRow(selected, period))}><Plus size={14} />Thêm trung tâm</button>}>
             {centerForm && (

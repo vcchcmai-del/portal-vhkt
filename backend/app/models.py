@@ -5,9 +5,9 @@ Mỗi class ở đây tương ứng với một bảng trong PostgreSQL.
 import datetime as dt
 
 from sqlalchemy import (
-    Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
+    Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import deferred, relationship
 
 from .database import Base
 
@@ -537,14 +537,52 @@ class TechTask(Base):
     category = Column(String(40), nullable=False, index=True)   # mã đầu việc, xem CATEGORIES
     title = Column(String(300), nullable=False)
     description = Column(Text)
-    assignee = Column(String(160))          # Tổ trưởng/Đội trưởng/FT phụ trách — nhập tự do
+    assignee = Column(String(160))          # người phụ trách chính (người làm) — chọn từ danh bạ hoặc gõ tự do
+    coordinators = Column(Text)             # người phối hợp, nhiều tên ngăn bởi "; "
+    reporter = Column(String(160))          # người báo cáo tiến độ (trống = chính người phụ trách)
     target = Column(String(300))            # mục tiêu/chỉ tiêu, vd "Line/NS < 1350"
     due_at = Column(Date, nullable=True)
     status = Column(String(20), default="todo", index=True)  # todo|doing|done|overdue
     link_url = Column(String(500))          # tool ngoài liên quan, vd manage-wo.pages.dev
+    # Hạng mục định lượng bên tab Tiến độ mà việc này đẩy lên (vd 5g_srt5g) —
+    # nhờ đó dòng công việc hiện luôn Kế hoạch/Thực hiện của hạng mục đó.
+    progress_item = Column(String(60), nullable=True)
     note = Column(Text)                     # ghi chú tiến độ
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
+    # Thùng rác: xoá là xoá mềm, quản trị viên khôi phục được (xem trash.py).
+    deleted_at = Column(DateTime, nullable=True)
+    deleted_by = Column(String(120), nullable=True)
+
+    attachments = relationship("TechTaskAttachment", back_populates="task",
+                               cascade="all, delete-orphan",
+                               order_by="TechTaskAttachment.id")
+
+
+class TechTaskAttachment(Base):
+    """Link hoặc tệp đính kèm của một công việc kỹ thuật — số liệu chi tiết,
+    biên bản, ảnh hiện trường...
+
+    Tệp lưu thẳng trong CSDL chứ không ra thư mục uploads: bản chạy thật trên
+    TinhGon không giữ ổ đĩa của container qua mỗi lần deploy lại, tệp để ngoài
+    sẽ mất mà bản ghi vẫn còn. Cột data để deferred nên liệt kê đính kèm không
+    phải kéo cả nội dung tệp lên."""
+    __tablename__ = "tech_task_attachments"
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("tech_tasks.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    kind = Column(String(10), nullable=False, default="link")   # link | file
+    title = Column(String(300))
+    url = Column(String(1000))              # với kind=link
+    filename = Column(String(300))          # tên gốc, với kind=file
+    content_type = Column(String(120))
+    size_bytes = Column(Integer, default=0)
+    data = deferred(Column(LargeBinary))
+    uploaded_by = Column(String(120))
+    created_at = Column(DateTime, default=now)
+
+    task = relationship("TechTask", back_populates="attachments")
 
 
 class InfraCenterCode(Base):

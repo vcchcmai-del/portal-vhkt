@@ -1,5 +1,5 @@
 """
-Thùng rác cho Tin tức và Tài liệu.
+Thùng rác cho Tin tức, Tài liệu và Công việc kỹ thuật.
 
 Xoá ở đây là xoá mềm: đặt deleted_at thay vì xoá bản ghi thật, để quản trị
 viên xem lại và khôi phục nếu xoá nhầm. Mục nào nằm trong thùng rác quá
@@ -23,7 +23,8 @@ TRASH_RETENTION_DAYS = 30
 
 # Các module hỗ trợ thùng rác. Mở rộng thêm module khác thì thêm vào đây,
 # miễn model đó có sẵn deleted_at/deleted_by và trường "title".
-TRASH_MODELS = {"news": models.News, "documents": models.Document}
+TRASH_MODELS = {"news": models.News, "documents": models.Document,
+                "tech_tasks": models.TechTask}
 
 
 def list_trash(db: Session) -> list:

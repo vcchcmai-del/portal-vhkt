@@ -1918,7 +1918,7 @@ export function AdminLogs() {
 
 /* ========================================== 12. THÙNG RÁC */
 
-const TRASH_MODULE_ICON = { news: FileText, documents: BookOpen };
+const TRASH_MODULE_ICON = { news: FileText, documents: BookOpen, tech_tasks: Briefcase };
 
 export function AdminTrash() {
   const { rows, loading, error, reload } = useAdminList("/api/admin/trash");
@@ -1981,7 +1981,7 @@ export function AdminTrash() {
   return (
     <div className="flex flex-col gap-4">
       <Toolbar title="Thùng rác" onReload={reload}
-        hint="Bản tin và tài liệu đã xoá nằm ở đây tối đa 30 ngày để quản trị viên duyệt trước khi xoá hẳn. Quá hạn sẽ tự động xoá vĩnh viễn." />
+        hint="Bản tin, tài liệu và công việc kỹ thuật đã xoá nằm ở đây tối đa 30 ngày để quản trị viên duyệt trước khi xoá hẳn. Quá hạn sẽ tự động xoá vĩnh viễn." />
 
       <Card pad={false}>
         <Status loading={loading} error={error} empty={!loading && !error && rows.length === 0}

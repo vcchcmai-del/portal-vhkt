@@ -6,15 +6,18 @@ import unicodedata
 from collections import defaultdict
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import PlainTextResponse
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from . import models
 from .auditlog import log_action
+from .auth import current_user
 from .database import get_db
-from .permissions import require_module
+from .permissions import effective_permission_matrix, require_module
 
 admin_router = APIRouter(prefix="/api/admin", tags=["Quản lý công việc kỹ thuật"])
 
@@ -64,17 +67,77 @@ STATUS_LABELS = {
 }
 
 
-def _out(row, labels: Optional[dict] = None):
+def _ds_ten(v) -> list:
+    """Danh sách tên người phối hợp: nhận cả mảng lẫn chuỗi "A; B, C"."""
+    if not v:
+        return []
+    if isinstance(v, str):
+        v = re.split(r"[;,\n]", v)
+    ra, da_co = [], set()
+    for ten in v:
+        ten = re.sub(r"\s+", " ", str(ten or "")).strip()
+        if ten and ten.casefold() not in da_co:
+            da_co.add(ten.casefold())
+            ra.append(ten)
+    return ra
+
+
+def _nguoi_cua_viec(row) -> set:
+    """Tên (đã casefold) của mọi người gắn với việc: phụ trách, báo cáo, phối hợp."""
+    return {t.casefold() for t in [row.assignee or "", row.reporter or "", *_ds_ten(row.coordinators)]
+            if t.strip()}
+
+
+def _out_attachment(a):
+    return {"id": a.id, "kind": a.kind, "title": a.title or a.filename or a.url,
+            "url": a.url if a.kind == "link" else None, "filename": a.filename,
+            "content_type": a.content_type, "size_kb": round((a.size_bytes or 0) / 1024),
+            "uploaded_by": a.uploaded_by, "created_at": a.created_at}
+
+
+def _out(row, labels: Optional[dict] = None, it_labels: Optional[dict] = None,
+         tien_do: Optional[dict] = None, user=None):
     labels = labels if labels is not None else {}
+    it_labels = it_labels if it_labels is not None else {}
+    nguoi = _nguoi_cua_viec(row)
     return {
         "id": row.id, "category": row.category,
         "category_label": labels.get(row.category, row.category),
         "title": row.title, "description": row.description, "assignee": row.assignee,
+        "coordinators": _ds_ten(row.coordinators), "reporter": row.reporter or "",
         "target": row.target, "due_at": row.due_at,
         "status": row.status, "status_label": STATUS_LABELS.get(row.status, row.status),
         "link_url": row.link_url, "note": row.note,
+        "progress_item": row.progress_item or "",
+        "progress_item_label": it_labels.get(row.progress_item, row.progress_item or ""),
+        # Kế hoạch/Thực hiện mới nhất của hạng mục liên kết, lấy từ tab Tiến độ.
+        "progress": (tien_do or {}).get(row.progress_item) if row.progress_item else None,
+        "attachments": [_out_attachment(a) for a in row.attachments],
+        # Người được gắn tên trong việc (làm/phối hợp/báo cáo) tự báo cáo được
+        # tiến độ và đính kèm, kể cả khi tài khoản chỉ có quyền xem.
+        "cua_toi": bool(user and (user.full_name or "").strip().casefold() in nguoi),
         "created_at": row.created_at, "updated_at": row.updated_at,
     }
+
+
+def _tien_do_moi_nhat(db: Session) -> dict:
+    """{mã hạng mục: {period, plan, done, rate}} theo kỳ gần nhất có số liệu —
+    chỉ cộng dòng tổng Trung tâm (ft_name rỗng), giống progress_summary."""
+    rows = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None)).all()
+    ky_moi = {}
+    for r in rows:
+        if r.period and r.period > ky_moi.get(r.item, ""):
+            ky_moi[r.item] = r.period
+    ra = {}
+    for r in rows:
+        if r.period != ky_moi.get(r.item):
+            continue
+        b = ra.setdefault(r.item, {"period": r.period, "plan": 0.0, "done": 0.0})
+        b["plan"] += r.plan_qty or 0
+        b["done"] += r.done_qty or 0
+    for b in ra.values():
+        b["rate"] = (b["done"] / b["plan"]) if b["plan"] else None
+    return ra
 
 
 class TechTaskIn(BaseModel):
@@ -82,31 +145,57 @@ class TechTaskIn(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     assignee: Optional[str] = None
+    coordinators: Optional[list[str]] = None
+    reporter: Optional[str] = None
     target: Optional[str] = None
     due_at: Optional[dt.date] = None
     status: Optional[str] = None
     link_url: Optional[str] = None
+    progress_item: Optional[str] = None
     note: Optional[str] = None
 
 
-def _get(db, item_id):
+def _get(db, item_id, ca_thung_rac: bool = False):
     row = db.get(models.TechTask, item_id)
-    if not row:
+    if not row or (row.deleted_at is not None and not ca_thung_rac):
         raise HTTPException(404, "Không tìm thấy công việc.")
     return row
 
 
 def _apply(row, values):
     for key, value in values.items():
+        if key == "coordinators":
+            if value is not None:
+                row.coordinators = "; ".join(_ds_ten(value))
+            continue
+        if key == "progress_item":
+            row.progress_item = (value or "").strip() or None
+            continue
         if value is not None and hasattr(row, key):
-            setattr(row, key, value)
+            setattr(row, key, value.strip() if isinstance(value, str) else value)
 
 
-def _validate(data: TechTaskIn, db: Session):
+def _validate(data: TechTaskIn, db: Session, row=None):
     if data.category is not None and data.category not in category_ids(db):
         raise HTTPException(400, "Đầu việc không hợp lệ.")
     if data.status is not None and data.status not in STATUS_LABELS:
         raise HTTPException(400, "Trạng thái không hợp lệ.")
+    if data.progress_item:
+        dau_viec = data.category or (row.category if row else None)
+        thuoc = item_category(db).get(data.progress_item)
+        if thuoc is None:
+            raise HTTPException(400, "Hạng mục tiến độ không hợp lệ.")
+        if dau_viec and thuoc != dau_viec:
+            raise HTTPException(400, "Hạng mục tiến độ không thuộc đầu việc đã chọn.")
+
+
+def _duoc_sua(user) -> bool:
+    return "update" in effective_permission_matrix(user).get("tech_tasks", [])
+
+
+def _duoc_bao_cao(user, row) -> bool:
+    """Có quyền sửa module, hoặc là người được gắn tên trong chính việc này."""
+    return _duoc_sua(user) or (user.full_name or "").strip().casefold() in _nguoi_cua_viec(row)
 
 
 class CategoryIn(BaseModel):
@@ -212,22 +301,24 @@ def list_assignees(db: Session = Depends(get_db), _=Depends(require_module("tech
 
 @admin_router.get("/tech-tasks")
 def admin_list_tasks(category: Optional[str] = None, status: Optional[str] = None,
-                     db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
-    q = db.query(models.TechTask)
+                     mine: bool = False, db: Session = Depends(get_db),
+                     user=Depends(require_module("tech_tasks", "view"))):
+    q = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
     if category:
         q = q.filter(models.TechTask.category == category)
     if status:
         q = q.filter(models.TechTask.status == status)
     rows = q.order_by(models.TechTask.due_at.is_(None), models.TechTask.due_at,
                        models.TechTask.created_at.desc()).limit(1000).all()
-    labels = category_labels(db)
-    return [_out(x, labels) for x in rows]
+    labels, it_labels, tien_do = category_labels(db), item_labels(db), _tien_do_moi_nhat(db)
+    ra = [_out(x, labels, it_labels, tien_do, user) for x in rows]
+    return [x for x in ra if x["cua_toi"]] if mine else ra
 
 
 @admin_router.get("/tech-tasks/summary")
 def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
     """Đếm số việc theo từng đầu việc x trạng thái, cho khối thống kê đầu trang."""
-    rows = db.query(models.TechTask).all()
+    rows = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None)).all()
     by_category = defaultdict(lambda: {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0})
     today = models.today()
     for r in rows:
@@ -256,51 +347,197 @@ def admin_create_task(data: TechTaskIn, db: Session = Depends(get_db),
     row = models.TechTask(
         category=data.category, title=data.title.strip(),
         description=(data.description or "").strip(), assignee=(data.assignee or "").strip(),
+        coordinators="; ".join(_ds_ten(data.coordinators)), reporter=(data.reporter or "").strip(),
         target=(data.target or "").strip(), due_at=data.due_at,
         status=data.status or "todo", link_url=(data.link_url or "").strip(),
+        progress_item=(data.progress_item or "").strip() or None,
         note=(data.note or "").strip(),
     )
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, row.title, request=request)
-    return _out(row, category_labels(db))
+    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user)
 
 
 @admin_router.put("/tech-tasks/{item_id}")
 def admin_update_task(item_id: int, data: TechTaskIn, db: Session = Depends(get_db),
                       user=Depends(require_module("tech_tasks", "update")), request: Request = None):
-    _validate(data, db)
     row = _get(db, item_id)
-    _apply(row, data.model_dump(exclude_unset=True))
+    _validate(data, db, row)
+    vals = data.model_dump(exclude_unset=True)
+    # Đổi đầu việc mà hạng mục liên kết cũ không thuộc đầu việc mới thì gỡ liên
+    # kết, tránh việc của "Củng cố" lại hiện số liệu hạng mục của "Kế hoạch 5G".
+    if (vals.get("category") and "progress_item" not in vals and row.progress_item
+            and item_category(db).get(row.progress_item) != vals["category"]):
+        vals["progress_item"] = None
+    _apply(row, vals)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "tech_tasks", row.id, row.title, request=request)
-    return _out(row, category_labels(db))
+    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user)
 
 
 @admin_router.delete("/tech-tasks/{item_id}")
 def admin_delete_task(item_id: int, db: Session = Depends(get_db),
                       user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+    """Xoá mềm: chuyển vào Thùng rác cùng đính kèm, quản trị viên khôi phục được
+    trong 30 ngày — việc thường có tệp số liệu, xoá nhầm là mất hẳn."""
     row = _get(db, item_id)
-    title = row.title
-    db.delete(row); db.commit()
-    log_action(db, user, "delete", "tech_tasks", item_id, title, request=request)
-    return {"deleted": item_id}
+    row.deleted_at = models.now()
+    row.deleted_by = user.full_name
+    db.commit()
+    log_action(db, user, "delete", "tech_tasks", item_id, row.title,
+               detail="Chuyển vào thùng rác", request=request)
+    return {"deleted": item_id, "trashed": True}
+
+
+class BaoCaoIn(BaseModel):
+    status: Optional[str] = None
+    note: Optional[str] = None
+
+
+@admin_router.post("/tech-tasks/{item_id}/report")
+def report_task(item_id: int, data: BaoCaoIn, db: Session = Depends(get_db),
+                user=Depends(current_user), request: Request = None):
+    """Người làm/phối hợp/báo cáo cập nhật trạng thái và ghi chú tiến độ của
+    chính việc mình — không cần quyền sửa cả module."""
+    row = _get(db, item_id)
+    if not _duoc_bao_cao(user, row):
+        raise HTTPException(403, "Chỉ người phụ trách, phối hợp, báo cáo của việc này "
+                                 "hoặc người có quyền sửa mới cập nhật được tiến độ.")
+    if data.status is not None:
+        if data.status not in STATUS_LABELS or data.status == "overdue":
+            raise HTTPException(400, "Trạng thái không hợp lệ.")
+        row.status = data.status
+    if data.note is not None:
+        row.note = data.note.strip()
+    db.commit(); db.refresh(row)
+    log_action(db, user, "update", "tech_tasks", row.id, row.title,
+               detail="Báo cáo tiến độ", request=request)
+    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user)
+
+
+# ------------------------------------------------------------------ Đính kèm
+
+MAX_DINH_KEM_MB = 15
+# Chặn tệp chạy được; còn lại (PDF, Office, ảnh, CSV, ZIP...) đều nhận.
+DUOI_BI_CHAN = {".exe", ".bat", ".cmd", ".com", ".msi", ".scr", ".ps1", ".vbs", ".js",
+                ".jar", ".sh", ".dll", ".html", ".htm", ".svg"}
+
+
+class LinkIn(BaseModel):
+    title: Optional[str] = None
+    url: str
+
+
+@admin_router.post("/tech-tasks/{item_id}/attachments/link")
+def add_attachment_link(item_id: int, data: LinkIn, db: Session = Depends(get_db),
+                        user=Depends(current_user), request: Request = None):
+    row = _get(db, item_id)
+    if not _duoc_bao_cao(user, row):
+        raise HTTPException(403, "Chỉ người được gắn tên trong việc hoặc người có quyền sửa mới đính kèm được.")
+    url = (data.url or "").strip()
+    if not re.match(r"^https?://\S+$", url):
+        raise HTTPException(400, "Link cần bắt đầu bằng http:// hoặc https://")
+    a = models.TechTaskAttachment(task_id=row.id, kind="link", url=url,
+                                  title=(data.title or "").strip() or url,
+                                  uploaded_by=user.full_name)
+    db.add(a); db.commit(); db.refresh(a)
+    log_action(db, user, "create", "tech_tasks", row.id, row.title,
+               detail=f"Đính kèm link: {a.title}", request=request)
+    return _out_attachment(a)
+
+
+@admin_router.post("/tech-tasks/{item_id}/attachments/file")
+async def add_attachment_file(item_id: int, file: UploadFile = File(...), db: Session = Depends(get_db),
+                              user=Depends(current_user), request: Request = None):
+    row = _get(db, item_id)
+    if not _duoc_bao_cao(user, row):
+        raise HTTPException(403, "Chỉ người được gắn tên trong việc hoặc người có quyền sửa mới đính kèm được.")
+    ten = (file.filename or "tep").replace("\\", "/").split("/")[-1][:300]
+    duoi = ("." + ten.rsplit(".", 1)[-1].lower()) if "." in ten else ""
+    if duoi in DUOI_BI_CHAN:
+        raise HTTPException(400, f"Không nhận tệp {duoi}. Hãy nén thành .zip hoặc gửi dạng PDF.")
+    gioi_han = MAX_DINH_KEM_MB * 1024 * 1024
+    phan, co = [], 0
+    while chunk := await file.read(1024 * 256):
+        co += len(chunk)
+        if co > gioi_han:
+            raise HTTPException(400, f"Tệp vượt quá {MAX_DINH_KEM_MB} MB. Hãy nén bớt "
+                                     "hoặc đưa lên Drive rồi đính kèm link.")
+        phan.append(chunk)
+    if not co:
+        raise HTTPException(400, "Tệp rỗng.")
+    a = models.TechTaskAttachment(task_id=row.id, kind="file", filename=ten, title=ten,
+                                  content_type=(file.content_type or "application/octet-stream")[:120],
+                                  size_bytes=co, data=b"".join(phan), uploaded_by=user.full_name)
+    db.add(a); db.commit(); db.refresh(a)
+    log_action(db, user, "create", "tech_tasks", row.id, row.title,
+               detail=f"Đính kèm tệp: {ten}", request=request)
+    return _out_attachment(a)
+
+
+def _get_attachment(db, aid):
+    a = db.get(models.TechTaskAttachment, aid)
+    if not a or a.task is None or a.task.deleted_at is not None:
+        raise HTTPException(404, "Không tìm thấy đính kèm.")
+    return a
+
+
+@admin_router.get("/tech-tasks/attachments/{aid}/download")
+def download_attachment(aid: int, db: Session = Depends(get_db),
+                        _=Depends(require_module("tech_tasks", "view"))):
+    """Tải tệp — luôn qua đăng nhập, không để link công khai như /uploads, vì
+    tệp đính kèm thường là số liệu nội bộ."""
+    a = _get_attachment(db, aid)
+    if a.kind != "file":
+        raise HTTPException(400, "Đính kèm này là link, không phải tệp.")
+    ten = a.filename or f"dinh-kem-{a.id}"
+    ascii_ten = unicodedata.normalize("NFD", ten).encode("ascii", "ignore").decode() or "tep"
+    ascii_ten = ascii_ten.replace('"', "")
+    return Response(
+        a.data or b"", media_type=a.content_type or "application/octet-stream",
+        headers={"Content-Disposition":
+                 f"attachment; filename=\"{ascii_ten}\"; filename*=UTF-8''{quote(ten)}",
+                 "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@admin_router.delete("/tech-tasks/attachments/{aid}")
+def delete_attachment(aid: int, db: Session = Depends(get_db),
+                      user=Depends(current_user), request: Request = None):
+    """Người có quyền sửa xoá được mọi đính kèm; người được gắn tên trong việc
+    chỉ xoá được đính kèm do chính mình đưa lên."""
+    a = _get_attachment(db, aid)
+    cua_minh = (a.uploaded_by or "").strip().casefold() == (user.full_name or "").strip().casefold()
+    if not (_duoc_sua(user) or (cua_minh and _duoc_bao_cao(user, a.task))):
+        raise HTTPException(403, "Chỉ xoá được đính kèm do chính mình đưa lên.")
+    task, ten = a.task, a.title
+    db.delete(a); db.commit()
+    log_action(db, user, "delete", "tech_tasks", task.id, task.title,
+               detail=f"Gỡ đính kèm: {ten}", request=request)
+    return {"deleted": aid}
 
 
 @admin_router.get("/tech-tasks/export")
 def export_tasks_csv(db: Session = Depends(get_db),
                      _=Depends(require_module("tech_tasks", "update"))):
     """Xuất toàn bộ công việc ra tệp CSV để báo cáo."""
-    rows = db.query(models.TechTask).order_by(models.TechTask.category, models.TechTask.due_at).all()
-    header = ["Đầu việc", "Nội dung công việc", "Mô tả", "Phụ trách", "Mục tiêu/chỉ tiêu",
-              "Hạn xử lý", "Trạng thái", "Link công cụ", "Ghi chú tiến độ", "Ngày tạo"]
-    labels = category_labels(db)
+    rows = (db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
+            .order_by(models.TechTask.category, models.TechTask.due_at).all())
+    header = ["Đầu việc", "Nội dung công việc", "Mô tả", "Phụ trách", "Phối hợp", "Người báo cáo",
+              "Mục tiêu/chỉ tiêu", "Hạn xử lý", "Trạng thái", "Hạng mục tiến độ", "Link công cụ",
+              "Đính kèm", "Ghi chú tiến độ", "Ngày tạo"]
+    labels, it_labels = category_labels(db), item_labels(db)
     lines = [",".join(header)]
     for r in rows:
         vals = [
             labels.get(r.category, r.category), r.title or "", r.description or "",
-            r.assignee or "", r.target or "",
+            r.assignee or "", "; ".join(_ds_ten(r.coordinators)), r.reporter or "",
+            r.target or "",
             r.due_at.strftime("%d/%m/%Y") if r.due_at else "",
-            STATUS_LABELS.get(r.status, r.status), r.link_url or "", r.note or "",
+            STATUS_LABELS.get(r.status, r.status),
+            it_labels.get(r.progress_item, r.progress_item or ""), r.link_url or "",
+            " | ".join(a.url if a.kind == "link" else a.filename or "" for a in r.attachments),
+            r.note or "",
             r.created_at.strftime("%d/%m/%Y %H:%M") if r.created_at else "",
         ]
         lines.append(",".join('"' + str(v).replace('"', '""') + '"' for v in vals))
@@ -309,6 +546,15 @@ def export_tasks_csv(db: Session = Depends(get_db),
         content, media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="cong-viec-ky-thuat-{models.today()}.csv"'},
     )
+
+
+# Đặt SAU các đường dẫn cố định /tech-tasks/summary, /tech-tasks/export...:
+# FastAPI khớp theo thứ tự khai báo, để trước thì "summary" bị hiểu là mã việc.
+@admin_router.get("/tech-tasks/{item_id}")
+def admin_get_task(item_id: int, db: Session = Depends(get_db),
+                   user=Depends(require_module("tech_tasks", "view"))):
+    return _out(_get(db, item_id), category_labels(db), item_labels(db),
+                _tien_do_moi_nhat(db), user)
 
 
 # ============================================================ TIẾN ĐỘ HẠNG MỤC

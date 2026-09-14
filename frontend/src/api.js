@@ -214,6 +214,27 @@ export const api = {
     return res.json();
   },
 
+  /** Gửi một tệp (multipart, trường "file") tới đường dẫn bất kỳ, kèm token. */
+  async uploadTo(path, file) {
+    const headers = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const form = new FormData();
+    form.append("file", file);
+    let res;
+    try {
+      res = await fetch(BASE + path, { method: "POST", headers, body: form });
+    } catch {
+      throw new Error("Không gọi được máy chủ. Kiểm tra kết nối mạng.");
+    }
+    if (!res.ok) {
+      if (res.status === 413) throw new Error(`Tệp “${file.name}” quá lớn.`);
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `Không tải được tệp “${file.name}” lên.`);
+    }
+    return res.json();
+  },
+
   /** Kiểm tra backend có đang chạy không. Trả về true/false, không ném lỗi. */
   async ping() {
     try {
