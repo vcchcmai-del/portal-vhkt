@@ -1075,8 +1075,12 @@ const DASHBOARD_BOARDS = [
   { value: "NETWORK_TARGET", label: "Chỉ tiêu/Target XLCS CĐBR" },
   { value: "VHKT", label: "TKM CĐBR (Triển khai mới, KPI TKM 3h/10h/24h)" },
   { value: "VHKT_TARGET", label: "Chỉ tiêu/Target TKM CĐBR" },
-  { value: "CSKH", label: "PAKH & CSKH (PAKH 10k/TB, Tỉ lệ lặp, Tỉ lệ đáp ứng)" },
-  { value: "CSKH_TARGET", label: "Chỉ tiêu/Target PAKH & CSKH" },
+  { value: "PAKH10K", label: "PAKH 10k/TB (theo tỉnh)" },
+  { value: "PAKH10K_TARGET", label: "Chỉ tiêu/Target PAKH 10k/TB" },
+  { value: "TL_LAP", label: "Tỉ lệ lặp (theo tỉnh)" },
+  { value: "TL_LAP_TARGET", label: "Chỉ tiêu/Target Tỉ lệ lặp" },
+  { value: "TL_DAPUNG", label: "Tỉ lệ đáp ứng (theo tỉnh)" },
+  { value: "TL_DAPUNG_TARGET", label: "Chỉ tiêu/Target Tỉ lệ đáp ứng" },
   { value: "KPI", label: "Tiền phạt & Doanh thu" },
   { value: "KPI_TARGET", label: "Chỉ tiêu/Target Tiền phạt & Doanh thu" },
   { value: "KPI_VTNET", label: "Nguyên nhân phạt — nhóm VTNet" },
@@ -1100,7 +1104,9 @@ const DASHBOARD_IMPORT_TABS = [
   { id: "output", label: "GĐTT & Cell*h", boards: boardsOf("OUTPUT", "OUTPUT_TARGET") },
   { id: "network", label: "XLCS CĐBR", boards: boardsOf("NETWORK", "NETWORK_TARGET") },
   { id: "vhkt", label: "TKM CĐBR", boards: boardsOf("VHKT", "VHKT_TARGET") },
-  { id: "cskh", label: "PAKH & CSKH", boards: boardsOf("CSKH", "CSKH_TARGET") },
+  { id: "pakh10k", label: "PAKH 10k/TB", boards: boardsOf("PAKH10K", "PAKH10K_TARGET") },
+  { id: "tl_lap", label: "Tỉ lệ lặp", boards: boardsOf("TL_LAP", "TL_LAP_TARGET") },
+  { id: "tl_dapung", label: "Tỉ lệ đáp ứng", boards: boardsOf("TL_DAPUNG", "TL_DAPUNG_TARGET") },
 ];
 
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };

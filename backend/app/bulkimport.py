@@ -231,8 +231,12 @@ BOARD_LABELS = {
     "NETWORK_TARGET": "Chỉ tiêu/Target XLCS CĐBR",
     "VHKT": "TKM CĐBR (Triển khai mới, KPI TKM 3h/10h/24h)",
     "VHKT_TARGET": "Chỉ tiêu/Target TKM CĐBR",
-    "CSKH": "PAKH & CSKH (PAKH 10k/TB, Tỉ lệ lặp, Tỉ lệ đáp ứng)",
-    "CSKH_TARGET": "Chỉ tiêu/Target PAKH & CSKH",
+    "PAKH10K": "PAKH 10k/TB (theo tỉnh)",
+    "PAKH10K_TARGET": "Chỉ tiêu/Target PAKH 10k/TB",
+    "TL_LAP": "Tỉ lệ lặp (theo tỉnh)",
+    "TL_LAP_TARGET": "Chỉ tiêu/Target Tỉ lệ lặp",
+    "TL_DAPUNG": "Tỉ lệ đáp ứng (theo tỉnh)",
+    "TL_DAPUNG_TARGET": "Chỉ tiêu/Target Tỉ lệ đáp ứng",
     "HIRE": "Tuyển dụng (tính tự động từ Ứng viên/Định biên, không nhập tay)",
 }
 BOARDS = set(BOARD_LABELS)
@@ -269,7 +273,8 @@ BOARDS_KHONG_THEO_TINH = {
 # Vẫn chặn thói quen điền đơn vị đo (%, Dịch vụ...) vốn là nguyên nhân làm
 # bảng đối chiếu cùng kỳ năm trước bị trống.
 BOARDS_THEO_DIA_BAN = {"NETWORK", "NETWORK_TARGET", "VHKT", "VHKT_TARGET",
-                       "CSKH", "CSKH_TARGET"}
+                       "PAKH10K", "PAKH10K_TARGET", "TL_LAP", "TL_LAP_TARGET",
+                       "TL_DAPUNG", "TL_DAPUNG_TARGET"}
 DIA_BAN_CO_DINH = set(province_codes.BANG_TRA)
 
 

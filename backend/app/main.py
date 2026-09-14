@@ -619,9 +619,16 @@ def tinh_chi_so_trang_chu(db: Session):
     """
     out = []
 
-    def _them(ma, nhan, board, chi_tieu, don_vi, mau, huong_tot="thap", le=2):
+    def _them(ma, nhan, board, chi_tieu, don_vi, mau, huong_tot="thap", le=2,
+              luon_hien=False):
         kq = _chi_so_home(db, board, chi_tieu, huong_tot)
         if kq is None:
+            # Chỉ tiêu mới đưa vào theo dõi: vẫn giữ chỗ trên trang chủ để mọi
+            # người biết là có, ghi rõ chưa có số — không bịa ra con số nào.
+            if luon_hien:
+                out.append({"ma": ma, "nhan": nhan, "gia_tri": "—", "don_vi": "",
+                            "mau": mau, "ky": None, "ky_nhan": "Chưa có số liệu",
+                            "dat": None, "cai_thien": None})
             return
         out.append({
             "ma": ma, "nhan": nhan,
@@ -668,11 +675,12 @@ def tinh_chi_so_trang_chu(db: Session):
     _them("kpi_tkm_3h", "KPI TKM 3H", "VHKT", "KPI TKM 3H", "%", "blue", huong_tot="cao")
     _them("kpi_tkm_10h", "KPI TKM 10H", "VHKT", "KPI TKM 10H", "%", "blue", huong_tot="cao")
     _them("kpi_tkm_24h", "KPI TKM 24H", "VHKT", "KPI TKM 24H", "%", "blue", huong_tot="cao")
-    # PAKH & CSKH — chưa có số thì _chi_so_home trả None và ô tự ẩn, nhập số
-    # vào bảng CSKH là ô hiện ra, không phải sửa code.
-    _them("pakh_10k", "PAKH 10K/TB", "CSKH", "PAKH 10k/TB", "", "orange")
-    _them("ty_le_lap", "TỈ LỆ LẶP", "CSKH", "Tỉ lệ lặp", "%", "orange")
-    _them("ty_le_dap_ung", "TỈ LỆ ĐÁP ỨNG", "CSKH", "Tỉ lệ đáp ứng", "%", "green", huong_tot="cao")
+    # Ba module chăm sóc khách hàng, mỗi cái một bảng riêng. Luôn hiện ô kể cả
+    # khi chưa nhập số, để trang chủ phản ánh đủ những gì phòng đang theo dõi.
+    _them("pakh_10k", "PAKH 10K/TB", "PAKH10K", "PAKH 10k/TB", "", "orange", luon_hien=True)
+    _them("ty_le_lap", "TỈ LỆ LẶP", "TL_LAP", "Tỉ lệ lặp", "%", "orange", luon_hien=True)
+    _them("ty_le_dap_ung", "TỈ LỆ ĐÁP ỨNG", "TL_DAPUNG", "Tỉ lệ đáp ứng", "%", "green",
+          huong_tot="cao", luon_hien=True)
 
     return out
 

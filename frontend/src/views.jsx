@@ -204,7 +204,7 @@ const O_CHI_SO_TOI_BANG = {
   cell_h_tong: "OUTPUT", su_co_ngay: "PAKH", ksub_min: "FUEL", wo_qua_han: "WO",
   xlcs_3h: "NETWORK", xlcs_10h: "NETWORK", an_toan: "NETWORK",
   kpi_tkm_3h: "VHKT", kpi_tkm_10h: "VHKT", kpi_tkm_24h: "VHKT",
-  pakh_10k: "CSKH", ty_le_lap: "CSKH", ty_le_dap_ung: "CSKH",
+  pakh_10k: "PAKH10K", ty_le_lap: "TL_LAP", ty_le_dap_ung: "TL_DAPUNG",
 };
 
 export function HomeView({ onGo, onOpenNews, config }) {
@@ -904,12 +904,22 @@ const BOARDS = {
     mau: [],
     ve: "duong",
   },
-  CSKH: {
-    nhan: "PAKH & CSKH", ma: "CSKH", icon: MessageSquare,
-    tieuDe: "PAKH 10k/TB, Tỉ lệ lặp, Tỉ lệ đáp ứng — VCC HCM / BDG / VTU",
-    // Không có số liệu mẫu: thà để trống còn hơn hiện số bịa trông như thật.
-    mau: [],
-    ve: "duong",
+  // Ba module chăm sóc khách hàng, mỗi cái một tab như Ksub*min. Không có số
+  // liệu mẫu: thà để trống còn hơn hiện số bịa trông như thật.
+  PAKH10K: {
+    nhan: "PAKH 10k/TB", ma: "PAKH10K", icon: MessageSquare,
+    tieuDe: "PAKH trên 10.000 thuê bao theo tháng — VCC HCM / BDG / VTU",
+    mau: [], ve: "duong",
+  },
+  TL_LAP: {
+    nhan: "Tỉ lệ lặp", ma: "TL_LAP", icon: Repeat,
+    tieuDe: "Tỉ lệ lặp theo tháng — VCC HCM / BDG / VTU",
+    mau: [], ve: "duong",
+  },
+  TL_DAPUNG: {
+    nhan: "Tỉ lệ đáp ứng", ma: "TL_DAPUNG", icon: Headphones,
+    tieuDe: "Tỉ lệ đáp ứng theo tháng — VCC HCM / BDG / VTU",
+    mau: [], ve: "duong",
   },
 };
 
@@ -1660,6 +1670,17 @@ function laChiTieuTyLe(ct) {
  * tỉ lệ lặp càng thấp càng tốt, tỉ lệ đáp ứng càng cao càng tốt. Không có ở đây
  * thì theo chiều chung của tab như trước.
  */
+/**
+ * Module chỉ theo dõi đúng một chỉ tiêu, dựng y hệt tab Ksub*min: một biểu đồ
+ * theo tỉnh kèm target và cùng kỳ, rồi bảng đánh giá KPI. Thêm module cùng khuôn
+ * thì chỉ cần thêm một dòng ở đây (và mã bảng ở máy chủ).
+ */
+const TAB_MOT_CHI_TIEU = {
+  PAKH10K: { chiTieu: "PAKH 10k/TB", tieuDe: "PAKH trên 10.000 thuê bao theo tháng", huong: "thap" },
+  TL_LAP: { chiTieu: "Tỉ lệ lặp", tieuDe: "Tỉ lệ lặp theo tháng", huong: "thap" },
+  TL_DAPUNG: { chiTieu: "Tỉ lệ đáp ứng", tieuDe: "Tỉ lệ đáp ứng theo tháng", huong: "cao" },
+};
+
 const HUONG_TOT_CHI_TIEU = {
   "PAKH 10k/TB": "thap", "Tỉ lệ lặp": "thap", "Tỉ lệ đáp ứng": "cao",
 };
@@ -1846,10 +1867,12 @@ export function DashView({ bangMoSan }) {
   const laFUEL = ma === "FUEL";   // Ksub*min — theo tỉnh
   const laOUTPUT = ma === "OUTPUT"; // GĐTT & Cell*h — theo tỉnh
   const laNETWORK = ma === "NETWORK"; // XLCS CĐBR — Số PA phát sinh + XLCS 3h/10h/24h
-  const laCSKH = ma === "CSKH";   // PAKH & CSKH — theo tỉnh, trộn hai chiều tốt
-  const laTheoTinh = laPAKH || laFUEL || laOUTPUT || laCSKH;
+  // Module một chỉ tiêu theo tỉnh (PAKH 10k/TB, Tỉ lệ lặp, Tỉ lệ đáp ứng).
+  const motChiTieu = TAB_MOT_CHI_TIEU[ma];
+  const laTheoTinh = laPAKH || laFUEL || laOUTPUT || !!motChiTieu;
   // Chiều "tốt" của bảng đang xem — dùng để tô màu/đánh giá đúng chiều ở bảng đối chiếu nhiều tháng bên dưới.
-  const huongTotHienTai = (laPAKH || laFUEL || laOUTPUT || laWO || laKPI) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
+  const huongTotHienTai = motChiTieu ? motChiTieu.huong
+    : (laPAKH || laFUEL || laOUTPUT || laWO || laKPI) ? "thap" : (laNETWORK || laVHKT) ? "cao" : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1932,20 +1955,13 @@ export function DashView({ bangMoSan }) {
           <BangDanhGiaKPI compare={compareXem} chiTieuList={["Tỷ lệ rời mạng CĐBR"]} huongTot="thap" />
           <BangRoMangTheoHuyen diaBan={duLieu?.dia_ban} />
         </>
-      ) : laCSKH ? (
+      ) : motChiTieu ? (
         <>
-          {[
-            ["PAKH 10k/TB", "PAKH trên 10.000 thuê bao theo tháng", "thap"],
-            ["Tỉ lệ lặp", "Tỉ lệ lặp theo tháng", "thap"],
-            ["Tỉ lệ đáp ứng", "Tỉ lệ đáp ứng theo tháng", "cao"],
-          ].map(([chiTieu, tieuDe, huong]) => (
-            <React.Fragment key={chiTieu}>
-              <Card title={tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
-                <BieuDoTheoTinh compare={duLieu?.compare} chiTieu={chiTieu} nam={NAM_HIEN_TAI} />
-              </Card>
-              <BangDanhGiaKPI compare={compareXem} chiTieuList={[chiTieu]} huongTot={huong} />
-            </React.Fragment>
-          ))}
+          <Card title={motChiTieu.tieuDe} icon={board.icon} action={<NhanNguon nguon={nguon} />}>
+            <BieuDoTheoTinh compare={duLieu?.compare} chiTieu={motChiTieu.chiTieu} nam={NAM_HIEN_TAI} />
+          </Card>
+          <BangDanhGiaKPI compare={compareXem} chiTieuList={[motChiTieu.chiTieu]}
+            huongTot={motChiTieu.huong} />
         </>
       ) : laPAKH ? (
         <>
