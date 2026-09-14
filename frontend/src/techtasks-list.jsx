@@ -358,6 +358,7 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
   const [hangMuc, setHangMuc] = useState([]);     // [{category, items:[{id,label}]}]
   const [moId, setMoId] = useState(null);         // việc đang xem chi tiết
   const [qlDauViec, setQlDauViec] = useState(false);   // false | true | đầu việc đang sửa
+  const [cheDoSua, setCheDoSua] = useState(false);      // hiện nút sửa/xoá trên thẻ đầu việc
   const [newCat, setNewCat] = useState(null);
 
   const duocGiao = coQuyen("tech_tasks", "create");
@@ -486,7 +487,12 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
         </div>
         <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
           <button className="btn btn-sm" onClick={() => { taiLai(); loadCategories(); }}><RefreshCw size={14} />Tải lại</button>
-          {(duocSua || duocXoa) && <button className="btn btn-sm" onClick={() => setQlDauViec((v) => (v ? false : true))}><Pencil size={14} />Sửa / xóa đầu việc</button>}
+          {(duocSua || duocXoa) && (
+            <button className={`btn btn-sm ${cheDoSua ? "btn-red" : ""}`}
+              onClick={() => { setCheDoSua((v) => !v); setQlDauViec(false); }}>
+              <Pencil size={14} />{cheDoSua ? "Xong chỉnh sửa" : "Chỉnh sửa đầu việc"}
+            </button>
+          )}
           {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
           {duocGiao && <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, fCategory)); }}><Plus size={14} />Giao việc mới</button>}
         </div>
@@ -508,11 +514,11 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
               onKeyDown={(e) => { if (e.key === "Enter") setFCategory(on ? "" : c.id); }}>
               <div className="flex items-center" style={{ gap: 4 }}>
                 <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{c.label}</p>
-                {duocSua && (
+                {cheDoSua && duocSua && (
                   <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Sửa đầu việc “${c.label}”`}
                     onClick={(e) => { e.stopPropagation(); setQlDauViec(c); }}><Pencil size={12} /></button>
                 )}
-                {duocXoa && (
+                {cheDoSua && duocXoa && (
                   <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa đầu việc “${c.label}”`}
                     onClick={(e) => { e.stopPropagation(); xoaDauViec(c); }}><Trash2 size={12} /></button>
                 )}
@@ -525,6 +531,13 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
             </div>
           );
         })}
+        {cheDoSua && duocGiao && (
+          <button type="button" className="card" onClick={() => setQlDauViec(true)}
+            style={{ padding: 12, cursor: "pointer", border: "1.5px dashed #E3C3C8", color: RED, fontWeight: 700,
+                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Plus size={15} />Thêm đầu việc
+          </button>
+        )}
       </div>
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Download, Link2, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Download, Link2, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import { api, coQuyen, laNguoiQuanLy, useCenters } from "./api";
 import { STATUS_LABELS, TaskListTab } from "./techtasks-list";
 import { AdminImport } from "./bulkimport";
@@ -46,6 +46,24 @@ const blankFtRow = (sel, period, center) => ({
   category: sel.category, item: sel.item, period, center, ft_name: "", plan_qty: "", done_qty: "", note: "",
 });
 
+const soGon = (n) => Number(n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 1 });
+
+/** Thanh tiến độ Thực hiện/Kế hoạch: xanh lá khi đạt, xanh dương từ 50%, vàng dưới 50%. */
+function ThanhTienDo({ done, plan }) {
+  const r = plan ? Math.min(done / plan, 1) : 0;
+  const mau = !plan ? "transparent" : r >= 1 ? "#16A34A" : r >= 0.5 ? "#0E6CD6" : "#F2A007";
+  return (
+    <div className="flex items-center gap-2">
+      <div style={{ flex: 1, minWidth: 80, height: 8, background: "#EAF1FB", borderRadius: 99, overflow: "hidden" }}>
+        <div style={{ width: `${r * 100}%`, height: "100%", background: mau, borderRadius: 99 }} />
+      </div>
+      <span style={{ fontSize: 12.5, whiteSpace: "nowrap", minWidth: 110, textAlign: "right" }}>
+        <b>{soGon(done)}</b> / {soGon(plan)} · {plan ? pct(done / plan) : "—"}
+      </span>
+    </div>
+  );
+}
+
 function ProgressTab({ moSan, onXemViec }) {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [periods, setPeriods] = useState([]);
@@ -69,6 +87,10 @@ function ProgressTab({ moSan, onXemViec }) {
   const [viecLienKet, setViecLienKet] = useState([]);   // công việc có gắn hạng mục
   const [suaHangMuc, setSuaHangMuc] = useState(null);   // {id, label} đang đổi tên
   const [suaDauViec, setSuaDauViec] = useState(null);   // {category, label} đang đổi tên
+  // Chế độ xem mặc định gọn: ẩn nút sửa/xoá/thêm, chỉ hiện hạng mục có số liệu kỳ này.
+  const [cheDoSua, setCheDoSua] = useState(false);
+  const [chiCoSoLieu, setChiCoSoLieu] = useState(null);   // null = tự chọn theo dữ liệu
+  const [dongNhom, setDongNhom] = useState([]);             // mã đầu việc đang gập
   const duocThem = coQuyen("tech_tasks", "create");
   const duocSua = coQuyen("tech_tasks", "update");
   const duocXoa = coQuyen("tech_tasks", "delete");
@@ -223,6 +245,18 @@ function ProgressTab({ moSan, onXemViec }) {
   const centerRow = centers.find((c) => c.center === selectedCenter);
   const ftMismatch = centerRow && (ftTotals.plan !== (centerRow.plan_qty || 0) || ftTotals.done !== (centerRow.done_qty || 0));
 
+  const tomTat = (item, cat) => summary.find((x) => x.category === cat && x.item === item)
+    || { plan_qty: 0, done_qty: 0, remaining: 0, rate: null };
+  const coSoLieu = (x) => (x.plan_qty || 0) !== 0 || (x.done_qty || 0) !== 0;
+  const tongHangMuc = itemGroups.reduce((n, g) => n + g.items.length, 0);
+  const soCoSoLieu = itemGroups.reduce((n, g) => n + g.items.filter((it) => coSoLieu(tomTat(it.id, g.category))).length, 0);
+  const locRong = (chiCoSoLieu ?? soCoSoLieu > 0) && !cheDoSua;
+  const nhomHien = itemGroups
+    .map((g) => ({ ...g, hien: locRong ? g.items.filter((it) => coSoLieu(tomTat(it.id, g.category))) : g.items }))
+    .filter((g) => g.hien.length || !locRong);
+  const doiGap = (cat) => setDongNhom((ds) => (ds.includes(cat) ? ds.filter((x) => x !== cat) : [...ds, cat]));
+  const nutNho = { padding: "3px 6px" };
+
   const numField = (form, setForm, label, key) => (
     <Field label={label}><input className="inp" type="number" value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} /></Field>
   );
@@ -257,91 +291,134 @@ function ProgressTab({ moSan, onXemViec }) {
 
       {!selected && (
         <>
-          {itemGroups.map((g) => (
-            <div key={g.category}>
-              <div className="flex items-center gap-2" style={{ margin: "10px 0 8px", flexWrap: "wrap" }}>
-                {suaDauViec?.category === g.category ? (
-                  <>
-                    <input className="inp" style={{ maxWidth: 260 }} autoFocus value={suaDauViec.label}
-                      onChange={(e) => setSuaDauViec({ ...suaDauViec, label: e.target.value })}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuDauViec(); } if (e.key === "Escape") setSuaDauViec(null); }} />
-                    <button className="btn btn-red btn-sm" onClick={luuDauViec}>Lưu</button>
-                    <button className="btn btn-sm" onClick={() => setSuaDauViec(null)}>Hủy</button>
-                  </>
-                ) : (
-                  <>
-                    <p className="eyebrow-grey">{g.category_label}</p>
-                    {duocSua && (
-                      <button className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Đổi tên đầu việc ${g.category_label}`}
-                        onClick={() => setSuaDauViec({ category: g.category, label: g.category_label })}><Pencil size={12} /></button>
-                    )}
-                  </>
-                )}
-                {!duocThem ? null : newItemCat === g.category ? (
-                  <>
-                    <input className="inp" style={{ maxWidth: 260 }} autoFocus placeholder="Tên hạng mục mới…"
-                      value={newItem} onChange={(e) => setNewItem(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themHangMuc(g.category); } }} />
-                    <button className="btn btn-red btn-sm" onClick={() => themHangMuc(g.category)}>Thêm</button>
-                    <button className="btn btn-sm" onClick={() => { setNewItemCat(null); setNewItem(""); }}>Hủy</button>
-                  </>
-                ) : (
-                  <button className="btn btn-sm" title={`Thêm hạng mục cho ${g.category_label}`}
-                    onClick={() => { setNewItemCat(g.category); setNewItem(""); }}><Plus size={13} />Thêm hạng mục</button>
-                )}
+          <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "10px 14px" }}>
+            <span style={{ fontSize: 13 }}>Kỳ <b>{period}</b>: <b>{soCoSoLieu}</b>/{tongHangMuc} hạng mục có số liệu</span>
+            <span style={{ flex: 1 }} />
+            {!cheDoSua && (
+              <div className="flex" style={{ gap: 4 }}>
+                <button className={`btn btn-sm ${locRong ? "btn-red" : ""}`} onClick={() => setChiCoSoLieu(true)}>Có số liệu</button>
+                <button className={`btn btn-sm ${!locRong ? "btn-red" : ""}`} onClick={() => setChiCoSoLieu(false)}>Tất cả</button>
               </div>
-              {!g.items.length && (
-                <p className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-                  Đầu việc này chưa khai báo hạng mục định lượng — bấm ＋ để thêm.
-                </p>
-              )}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {g.items.map((it) => {
-                  const s = summary.find((x) => x.category === g.category && x.item === it.id)
-                    || { plan_qty: 0, done_qty: 0, remaining: 0, rate: null };
-                  const dangSua = suaHangMuc?.id === it.id;
-                  // Thẻ là div (không phải button) để đặt được nút sửa/xoá bên trong.
-                  return (
-                    <div key={it.id} className="card" role="button" tabIndex={0} style={{ textAlign: "left", cursor: dangSua ? "default" : "pointer", padding: 12 }}
-                      onClick={() => { if (!dangSua) openItem(g.category, g.category_label, it.id, it.label); }}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !dangSua) openItem(g.category, g.category_label, it.id, it.label); }}>
-                      {dangSua ? (
-                        <div className="flex items-center" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                          <input className="inp" autoFocus value={suaHangMuc.label}
-                            onChange={(e) => setSuaHangMuc({ ...suaHangMuc, label: e.target.value })}
-                            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); luuHangMuc(); } if (e.key === "Escape") setSuaHangMuc(null); }} />
-                          <button className="btn btn-red btn-sm" onClick={luuHangMuc}>Lưu</button>
-                          <button className="btn btn-sm" onClick={() => setSuaHangMuc(null)}>Hủy</button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center" style={{ gap: 4 }}>
-                          <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{it.label}</p>
-                          {duocSua && (
-                            <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Đổi tên hạng mục “${it.label}”`}
-                              onClick={(e) => { e.stopPropagation(); setSuaHangMuc({ id: it.id, label: it.label }); }}><Pencil size={12} /></button>
-                          )}
-                          {duocXoa && (
-                            <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa hạng mục “${it.label}”`}
-                              onClick={(e) => { e.stopPropagation(); xoaHangMuc(it); }}><Trash2 size={12} /></button>
-                          )}
-                        </div>
-                      )}
-                      <div style={{ marginTop: 6 }}>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: RED }}>{s.done_qty}</span>
-                        <span className="muted" style={{ fontSize: 12 }}> / {s.plan_qty}</span>
-                      </div>
-                      <div className="flex items-center gap-2" style={{ marginTop: 4, flexWrap: "wrap" }}>
-                        <span className="tag tag-grey">Tồn {s.remaining}</span>
-                        <span className="tag tag-green">{pct(s.rate)}</span>
-                        {!!viecCuaHangMuc(it.id).length && <span className="tag tag-amber"><Link2 size={10} /> {viecCuaHangMuc(it.id).length} việc</span>}
-                      </div>
-                    </div>
-                  );
-                })}
+            )}
+            {(duocThem || duocSua || duocXoa) && (
+              <button className={`btn btn-sm ${cheDoSua ? "btn-red" : ""}`}
+                onClick={() => { setCheDoSua((v) => !v); setSuaHangMuc(null); setSuaDauViec(null); setNewItemCat(null); }}>
+                <Pencil size={13} />{cheDoSua ? "Xong chỉnh sửa" : "Chỉnh sửa danh mục"}
+              </button>
+            )}
+          </div>
+          {cheDoSua && (
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              Đang chỉnh sửa danh mục — đổi tên, thêm, xóa hạng mục và đầu việc. Bấm “Xong chỉnh sửa” để về chế độ xem.
+            </p>
+          )}
+
+          {nhomHien.map((g) => {
+            const gap = dongNhom.includes(g.category) && !cheDoSua;
+            const tong = g.hien.reduce((a, it) => {
+              const x = tomTat(it.id, g.category);
+              return { plan: a.plan + (x.plan_qty || 0), done: a.done + (x.done_qty || 0) };
+            }, { plan: 0, done: 0 });
+            return (
+              <div key={g.category} className="card" style={{ padding: 0, overflow: "hidden" }}>
+                <div className="flex items-center gap-2"
+                  style={{ padding: "10px 14px", background: "#FCFBFB", borderBottom: gap ? "none" : "1px solid #EFECED", flexWrap: "wrap" }}>
+                  {suaDauViec?.category === g.category ? (
+                    <>
+                      <input className="inp" style={{ maxWidth: 260 }} autoFocus value={suaDauViec.label}
+                        onChange={(e) => setSuaDauViec({ ...suaDauViec, label: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuDauViec(); } if (e.key === "Escape") setSuaDauViec(null); }} />
+                      <button className="btn btn-red btn-sm" onClick={luuDauViec}>Lưu</button>
+                      <button className="btn btn-sm" onClick={() => setSuaDauViec(null)}>Hủy</button>
+                    </>
+                  ) : (
+                    <button type="button" className="flex items-center gap-1" onClick={() => doiGap(g.category)}
+                      style={{ border: "none", background: "none", cursor: "pointer", padding: 0, fontWeight: 700, fontSize: 13.5, color: "inherit" }}>
+                      {gap ? <ChevronRight size={15} /> : <ChevronDown size={15} />}{g.category_label}
+                    </button>
+                  )}
+                  <span className="muted" style={{ fontSize: 12 }}>{g.hien.length} hạng mục</span>
+                  {tong.plan > 0 && <span className="tag tag-green">{soGon(tong.done)}/{soGon(tong.plan)} · {pct(tong.done / tong.plan)}</span>}
+                  <span style={{ flex: 1 }} />
+                  {cheDoSua && duocSua && suaDauViec?.category !== g.category && (
+                    <button className="btn btn-sm" onClick={() => setSuaDauViec({ category: g.category, label: g.category_label })}>
+                      <Pencil size={12} />Đổi tên
+                    </button>
+                  )}
+                  {cheDoSua && duocThem && (newItemCat === g.category ? (
+                    <>
+                      <input className="inp" style={{ maxWidth: 240 }} autoFocus placeholder="Tên hạng mục mới…"
+                        value={newItem} onChange={(e) => setNewItem(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themHangMuc(g.category); } }} />
+                      <button className="btn btn-red btn-sm" onClick={() => themHangMuc(g.category)}>Thêm</button>
+                      <button className="btn btn-sm" onClick={() => { setNewItemCat(null); setNewItem(""); }}>Hủy</button>
+                    </>
+                  ) : (
+                    <button className="btn btn-sm" onClick={() => { setNewItemCat(g.category); setNewItem(""); }}><Plus size={13} />Thêm hạng mục</button>
+                  ))}
+                </div>
+                {!gap && (g.hien.length ? (
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="tbl">
+                      <thead><tr><th>Hạng mục</th><th>Thực hiện / Kế hoạch</th><th>Tồn</th><th></th></tr></thead>
+                      <tbody>
+                        {g.hien.map((it) => {
+                          const x = tomTat(it.id, g.category);
+                          const dangSua = suaHangMuc?.id === it.id;
+                          const soViec = viecCuaHangMuc(it.id).length;
+                          return (
+                            <tr key={it.id} style={{ cursor: dangSua ? "default" : "pointer" }}
+                              onClick={() => { if (!dangSua) openItem(g.category, g.category_label, it.id, it.label); }}>
+                              <td style={{ width: "36%" }}>
+                                {dangSua ? (
+                                  <div className="flex items-center" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                                    <input className="inp" autoFocus value={suaHangMuc.label}
+                                      onChange={(e) => setSuaHangMuc({ ...suaHangMuc, label: e.target.value })}
+                                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuHangMuc(); } if (e.key === "Escape") setSuaHangMuc(null); }} />
+                                    <button className="btn btn-red btn-sm" onClick={luuHangMuc}>Lưu</button>
+                                    <button className="btn btn-sm" onClick={() => setSuaHangMuc(null)}>Hủy</button>
+                                  </div>
+                                ) : (
+                                  <span style={{ fontWeight: 600 }}>{it.label}</span>
+                                )}
+                                {!!soViec && !dangSua && (
+                                  <span className="tag tag-amber" style={{ marginLeft: 6, fontSize: 11 }}><Link2 size={10} /> {soViec} việc</span>
+                                )}
+                              </td>
+                              <td style={{ width: "40%" }}><ThanhTienDo done={x.done_qty || 0} plan={x.plan_qty || 0} /></td>
+                              <td className="muted" style={{ whiteSpace: "nowrap" }}>{soGon(x.remaining)}</td>
+                              <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                                {cheDoSua ? (
+                                  <>
+                                    {duocSua && !dangSua && (
+                                      <button type="button" className="btn btn-sm" style={nutNho} title={`Đổi tên “${it.label}”`}
+                                        onClick={(e) => { e.stopPropagation(); setSuaHangMuc({ id: it.id, label: it.label }); }}><Pencil size={12} /></button>
+                                    )}{" "}
+                                    {duocXoa && !dangSua && (
+                                      <button type="button" className="btn btn-sm" style={nutNho} title={`Xóa “${it.label}”`}
+                                        onClick={(e) => { e.stopPropagation(); xoaHangMuc(it); }}><Trash2 size={12} /></button>
+                                    )}
+                                  </>
+                                ) : <span className="muted" style={{ fontSize: 12 }}>Chi tiết ›</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ fontSize: 12.5, padding: "10px 14px" }}>
+                    Chưa có hạng mục định lượng{cheDoSua && duocThem ? " — bấm “Thêm hạng mục”." : "."}
+                  </p>
+                ))}
               </div>
-            </div>
-          ))}
-          {!itemGroups.length && <Empty title="Chưa có hạng mục định lượng." />}
+            );
+          })}
+          {!nhomHien.length && (
+            <Empty title={`Kỳ ${period} chưa có số liệu tiến độ.`}
+              hint="Bấm “Tất cả” để xem danh mục hạng mục, hoặc “Nhập / đồng bộ Excel” để nạp số liệu." />
+          )}
         </>
       )}
 
