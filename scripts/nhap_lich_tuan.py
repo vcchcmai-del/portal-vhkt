@@ -31,6 +31,7 @@ from collections import Counter
 import requests
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")  # thông báo lỗi tiếng Việt
 
 L = "http://127.0.0.1:8000"
 W = "https://portal-vhkt-backend.n1.tinhgon.xyz"

@@ -12,15 +12,21 @@ chạy thật giữ song song hai dãy KPI TKM (một dãy có đơn vị, một
 giá trị khác nhau) và hiện trùng nhau trên bảng đối chiếu. Chạy lệnh này sau mỗi
 đợt cập nhật số liệu thì thấy ngay.
 
-Địa chỉ hai bên đặt trong hai biến L và W bên dưới.
+Địa chỉ hai bên đặt trong hai biến L và W bên dưới; mật khẩu admin lấy từ biến
+môi trường PORTAL_PASS (kho công khai nên không ghi mật khẩu vào mã).
 """
 import io
+import os
 import sys
 
 import requests
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 THAT = len(sys.argv) > 1 and sys.argv[1] == "commit"
+MAT_KHAU = os.environ.get("PORTAL_PASS")
+if not MAT_KHAU:
+    print("Đặt mật khẩu admin vào biến môi trường PORTAL_PASS trước khi chạy.")
+    sys.exit(1)
 
 L = "http://127.0.0.1:8000"
 W = "https://portal-vhkt-backend.n1.tinhgon.xyz"
@@ -33,7 +39,7 @@ BANG = ["KPI", "KPI_TARGET", "KPI_VTT", "KPI_VTNET", "WO", "WO_TARGET", "WO_TINH
 def phien(base):
     s = requests.Session()
     r = s.post(f"{base}/api/auth/login",
-               data={"username": "admin", "password": "viettel@2026"}, timeout=30)
+               data={"username": "admin", "password": MAT_KHAU}, timeout=30)
     r.raise_for_status()
     return s, {"Authorization": f"Bearer {r.json()['access_token']}"}
 
