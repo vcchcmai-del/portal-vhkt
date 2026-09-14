@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, ListChecks, RefreshCw } from "lucide-react";
 import { api } from "./api";
-import { Card, Empty, RED } from "./ui";
+import { Card, Empty, RED, ThaoTac } from "./ui";
 
 /*
  * Tổng hợp công việc kỹ thuật theo nhân viên: mỗi người được gắn tên trong
@@ -119,7 +119,7 @@ export function TheoNhanVienTab({ onXemViec }) {
               <tr>
                 <th>Nhân viên</th><th title="Số việc được gắn tên">Tổng</th><th>Phụ trách</th><th>Phối hợp</th>
                 <th>Xong</th><th>Đang làm</th><th>Chưa bắt đầu</th><th>Quá hạn</th><th>Sắp hạn</th><th>Tồn</th>
-                <th>Hoàn thành</th><th>Cảnh báo</th><th></th>
+                <th>Hoàn thành</th><th>Cảnh báo</th><th style={{ textAlign: "right" }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -148,10 +148,8 @@ export function TheoNhanVienTab({ onXemViec }) {
                       <td style={{ fontSize: 12.5, color: MAU_MUC[p.muc] === MAU_MUC.xanh ? undefined : MAU_MUC[p.muc] }}>
                         {p.canh_bao.length ? p.canh_bao.join(" · ") : <span className="muted">—</span>}
                       </td>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <button className="btn btn-sm" onClick={() => onXemViec(p.name)} title={`Mở danh sách việc của ${p.name}`}>
-                          <ListChecks size={13} />Xem việc
-                        </button>
+                      <td style={{ textAlign: "right" }}>
+                        <ThaoTac onView={() => onXemViec(p.name)} xemTitle={`Xem danh sách việc của ${p.name}`} />
                       </td>
                     </tr>
                     {dangMo && (

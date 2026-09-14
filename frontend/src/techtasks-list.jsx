@@ -3,7 +3,7 @@ import {
   Download, ExternalLink, FileText, Link2, Paperclip, Pencil, Plus, RefreshCw, Trash2, Upload, User, Users, X,
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
-import { Card, Empty, Field, RED } from "./ui";
+import { Card, Empty, Field, RED, ThaoTac } from "./ui";
 
 /*
  * Danh sách công việc mảng kỹ thuật.
@@ -317,8 +317,8 @@ function QuanLyDauViec({ categories, onDoi, onDong, suaNgay }) {
               <td><b>{c.label}</b></td>
               <td className="muted" style={{ fontSize: 12.5 }}>{c.hint || "—"}</td>
               <td style={{ whiteSpace: "nowrap" }}>
-                {duocSua && <button className="btn btn-sm" onClick={() => setSua({ ...c, hint: c.hint || "" })}><Pencil size={13} /></button>}{" "}
-                {duocXoa && <button className="btn btn-sm" onClick={() => xoa(c)}><Trash2 size={13} /></button>}
+                <ThaoTac onEdit={duocSua ? () => setSua({ ...c, hint: c.hint || "" }) : null} suaTitle="Sửa đầu việc"
+                  onDelete={duocXoa ? () => xoa(c) : null} xoaTitle="Xóa đầu việc" />
               </td>
             </tr>
           )))}
@@ -707,7 +707,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       <Card pad={false}>
         <div style={{ overflowX: "auto" }}>
           <table className="tbl">
-            <thead><tr><th>Đầu việc</th><th>Nội dung</th><th>Nhân sự</th><th>Mục tiêu</th><th>Hạn xử lý</th><th>Trạng thái</th><th></th></tr></thead>
+            <thead><tr><th>Đầu việc</th><th>Nội dung</th><th>Nhân sự</th><th>Mục tiêu</th><th>Hạn xử lý</th><th>Trạng thái</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
             <tbody>
               {filteredRows.map((x) => (
                 <tr key={x.id} onClick={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}
@@ -735,9 +735,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                   <td>{x.target || "—"}</td>
                   <td>{fmtDay(x.due_at)}</td>
                   <td><StatusTag task={x} /></td>
-                  <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                    {duocSua && <button className="btn btn-sm" onClick={() => suaViec(x)} title="Sửa công việc"><Pencil size={13} />Sửa</button>}{" "}
-                    {duocXoa && <button className="btn btn-sm" onClick={() => del(x)} title="Xóa (vào Thùng rác)"><Trash2 size={13} />Xóa</button>}
+                  <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                    <ThaoTac onView={() => { setForm(null); setMoId(x.id); }} xemTitle="Xem chi tiết, đính kèm, báo cáo"
+                      onEdit={duocSua ? () => suaViec(x) : null} suaTitle="Sửa công việc"
+                      onDelete={duocXoa ? () => del(x) : null} xoaTitle="Xóa (vào Thùng rác)" />
                   </td>
                 </tr>
               ))}

@@ -3,7 +3,8 @@
  * Bảng màu bám nhận diện Viettel: đỏ #EA0A2A làm chủ đạo, nền trắng.
  */
 import React from "react";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Eye, SquarePen, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 
 // Đỏ Viettel #EA0A2A giữ nguyên cho logo và điểm nhấn nhỏ.
 // Các mảng màu lớn dùng sắc trầm hơn để mắt đỡ mỏi khi mở cả ngày.
@@ -200,6 +201,21 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 /* Thanh tiến độ trong ô chỉ số lớn */
 .cnct-progress > i{display:block;height:100%;border-radius:99px;background:currentColor;transition:width .4s}
 
+/* Cột Thao tác: Xem / Sửa / Xoá dạng biểu tượng (ThaoTac) */
+.tt{display:inline-flex;gap:6px;align-items:center;justify-content:flex-end;vertical-align:middle}
+.tt-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;flex:none;
+  border:1px solid #EDEAEB;background:#fff;border-radius:9px;color:#6B6F76;cursor:pointer;transition:all .15s}
+.tt-btn:hover{color:#0E6CD6;border-color:#C9DBF5;background:#F3F8FE}
+.tt-btn.tt-xoa:hover{color:#C8102E;border-color:#E8C4CB;background:#FBF4F5}
+.tt-btn:focus-visible{outline:2px solid #0E6CD6;outline-offset:1px}
+.tt-nen{position:fixed;inset:0;background:rgba(28,26,27,.38);display:flex;align-items:center;justify-content:center;
+  z-index:1000;padding:16px;font-family:'Be Vietnam Pro', -apple-system, 'Segoe UI', Roboto, sans-serif;color:#1C1A1B}
+.tt-hop{width:100%;max-width:640px;overflow:hidden;background:#fff;box-shadow:0 20px 50px rgba(30,25,27,.25)}
+.tt-dong{display:grid;grid-template-columns:150px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #EDEAEB;font-size:13.5px}
+.tt-dong>span:first-child{color:#807A7C}
+.tt-dong a{color:#0E6CD6;word-break:break-all}
+@media (max-width:520px){.tt-dong{grid-template-columns:1fr;gap:2px}}
+
 /* Biểu tượng quay khi đang tải */
 .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -286,6 +302,92 @@ export function SwitchRow({ label, hint, checked, onChange, disabled }) {
       </div>
       <Switch checked={checked} onChange={onChange} disabled={disabled} />
     </div>
+  );
+}
+
+// Khung "Xem chi tiết" tự liệt kê các trường của một dòng. Bỏ các khoá kỹ thuật
+// (id, khoá ngoại, quyền dạng máy) khi không truyền danh sách nhãn.
+const BO_QUA_KHI_XEM = /^(id|.*_id|password.*|permissions.*|permission_actions|gallery|color|order_no)$/;
+
+function hienGiaTri(v) {
+  if (v === null || v === undefined || v === "") return <span className="muted">—</span>;
+  if (typeof v === "boolean") return v ? "Có" : "Không";
+  if (Array.isArray(v)) {
+    if (!v.length) return <span className="muted">—</span>;
+    return v.map((x) => (x && typeof x === "object" ? (x.title || x.name || x.label || JSON.stringify(x)) : x)).join(", ");
+  }
+  if (typeof v === "object") {
+    return Object.entries(v).map(([a, b]) => `${a}: ${Array.isArray(b) ? b.join("/") : b}`).join(" · ");
+  }
+  const s = String(v);
+  if (/^https?:\/\/\S+$/.test(s) || /^\S*\/uploads\/\S+$/.test(s)) {
+    return <a href={s} target="_blank" rel="noreferrer">{s}</a>;
+  }
+  if (/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}.*)?$/.test(s)) {
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return s.length > 10 ? d.toLocaleString("vi-VN") : d.toLocaleDateString("vi-VN");
+  }
+  return <span style={{ whiteSpace: "pre-wrap" }}>{s}</span>;
+}
+
+/** Khung xem chi tiết một dòng dữ liệu. `nhan` = { khoá: "Nhãn" } để chọn và đặt tên trường. */
+export function XemChiTiet({ tieuDe, duLieu, nhan, onDong }) {
+  React.useEffect(() => {
+    const phim = (e) => { if (e.key === "Escape") onDong(); };
+    window.addEventListener("keydown", phim);
+    return () => window.removeEventListener("keydown", phim);
+  }, [onDong]);
+  const dong = nhan
+    ? Object.entries(nhan).map(([k, l]) => [l, duLieu?.[k]])
+    : Object.entries(duLieu || {}).filter(([k]) => !BO_QUA_KHI_XEM.test(k)).map(([k, v]) => [k.replace(/_/g, " "), v]);
+  return createPortal(
+    <div className="tt-nen" onClick={onDong}>
+      <div className="card tt-hop" role="dialog" aria-modal="true" aria-label={tieuDe || "Chi tiết"} onClick={(e) => e.stopPropagation()}>
+        <header className="card-h">
+          <h2 className="card-t">{tieuDe || "Chi tiết"}</h2>
+          <button type="button" className="btn btn-sm" onClick={onDong} autoFocus><X size={14} />Đóng</button>
+        </header>
+        <div style={{ padding: "8px 16px 16px", maxHeight: "70vh", overflowY: "auto" }}>
+          {dong.map(([l, v]) => (
+            <div key={l} className="tt-dong"><span>{l}</span><span>{hienGiaTri(v)}</span></div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    // Gắn vào gốc .vp (không phải body) để khung dùng được biến màu/phông của
+    // giao diện — ngoài .vp thì var(--paper) rỗng và khung bị trong suốt.
+    document.querySelector(".vp") || document.body,
+  );
+}
+
+/**
+ * Cột "Thao tác" chung: 👁 Xem · ✏️ Sửa · 🗑 Xoá, chỉ hiện nút có hành động.
+ * - `onView` tự xử lý việc xem; hoặc truyền `xem={{ tieuDe, duLieu, nhan }}` để tự mở khung XemChiTiet.
+ * - `truoc`/`sau`: nút phụ đặt trước/sau (dùng class "tt-btn" cho đồng bộ).
+ * Bấm trong cột không kích hoạt sự kiện bấm dòng bên ngoài.
+ */
+export function ThaoTac({ xem, onView, onEdit, onDelete, truoc, sau,
+                          xemTitle = "Xem chi tiết", suaTitle = "Sửa", xoaTitle = "Xóa" }) {
+  const [mo, setMo] = React.useState(false);
+  const bam = (f) => (e) => { e.stopPropagation(); f?.(); };
+  return (
+    <span className="tt" onClick={(e) => e.stopPropagation()}>
+      {truoc}
+      {(onView || xem) && (
+        <button type="button" className="tt-btn" title={xemTitle} aria-label={xemTitle}
+          onClick={bam(onView || (() => setMo(true)))}><Eye size={16} /></button>
+      )}
+      {onEdit && (
+        <button type="button" className="tt-btn" title={suaTitle} aria-label={suaTitle}
+          onClick={bam(onEdit)}><SquarePen size={16} /></button>
+      )}
+      {onDelete && (
+        <button type="button" className="tt-btn tt-xoa" title={xoaTitle} aria-label={xoaTitle}
+          onClick={bam(onDelete)}><Trash2 size={16} /></button>
+      )}
+      {sau}
+      {mo && xem && <XemChiTiet {...xem} onDong={() => setMo(false)} />}
+    </span>
   );
 }
 

@@ -22,7 +22,21 @@ import { AdminDutyRoster, AdminHandovers, AdminOperations, AdminWorkOrders } fro
 import { AdminCandidates, AdminStaffing } from "./recruitment";
 import { AdminCsdlHtImport } from "./csdlht";
 import { GalleryPicker, ImagePicker } from "./imagepicker";
-import { Card, Check as CheckBox, Empty, Field, norm, RED, RED_DARK, SwitchRow } from "./ui";
+import { Card, Check as CheckBox, Empty, Field, norm, RED, RED_DARK, SwitchRow, ThaoTac } from "./ui";
+
+// Nhãn cho khung "Xem chi tiết" của từng loại dữ liệu (ThaoTac › xem).
+const XEM_BAN_TIN = { title: "Tiêu đề", category: "Chuyên mục", tag: "Nhãn", author: "Tác giả", published_at: "Ngày đăng",
+  excerpt: "Tóm tắt", cover_url: "Ảnh bìa", featured: "Nổi bật", pinned: "Ghim", visible: "Đang hiện" };
+const XEM_TAI_LIEU = { title: "Tên tài liệu", code: "Số hiệu", category: "Loại", file_url: "Tệp / đường dẫn",
+  size_label: "Dung lượng", updated_on: "Ngày cập nhật", downloads: "Lượt tải" };
+const XEM_NHAN_VIEN = { full_name: "Họ và tên", role: "Chức vụ", dept: "Đơn vị", phone: "Điện thoại", email: "Email",
+  birthday: "Ngày sinh", active: "Đang công tác" };
+const XEM_SU_KIEN = { title: "Nội dung", start_at: "Thời gian", place: "Địa điểm", host: "Chủ trì", participants: "Thành phần",
+  meeting_type_label: "Hình thức", meeting_info: "Link / thông tin họp", meeting_id: "Mã họp" };
+const XEM_SO_LIEU = { board: "Bảng", period: "Kỳ", label: "Chỉ tiêu", unit_name: "Đơn vị", value: "Giá trị" };
+const XEM_TAI_KHOAN = { username: "Tên đăng nhập", full_name: "Họ và tên", role_label: "Quyền", person_name: "Gắn với nhân viên",
+  must_change_password: "Buộc đổi mật khẩu", created_at: "Ngày tạo" };
+const tenDong = (r) => r.title || r.name || r.full_name || r.content || "Chi tiết";
 
 /* --------------------------------------------------------------- Tiện ích */
 
@@ -197,10 +211,8 @@ export function AdminNews() {
                       </button>
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button className="btn btn-sm" onClick={() => setEdit({ ...r, published_at: isoLocal(r.published_at) })}>
-                        <Edit3 size={13} /> Sửa
-                      </button>{" "}
-                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                      <ThaoTac xem={{ tieuDe: r.title, duLieu: r, nhan: XEM_BAN_TIN }}
+                        onEdit={() => setEdit({ ...r, published_at: isoLocal(r.published_at) })} onDelete={() => remove(r)} />
                     </td>
                   </tr>
                 ))}
@@ -308,8 +320,7 @@ export function AdminNotices() {
               </p>
             </div>
             <div className="flex gap-2">
-              <button className="btn btn-sm" onClick={() => setEdit({ ...r })}><Edit3 size={13} /> Sửa</button>
-              <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+              <ThaoTac xem={{ tieuDe: tenDong(r), duLieu: r }} onEdit={() => setEdit({ ...r })} onDelete={() => remove(r)} />
             </div>
           </div>
         ))}
@@ -371,8 +382,7 @@ export function AdminBanners() {
                 Thứ tự {r.order_no} · {r.active ? "Đang bật" : "Đã tắt"}
               </p>
               <div className="flex gap-2" style={{ marginTop: 10 }}>
-                <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }} onClick={() => setEdit({ ...r })}><Edit3 size={13} /> Sửa</button>
-                <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                <ThaoTac xem={{ tieuDe: tenDong(r), duLieu: r }} onEdit={() => setEdit({ ...r })} onDelete={() => remove(r)} />
               </div>
             </div>
           </div>
@@ -502,8 +512,7 @@ export function AdminApps() {
                       {r.url === "#" ? "Chưa điền đường dẫn" : r.url}
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button className="btn btn-sm" onClick={() => setEdit({ ...r })}><Edit3 size={13} /> Sửa</button>{" "}
-                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                      <ThaoTac xem={{ tieuDe: tenDong(r), duLieu: r }} onEdit={() => setEdit({ ...r })} onDelete={() => remove(r)} />
                     </td>
                   </tr>
                 ))}
@@ -608,8 +617,8 @@ export function AdminDocs() {
                     <td><span className="tag tag-grey">{r.category}</span></td>
                     <td className="mono muted" style={{ fontSize: 12 }}>{iso(r.updated_on).split("-").reverse().join("/")}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button className="btn btn-sm" onClick={() => setEdit({ ...r, updated_on: iso(r.updated_on) })}><Edit3 size={13} /> Sửa</button>{" "}
-                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                      <ThaoTac xem={{ tieuDe: r.title, duLieu: r, nhan: XEM_TAI_LIEU }}
+                        onEdit={() => setEdit({ ...r, updated_on: iso(r.updated_on) })} onDelete={() => remove(r)} />
                     </td>
                   </tr>
                 ))}
@@ -704,8 +713,8 @@ export function AdminPeople() {
                       {r.birthday ? iso(r.birthday).split("-").reverse().join("/") : "—"}
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button className="btn btn-sm" onClick={() => setEdit({ ...r, birthday: iso(r.birthday) })}><Edit3 size={13} /> Sửa</button>{" "}
-                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                      <ThaoTac xem={{ tieuDe: r.full_name, duLieu: r, nhan: XEM_NHAN_VIEN }}
+                        onEdit={() => setEdit({ ...r, birthday: iso(r.birthday) })} onDelete={() => remove(r)} />
                     </td>
                   </tr>
                 ))}
@@ -777,8 +786,8 @@ export function AdminCulture() {
                 {isoLocal(r.start_at).replace("T", " · ")} · {r.place}
               </p>
             </div>
-            <button className="btn btn-sm" onClick={() => setEdit({ ...r, start_at: isoLocal(r.start_at) })}><Edit3 size={13} /> Sửa</button>
-            <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+            <ThaoTac xem={{ tieuDe: r.title, duLieu: r, nhan: XEM_SU_KIEN }}
+              onEdit={() => setEdit({ ...r, start_at: isoLocal(r.start_at) })} onDelete={() => remove(r)} />
           </div>
         ))}
       </Card>
@@ -1276,8 +1285,8 @@ export function AdminMetrics() {
                     <td className="muted">{r.unit_name || "—"}</td>
                     <td className="mono" style={{ textAlign: "right" }}>{r.value?.toLocaleString("vi-VN")}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button className="btn btn-sm" onClick={() => setEdit({ ...r, value: String(r.value) })}><Edit3 size={13} /> Sửa</button>{" "}
-                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                      <ThaoTac xem={{ tieuDe: `${r.label} — ${r.period}`, duLieu: r, nhan: XEM_SO_LIEU }}
+                        onEdit={() => setEdit({ ...r, value: String(r.value) })} onDelete={() => remove(r)} />
                     </td>
                   </tr>
                 ))}
@@ -1617,14 +1626,13 @@ export function AdminUsers() {
                     </td>
                     <td className="muted" style={{ fontSize: 12.5 }}>{r.person_name || "—"}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                      <button className="btn btn-sm" onClick={() => { setEdit({ ...r, permissions: r.permission_actions || {} }); setMsg(""); }}>
-                        <Edit3 size={13} /> Sửa
-                      </button>{" "}
-                      <button className="btn btn-sm" title="Đặt lại mật khẩu"
-                        onClick={() => { setPwFor(r); setNewPw(""); setMsg(""); }}>
-                        <KeyRound size={13} />
-                      </button>{" "}
-                      <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                      <ThaoTac xem={{ tieuDe: r.full_name, duLieu: r, nhan: XEM_TAI_KHOAN }}
+                        onEdit={() => { setEdit({ ...r, permissions: r.permission_actions || {} }); setMsg(""); }}
+                        onDelete={() => remove(r)}
+                        sau={(
+                          <button type="button" className="tt-btn" title="Đặt lại mật khẩu" aria-label="Đặt lại mật khẩu"
+                            onClick={() => { setPwFor(r); setNewPw(""); setMsg(""); }}><KeyRound size={16} /></button>
+                        )} />
                     </td>
                   </tr>
                 ))}
@@ -2234,8 +2242,8 @@ export function AdminSheets() {
               </div>
               <div className="flex gap-2">
                 <button className="btn btn-sm" onClick={() => syncNow(r)}><RefreshCw size={13} /> Đồng bộ</button>
-                <button className="btn btn-sm" onClick={() => { setEdit({ ...r }); setMsg(""); setPreview(null); }}><Edit3 size={13} /> Sửa</button>
-                <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                <ThaoTac xem={{ tieuDe: tenDong(r), duLieu: r }}
+                  onEdit={() => { setEdit({ ...r }); setMsg(""); setPreview(null); }} onDelete={() => remove(r)} />
               </div>
             </div>
           </div>
@@ -2583,10 +2591,8 @@ export function AdminSchedule() {
                       <td className="muted" style={{ fontSize: 12.5 }}>{r.participants || "—"}</td>
                       <td><MeetingBadge e={r} /></td>
                       <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                        <button className="btn btn-sm" onClick={() => { setEdit({ ...r, start_at: isoLocal(r.start_at) }); setMsg(""); }}>
-                          <Edit3 size={13} /> Sửa
-                        </button>{" "}
-                        <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                        <ThaoTac xem={{ tieuDe: r.title, duLieu: r, nhan: XEM_SU_KIEN }}
+                          onEdit={() => { setEdit({ ...r, start_at: isoLocal(r.start_at) }); setMsg(""); }} onDelete={() => remove(r)} />
                       </td>
                     </tr>
                   );
@@ -2701,11 +2707,8 @@ export function AdminMedia() {
                   {[r.author, r.album].filter(Boolean).join(" · ") || "—"}
                 </p>
                 <div className="flex gap-2" style={{ marginTop: 10 }}>
-                  <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center" }}
-                    onClick={() => { setEdit({ ...r }); setMsg(""); }}>
-                    <Edit3 size={13} /> Sửa
-                  </button>
-                  <button className="btn btn-sm" onClick={() => remove(r)}><Trash2 size={13} /></button>
+                  <ThaoTac xem={{ tieuDe: tenDong(r), duLieu: r }}
+                    onEdit={() => { setEdit({ ...r }); setMsg(""); }} onDelete={() => remove(r)} />
                 </div>
               </div>
             </div>

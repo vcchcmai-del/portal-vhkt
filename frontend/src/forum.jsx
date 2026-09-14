@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from "react";
 import { CheckCircle2, Edit3, MessageSquare, Trash2 } from "lucide-react";
 import { api } from "./api";
-import { Card, Empty, Field, RED } from "./ui";
+import { Card, Empty, Field, RED, ThaoTac } from "./ui";
 
 const STATUS_LABEL = { pending: "Chờ duyệt", approved: "Đã duyệt" };
 const STATUS_TAG = { pending: "tag-amber", approved: "tag-green" };
@@ -81,8 +81,8 @@ function ThreadsPanel() {
                   {t.status === "pending" && (
                     <button className="btn btn-sm" onClick={() => approve(t)} title="Duyệt"><CheckCircle2 size={13} /></button>
                   )}{" "}
-                  <button className="btn btn-sm" onClick={() => setEdit({ id: t.id, title: t.title, tag: t.tag })} title="Sửa"><Edit3 size={13} /></button>{" "}
-                  <button className="btn btn-sm" onClick={() => del(t)} title="Xóa"><Trash2 size={13} /></button>
+                  <ThaoTac xem={{ tieuDe: t.title, duLieu: t }}
+                    onEdit={() => setEdit({ id: t.id, title: t.title, tag: t.tag })} onDelete={() => del(t)} />
                 </td>
               </tr>
             ))}
@@ -150,8 +150,8 @@ function RepliesPanel() {
                   {r.status === "pending" && (
                     <button className="btn btn-sm" onClick={() => approve(r)} title="Duyệt"><CheckCircle2 size={13} /></button>
                   )}{" "}
-                  <button className="btn btn-sm" onClick={() => setEdit({ id: r.id, body: r.body })} title="Sửa"><Edit3 size={13} /></button>{" "}
-                  <button className="btn btn-sm" onClick={() => del(r)} title="Xóa"><Trash2 size={13} /></button>
+                  <ThaoTac xem={{ tieuDe: "Bình luận", duLieu: r }}
+                    onEdit={() => setEdit({ id: r.id, body: r.body })} onDelete={() => del(r)} />
                 </td>
               </tr>
             ))}

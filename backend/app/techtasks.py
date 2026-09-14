@@ -189,6 +189,13 @@ def _validate(data: TechTaskIn, db: Session, row=None):
             raise HTTPException(400, "Hạng mục tiến độ không thuộc đầu việc đã chọn.")
 
 
+def _doi_trang_thai(row, moi: Optional[str]) -> None:
+    """Ghi/xoá mốc hoàn thành khi trạng thái đổi sang/khỏi "done"."""
+    if not moi or moi == row.status:
+        return
+    row.done_at = models.now() if moi == "done" else None
+
+
 def _trang_thai(row, today) -> str:
     """Trạng thái hiệu lực: việc chưa xong mà đã qua hạn là "overdue"."""
     if row.status != "done" and row.due_at and row.due_at < today:
@@ -362,6 +369,7 @@ def admin_create_task(data: TechTaskIn, db: Session = Depends(get_db),
         status=data.status or "todo", link_url=(data.link_url or "").strip(),
         progress_item=(data.progress_item or "").strip() or None,
         note=(data.note or "").strip(),
+        done_at=models.now() if data.status == "done" else None,
     )
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, row.title, request=request)
@@ -379,6 +387,7 @@ def admin_update_task(item_id: int, data: TechTaskIn, db: Session = Depends(get_
     if (vals.get("category") and "progress_item" not in vals and row.progress_item
             and item_category(db).get(row.progress_item) != vals["category"]):
         vals["progress_item"] = None
+    _doi_trang_thai(row, vals.get("status"))
     _apply(row, vals)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "tech_tasks", row.id, row.title, request=request)
@@ -416,6 +425,7 @@ def report_task(item_id: int, data: BaoCaoIn, db: Session = Depends(get_db),
     if data.status is not None:
         if data.status not in STATUS_LABELS or data.status == "overdue":
             raise HTTPException(400, "Trạng thái không hợp lệ.")
+        _doi_trang_thai(row, data.status)
         row.status = data.status
     if data.note is not None:
         row.note = data.note.strip()
@@ -556,6 +566,84 @@ def export_tasks_csv(db: Session = Depends(get_db),
         content, media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="cong-viec-ky-thuat-{models.today()}.csv"'},
     )
+
+
+# ------------------------------------------------------------ Báo cáo (Dashboard)
+
+@admin_router.get("/tech-tasks/report")
+def tasks_report(weeks: int = 8, db: Session = Depends(get_db),
+                 user=Depends(require_module("tech_tasks", "view"))):
+    """Số liệu cho tab Báo cáo: trạng thái, theo đầu việc, theo hạn, xu hướng
+    giao/hoàn thành theo tuần, tiến độ hạng mục và theo nhân viên — một lần gọi."""
+    weeks = max(4, min(weeks, 26))
+    today = models.today()
+    rows = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None)).all()
+    cats = categories(db)
+    labels = category_labels(db)
+
+    trang_thai = {"done": 0, "doing": 0, "todo": 0, "overdue": 0}
+    theo_dv = {c.code: {"category": c.code, "label": c.label, "done": 0, "doing": 0, "todo": 0,
+                        "overdue": 0, "total": 0} for c in cats}
+    han = {"qua_han": 0, "trong_3_ngay": 0, "trong_7_ngay": 0, "sau_7_ngay": 0, "khong_han": 0}
+    for r in rows:
+        st = _trang_thai(r, today)
+        trang_thai[st] = trang_thai.get(st, 0) + 1
+        b = theo_dv.setdefault(r.category, {"category": r.category, "label": labels.get(r.category, r.category),
+                                            "done": 0, "doing": 0, "todo": 0, "overdue": 0, "total": 0})
+        b[st] = b.get(st, 0) + 1
+        b["total"] += 1
+        if st == "done":
+            continue
+        if st == "overdue":
+            han["qua_han"] += 1
+        elif not r.due_at:
+            han["khong_han"] += 1
+        else:
+            con = (r.due_at - today).days
+            han["trong_3_ngay" if con <= 3 else "trong_7_ngay" if con <= 7 else "sau_7_ngay"] += 1
+
+    # Giao mới / hoàn thành theo tuần (tuần bắt đầu thứ Hai)
+    dau = today - dt.timedelta(days=today.weekday()) - dt.timedelta(weeks=weeks - 1)
+    xu_huong = [{"tuan": (dau + dt.timedelta(weeks=i)).isoformat(),
+                 "nhan": (dau + dt.timedelta(weeks=i)).strftime("%d/%m"), "giao": 0, "xong": 0}
+                for i in range(weeks)]
+
+    def vao_tuan(ngay, khoa):
+        if ngay and ngay >= dau:
+            i = (ngay - dau).days // 7
+            if 0 <= i < weeks:
+                xu_huong[i][khoa] += 1
+
+    for r in rows:
+        vao_tuan(r.created_at.date() if r.created_at else None, "giao")
+        if r.status == "done":
+            luc = r.done_at or r.updated_at
+            vao_tuan(luc.date() if luc else None, "xong")
+
+    # Tiến độ hạng mục (kỳ gần nhất) gộp theo đầu việc
+    td, thuoc = _tien_do_moi_nhat(db), item_category(db)
+    tien_do = {}
+    for item, v in td.items():
+        c = thuoc.get(item)
+        if not c:
+            continue
+        g = tien_do.setdefault(c, {"category": c, "label": labels.get(c, c), "plan": 0.0, "done": 0.0, "period": v["period"]})
+        g["plan"] += v["plan"]
+        g["done"] += v["done"]
+        g["period"] = max(g["period"], v["period"])
+    for g in tien_do.values():
+        g["rate"] = (g["done"] / g["plan"]) if g["plan"] else None
+
+    theo_nguoi = tasks_by_person(db=db, user=user)
+    return {
+        "tong": len(rows), "trang_thai": trang_thai,
+        "ty_le_hoan_thanh": (trang_thai["done"] / len(rows)) if rows else None,
+        "theo_dau_viec": list(theo_dv.values()), "han": han, "xu_huong": xu_huong,
+        "tien_do": sorted(tien_do.values(), key=lambda g: [c.code for c in cats].index(g["category"])
+                          if g["category"] in [c.code for c in cats] else 999),
+        "nguoi": theo_nguoi["nguoi"], "toan_phong": theo_nguoi["toan_phong"],
+        "chua_giao": theo_nguoi["chua_giao"], "nguong": theo_nguoi["nguong"],
+    }
 
 
 # ------------------------------------------------------- Tổng hợp theo nhân viên

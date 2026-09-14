@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2, Download, MapPin, Plus, RefreshCw, TrendingDown, Trash2, UserCheck, Users } from "lucide-react";
 import { api, getUser, useCenters } from "./api";
-import { Card, Empty, Field, RED } from "./ui";
+import { Card, Empty, Field, RED, ThaoTac } from "./ui";
 
 const EDU_OPTIONS = ["THPT", "Trung cấp", "Cao đẳng", "Đại học", "Sau đại học"];
 
@@ -475,9 +475,8 @@ export function AdminCandidates() {
                   <td>{x.major || "—"}</td>
                   <td>{x.referrer || "—"}</td>
                   <td><span className={`tag ${STATUS_TAG[x.status] || "tag-grey"}`}>{x.status_label}</span></td>
-                  <td>
-                    <button className="btn btn-sm" onClick={() => setForm(x)}>Sửa</button>{" "}
-                    <button className="btn btn-sm" onClick={() => del(x)}><Trash2 size={13} /></button>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <ThaoTac xem={{ tieuDe: x.full_name, duLieu: x }} onEdit={() => setForm(x)} onDelete={() => del(x)} />
                   </td>
                 </tr>
               ))}
@@ -615,9 +614,8 @@ export function AdminStaffing() {
                   <td><span className={`tag ${x.total_gap >= 8 ? "tag-red" : x.total_gap > 0 ? "tag-amber" : "tag-grey"}`}>{x.total_gap}</span></td>
                   <td>{x.applications_received || "—"}</td>
                   <td>{x.banner_location || "—"}</td>
-                  <td>
-                    <button className="btn btn-sm" onClick={() => setForm(x)}>Sửa</button>{" "}
-                    <button className="btn btn-sm" onClick={() => del(x)}><Trash2 size={13} /></button>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    <ThaoTac xem={{ tieuDe: `Định biên ${x.center || ""}`, duLieu: x }} onEdit={() => setForm(x)} onDelete={() => del(x)} />
                   </td>
                 </tr>
               ))}

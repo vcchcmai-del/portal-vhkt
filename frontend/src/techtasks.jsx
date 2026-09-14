@@ -4,7 +4,8 @@ import { api, coQuyen, laNguoiQuanLy, useCenters } from "./api";
 import { STATUS_LABELS, TaskListTab } from "./techtasks-list";
 import { TheoNhanVienTab } from "./techtasks-person";
 import { AdminImport } from "./bulkimport";
-import { Card, Empty, Field, RED } from "./ui";
+import { Card, Empty, Field, RED, ThaoTac } from "./ui";
+import { BaoCaoCongViec } from "./techtasks-report";
 
 // Đầu việc KHÔNG còn khai báo cứng ở đây nữa: danh sách lấy từ
 // /api/admin/tech-tasks/categories (bảng tech_categories). Trước đây cùng một
@@ -30,6 +31,7 @@ export function AdminTechTasks() {
       <div className="card flex gap-2" style={{ padding: 8, flexWrap: "wrap" }}>
         {nutTab("list", "Danh sách công việc")}
         {nutTab("person", "Theo nhân viên")}
+        {nutTab("report", "Báo cáo")}
         {nutTab("progress", "Tiến độ", () => setMoTienDo(null))}
       </div>
       {tab === "list" && (
@@ -42,6 +44,10 @@ export function AdminTechTasks() {
       )}
       {tab === "person" && (
         <TheoNhanVienTab onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }} />
+      )}
+      {tab === "report" && (
+        <BaoCaoCongViec onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }}
+          onXemDauViec={(category) => { setLocDauViec(category); setLocNguoi({ ten: "", luc: Date.now() }); setTab("list"); }} />
       )}
       {tab === "progress" && (
         <ProgressTab moSan={moTienDo}
@@ -374,7 +380,7 @@ function ProgressTab({ moSan, onXemViec }) {
                 {!gap && (g.hien.length ? (
                   <div style={{ overflowX: "auto" }}>
                     <table className="tbl">
-                      <thead><tr><th>Hạng mục</th><th>Thực hiện / Kế hoạch</th><th>Tồn</th><th></th></tr></thead>
+                      <thead><tr><th>Hạng mục</th><th>Thực hiện / Kế hoạch</th><th>Tồn</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
                       <tbody>
                         {g.hien.map((it) => {
                           const x = tomTat(it.id, g.category);
@@ -402,18 +408,11 @@ function ProgressTab({ moSan, onXemViec }) {
                               <td style={{ width: "40%" }}><ThanhTienDo done={x.done_qty || 0} plan={x.plan_qty || 0} /></td>
                               <td className="muted" style={{ whiteSpace: "nowrap" }}>{soGon(x.remaining)}</td>
                               <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
-                                {cheDoSua ? (
-                                  <>
-                                    {duocSua && !dangSua && (
-                                      <button type="button" className="btn btn-sm" style={nutNho} title={`Đổi tên “${it.label}”`}
-                                        onClick={(e) => { e.stopPropagation(); setSuaHangMuc({ id: it.id, label: it.label }); }}><Pencil size={12} /></button>
-                                    )}{" "}
-                                    {duocXoa && !dangSua && (
-                                      <button type="button" className="btn btn-sm" style={nutNho} title={`Xóa “${it.label}”`}
-                                        onClick={(e) => { e.stopPropagation(); xoaHangMuc(it); }}><Trash2 size={12} /></button>
-                                    )}
-                                  </>
-                                ) : <span className="muted" style={{ fontSize: 12 }}>Chi tiết ›</span>}
+                                {!dangSua && (
+                                  <ThaoTac onView={() => openItem(g.category, g.category_label, it.id, it.label)} xemTitle="Xem theo trung tâm"
+                                    onEdit={duocSua ? () => setSuaHangMuc({ id: it.id, label: it.label }) : null} suaTitle="Đổi tên hạng mục"
+                                    onDelete={duocXoa ? () => xoaHangMuc(it) : null} xoaTitle="Xóa hạng mục" />
+                                )}
                               </td>
                             </tr>
                           );
@@ -479,7 +478,7 @@ function ProgressTab({ moSan, onXemViec }) {
             )}
             <div style={{ overflowX: "auto" }}>
               <table className="tbl">
-                <thead><tr><th>TT</th><th>Trung tâm</th><th>Kế hoạch</th><th>Thực hiện</th><th>Tồn</th><th>Tỷ lệ HT</th><th></th></tr></thead>
+                <thead><tr><th>TT</th><th>Trung tâm</th><th>Kế hoạch</th><th>Thực hiện</th><th>Tồn</th><th>Tỷ lệ HT</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
                 <tbody>
                   {centers.map((c, i) => (
                     <tr key={c.id}>
@@ -489,9 +488,10 @@ function ProgressTab({ moSan, onXemViec }) {
                       <td>{c.done_qty}</td>
                       <td>{c.remaining}</td>
                       <td>{pct(c.rate)}</td>
-                      <td>
-                        <button className="btn btn-sm" onClick={() => setCenterForm({ ...c })}>Sửa</button>{" "}
-                        <button className="btn btn-sm" onClick={() => delCenter(c)}><Trash2 size={13} /></button>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <ThaoTac onView={() => openCenter(c.center)} xemTitle="Xem chi tiết theo FT"
+                          onEdit={duocSua ? () => setCenterForm({ ...c }) : null}
+                          onDelete={duocXoa ? () => delCenter(c) : null} />
                       </td>
                     </tr>
                   ))}
@@ -556,7 +556,7 @@ function ProgressTab({ moSan, onXemViec }) {
             )}
             <div style={{ overflowX: "auto" }}>
               <table className="tbl">
-                <thead><tr><th>FT</th><th>Kế hoạch</th><th>Thực hiện</th><th>Tồn</th><th>Tỷ lệ HT</th><th></th></tr></thead>
+                <thead><tr><th>FT</th><th>Kế hoạch</th><th>Thực hiện</th><th>Tồn</th><th>Tỷ lệ HT</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
                 <tbody>
                   {ftRows.map((f) => (
                     <tr key={f.id}>
@@ -565,9 +565,12 @@ function ProgressTab({ moSan, onXemViec }) {
                       <td>{f.done_qty}</td>
                       <td>{f.remaining}</td>
                       <td>{pct(f.rate)}</td>
-                      <td>
-                        <button className="btn btn-sm" onClick={() => setFtForm({ ...f })}>Sửa</button>{" "}
-                        <button className="btn btn-sm" onClick={() => delFt(f)}><Trash2 size={13} /></button>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        <ThaoTac
+                          xem={{ tieuDe: `FT ${f.ft_name}`, duLieu: f, nhan: { ft_name: "FT", center: "Trung tâm", item_label: "Hạng mục",
+                            period: "Kỳ", plan_qty: "Kế hoạch", done_qty: "Thực hiện", remaining: "Tồn", note: "Ghi chú", updated_at: "Cập nhật" } }}
+                          onEdit={duocSua ? () => setFtForm({ ...f }) : null}
+                          onDelete={duocXoa ? () => delFt(f) : null} />
                       </td>
                     </tr>
                   ))}

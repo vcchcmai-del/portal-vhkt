@@ -548,6 +548,9 @@ class TechTask(Base):
     # nhờ đó dòng công việc hiện luôn Kế hoạch/Thực hiện của hạng mục đó.
     progress_item = Column(String(60), nullable=True)
     note = Column(Text)                     # ghi chú tiến độ
+    # Lúc chuyển sang Hoàn thành — cho biểu đồ "hoàn thành theo tuần". Việc xong
+    # trước khi có cột này thì để trống, báo cáo dùng tạm updated_at.
+    done_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
     # Thùng rác: xoá là xoá mềm, quản trị viên khôi phục được (xem trash.py).
