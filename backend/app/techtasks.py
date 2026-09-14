@@ -815,18 +815,29 @@ def update_progress_item(code: str, data: ProgressItemIn, db: Session = Depends(
 
 
 @admin_router.delete("/progress/items/{code}")
-def delete_progress_item(code: str, db: Session = Depends(get_db),
+def delete_progress_item(code: str, xoa_so_lieu: bool = False, db: Session = Depends(get_db),
                          user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+    """Xoá hạng mục. Còn số liệu thì mặc định từ chối (trả 409 kèm số dòng để
+    giao diện hỏi lại); gửi xoa_so_lieu=true thì xoá luôn số liệu các kỳ.
+    Công việc đang liên kết hạng mục được gỡ liên kết chứ không bị xoá."""
     row = db.query(models.TechProgressItem).filter(models.TechProgressItem.code == code).first()
     if not row:
         raise HTTPException(404, "Không tìm thấy hạng mục.")
-    dang_dung = db.query(models.ProgressEntry).filter(models.ProgressEntry.item == code).count()
-    if dang_dung:
-        raise HTTPException(400, f"Hạng mục đang có {dang_dung} dòng tiến độ. Hãy xoá các dòng đó trước.")
+    q_so_lieu = db.query(models.ProgressEntry).filter(models.ProgressEntry.item == code)
+    so_dong = q_so_lieu.count()
+    if so_dong and not xoa_so_lieu:
+        raise HTTPException(409, f"Hạng mục đang có {so_dong} dòng tiến độ (trung tâm/FT).")
+    if so_dong:
+        q_so_lieu.delete(synchronize_session=False)
+    go_lien_ket = (db.query(models.TechTask).filter(models.TechTask.progress_item == code)
+                   .update({models.TechTask.progress_item: None}, synchronize_session=False))
     label = row.label
     db.delete(row); db.commit()
-    log_action(db, user, "delete", "tech_tasks", None, f"Hạng mục: {label}", request=request)
-    return {"deleted": code}
+    log_action(db, user, "delete", "tech_tasks", None, f"Hạng mục: {label}",
+               detail=(f"Xoá kèm {so_dong} dòng tiến độ" if so_dong else "")
+                      + (f"; gỡ liên kết {go_lien_ket} công việc" if go_lien_ket else ""),
+               request=request)
+    return {"deleted": code, "so_dong_da_xoa": so_dong, "go_lien_ket": go_lien_ket}
 
 
 @admin_router.get("/progress/periods")

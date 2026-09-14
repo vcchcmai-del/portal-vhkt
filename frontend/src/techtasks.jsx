@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Download, Link2, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
-import { api, laNguoiQuanLy, useCenters } from "./api";
+import { ArrowLeft, Download, Link2, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { api, coQuyen, laNguoiQuanLy, useCenters } from "./api";
 import { STATUS_LABELS, TaskListTab } from "./techtasks-list";
 import { AdminImport } from "./bulkimport";
 import { Card, Empty, Field, RED } from "./ui";
@@ -67,9 +67,57 @@ function ProgressTab({ moSan, onXemViec }) {
   const [newItem, setNewItem] = useState("");
   const [assignees, setAssignees] = useState([]);
   const [viecLienKet, setViecLienKet] = useState([]);   // công việc có gắn hạng mục
+  const [suaHangMuc, setSuaHangMuc] = useState(null);   // {id, label} đang đổi tên
+  const [suaDauViec, setSuaDauViec] = useState(null);   // {category, label} đang đổi tên
+  const duocThem = coQuyen("tech_tasks", "create");
+  const duocSua = coQuyen("tech_tasks", "update");
+  const duocXoa = coQuyen("tech_tasks", "delete");
 
   const loadItems = () => api.get("/api/admin/progress/items")
     .then((x) => setItemGroups(Array.isArray(x) ? x : [])).catch((e) => setErr(e.message));
+
+  const luuHangMuc = async () => {
+    const label = (suaHangMuc?.label || "").trim();
+    if (!label) { setSuaHangMuc(null); return; }
+    try {
+      await api.put(`/api/admin/progress/items/${suaHangMuc.id}`, { label });
+      setSuaHangMuc(null); setErr(""); loadItems(); loadSummary();
+    } catch (e) { setErr(e.message); }
+  };
+
+  /** Xoá hạng mục; còn số liệu thì hỏi lại rồi mới xoá kèm số liệu các kỳ. */
+  const xoaHangMuc = async (it) => {
+    if (!window.confirm(`Xóa hạng mục “${it.label}”?`)) return;
+    try {
+      await api.del(`/api/admin/progress/items/${it.id}`);
+    } catch (e) {
+      if (!/dòng tiến độ/.test(e.message)) { setErr(e.message); return; }
+      if (!window.confirm(`${e.message}\n\nXóa luôn toàn bộ số liệu của hạng mục này ở mọi kỳ? Không khôi phục được — nên Xuất CSV lưu lại trước.`)) return;
+      try { await api.del(`/api/admin/progress/items/${it.id}?xoa_so_lieu=true`); }
+      catch (e2) { setErr(e2.message); return; }
+    }
+    setErr(""); loadItems(); loadSummary();
+    setViecLienKet((ds) => ds.filter((t) => t.progress_item !== it.id));
+  };
+
+  const luuDauViec = async () => {
+    const label = (suaDauViec?.label || "").trim();
+    if (!label) { setSuaDauViec(null); return; }
+    try {
+      await api.put(`/api/admin/tech-tasks/categories/${suaDauViec.category}`, { label });
+      setSuaDauViec(null); setErr(""); loadItems(); loadSummary();
+    } catch (e) { setErr(e.message); }
+  };
+
+  /** Đồng bộ dòng tổng Trung tâm = tổng các dòng FT (khi hai bên lệch nhau). */
+  const dongBoTuFt = async () => {
+    if (!centerRow) return;
+    if (!window.confirm(`Ghi Kế hoạch ${ftTotals.plan} / Thực hiện ${ftTotals.done} (tổng theo FT) vào dòng trung tâm ${selectedCenter}?`)) return;
+    try {
+      await api.put(`/api/admin/progress/centers/${centerRow.id}`, { plan_qty: ftTotals.plan, done_qty: ftTotals.done });
+      setErr(""); loadCenters(); loadSummary();
+    } catch (e) { setErr(e.message); }
+  };
 
   /** Thêm hạng mục định lượng cho đúng đầu việc đang đứng. */
   const themHangMuc = async (category) => {
@@ -189,11 +237,15 @@ function ProgressTab({ moSan, onXemViec }) {
         <datalist id="progress-periods">{periods.map((p) => <option key={p} value={p} />)}</datalist>
         <button className="btn btn-sm" onClick={() => { loadSummary(); if (selected) loadCenters(); if (selectedCenter) loadFt(); }}><RefreshCw size={14} />Tải lại</button>
         {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
-        <button className="btn btn-sm" onClick={() => setShowImport((s) => !s)}><Upload size={14} />Nhập Excel</button>
+        {(duocThem || duocSua) && <button className="btn btn-sm" onClick={() => setShowImport((s) => !s)}><Upload size={14} />Nhập / đồng bộ Excel</button>}
       </div>
 
       {showImport && (
-        <Card title="Nhập Excel — Tiến độ hạng mục kỹ thuật">
+        <Card title="Nhập / đồng bộ Excel — Tiến độ hạng mục kỹ thuật">
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+            Dòng trùng (đầu việc, hạng mục, kỳ, trung tâm) được <b>cập nhật đè</b>, dòng mới được thêm — nhập lại tệp đã sửa là đồng bộ, không sinh trùng.
+            Tải tệp mẫu, hoặc Xuất CSV ở trên để lấy số liệu hiện có ra sửa rồi nhập ngược lại.
+          </p>
           <AdminImport fixedKind="progress" />
           <div style={{ marginTop: 10 }}>
             <button className="btn" onClick={() => { setShowImport(false); loadSummary(); if (selected) loadCenters(); }}>Đóng</button>
@@ -207,9 +259,25 @@ function ProgressTab({ moSan, onXemViec }) {
         <>
           {itemGroups.map((g) => (
             <div key={g.category}>
-              <div className="flex items-center gap-2" style={{ margin: "10px 0 8px" }}>
-                <p className="eyebrow-grey">{g.category_label}</p>
-                {newItemCat === g.category ? (
+              <div className="flex items-center gap-2" style={{ margin: "10px 0 8px", flexWrap: "wrap" }}>
+                {suaDauViec?.category === g.category ? (
+                  <>
+                    <input className="inp" style={{ maxWidth: 260 }} autoFocus value={suaDauViec.label}
+                      onChange={(e) => setSuaDauViec({ ...suaDauViec, label: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuDauViec(); } if (e.key === "Escape") setSuaDauViec(null); }} />
+                    <button className="btn btn-red btn-sm" onClick={luuDauViec}>Lưu</button>
+                    <button className="btn btn-sm" onClick={() => setSuaDauViec(null)}>Hủy</button>
+                  </>
+                ) : (
+                  <>
+                    <p className="eyebrow-grey">{g.category_label}</p>
+                    {duocSua && (
+                      <button className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Đổi tên đầu việc ${g.category_label}`}
+                        onClick={() => setSuaDauViec({ category: g.category, label: g.category_label })}><Pencil size={12} /></button>
+                    )}
+                  </>
+                )}
+                {!duocThem ? null : newItemCat === g.category ? (
                   <>
                     <input className="inp" style={{ maxWidth: 260 }} autoFocus placeholder="Tên hạng mục mới…"
                       value={newItem} onChange={(e) => setNewItem(e.target.value)}
@@ -219,7 +287,7 @@ function ProgressTab({ moSan, onXemViec }) {
                   </>
                 ) : (
                   <button className="btn btn-sm" title={`Thêm hạng mục cho ${g.category_label}`}
-                    onClick={() => { setNewItemCat(g.category); setNewItem(""); }}><Plus size={13} /></button>
+                    onClick={() => { setNewItemCat(g.category); setNewItem(""); }}><Plus size={13} />Thêm hạng mục</button>
                 )}
               </div>
               {!g.items.length && (
@@ -231,10 +299,33 @@ function ProgressTab({ moSan, onXemViec }) {
                 {g.items.map((it) => {
                   const s = summary.find((x) => x.category === g.category && x.item === it.id)
                     || { plan_qty: 0, done_qty: 0, remaining: 0, rate: null };
+                  const dangSua = suaHangMuc?.id === it.id;
+                  // Thẻ là div (không phải button) để đặt được nút sửa/xoá bên trong.
                   return (
-                    <button key={it.id} className="card" style={{ textAlign: "left", cursor: "pointer", padding: 12 }}
-                      onClick={() => openItem(g.category, g.category_label, it.id, it.label)}>
-                      <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30 }}>{it.label}</p>
+                    <div key={it.id} className="card" role="button" tabIndex={0} style={{ textAlign: "left", cursor: dangSua ? "default" : "pointer", padding: 12 }}
+                      onClick={() => { if (!dangSua) openItem(g.category, g.category_label, it.id, it.label); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !dangSua) openItem(g.category, g.category_label, it.id, it.label); }}>
+                      {dangSua ? (
+                        <div className="flex items-center" style={{ gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                          <input className="inp" autoFocus value={suaHangMuc.label}
+                            onChange={(e) => setSuaHangMuc({ ...suaHangMuc, label: e.target.value })}
+                            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); luuHangMuc(); } if (e.key === "Escape") setSuaHangMuc(null); }} />
+                          <button className="btn btn-red btn-sm" onClick={luuHangMuc}>Lưu</button>
+                          <button className="btn btn-sm" onClick={() => setSuaHangMuc(null)}>Hủy</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center" style={{ gap: 4 }}>
+                          <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{it.label}</p>
+                          {duocSua && (
+                            <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Đổi tên hạng mục “${it.label}”`}
+                              onClick={(e) => { e.stopPropagation(); setSuaHangMuc({ id: it.id, label: it.label }); }}><Pencil size={12} /></button>
+                          )}
+                          {duocXoa && (
+                            <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa hạng mục “${it.label}”`}
+                              onClick={(e) => { e.stopPropagation(); xoaHangMuc(it); }}><Trash2 size={12} /></button>
+                          )}
+                        </div>
+                      )}
                       <div style={{ marginTop: 6 }}>
                         <span style={{ fontSize: 20, fontWeight: 800, color: RED }}>{s.done_qty}</span>
                         <span className="muted" style={{ fontSize: 12 }}> / {s.plan_qty}</span>
@@ -244,7 +335,7 @@ function ProgressTab({ moSan, onXemViec }) {
                         <span className="tag tag-green">{pct(s.rate)}</span>
                         {!!viecCuaHangMuc(it.id).length && <span className="tag tag-amber"><Link2 size={10} /> {viecCuaHangMuc(it.id).length} việc</span>}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -337,9 +428,16 @@ function ProgressTab({ moSan, onXemViec }) {
           <Card title={`FT phụ trách — ${selectedCenter}`}
             action={<button className="btn btn-sm" onClick={() => setFtForm(blankFtRow(selected, period, selectedCenter))}><Plus size={14} />Thêm FT</button>}>
             {centerRow && (
-              <p className={ftMismatch ? "tag tag-amber" : "tag tag-grey"} style={{ display: "inline-flex", marginBottom: 10 }}>
-                Tổng theo FT: {ftTotals.done}/{ftTotals.plan} — so với Trung tâm: {centerRow.done_qty}/{centerRow.plan_qty}
-              </p>
+              <div className="flex items-center gap-2" style={{ marginBottom: 10, flexWrap: "wrap" }}>
+                <p className={ftMismatch ? "tag tag-amber" : "tag tag-grey"} style={{ display: "inline-flex" }}>
+                  Tổng theo FT: {ftTotals.done}/{ftTotals.plan} — so với Trung tâm: {centerRow.done_qty}/{centerRow.plan_qty}
+                </p>
+                {ftMismatch && ftRows.length > 0 && duocSua && (
+                  <button className="btn btn-sm" onClick={dongBoTuFt} title="Ghi tổng theo FT vào dòng trung tâm">
+                    <RefreshCw size={13} />Đồng bộ lên trung tâm
+                  </button>
+                )}
+              </div>
             )}
             {ftForm && (
               <div className="card" style={{ padding: 12, marginBottom: 12 }}>
