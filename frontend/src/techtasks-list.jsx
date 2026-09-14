@@ -280,8 +280,9 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
 /* ---------------------------------------------------------------- đầu việc */
 
 /** Sửa tên/gợi ý, xoá đầu việc (thẻ ở đầu trang). Xoá chỉ được khi đầu việc chưa dùng. */
-function QuanLyDauViec({ categories, onDoi, onDong }) {
-  const [sua, setSua] = useState(null);
+function QuanLyDauViec({ categories, onDoi, onDong, suaNgay }) {
+  // Mở từ nút ✏️ trên thẻ đầu việc thì vào thẳng chế độ sửa đầu việc đó.
+  const [sua, setSua] = useState(suaNgay ? { ...suaNgay, hint: suaNgay.hint || "" } : null);
   const [moi, setMoi] = useState("");
   const [loi, setLoi] = useState("");
   const duocThem = coQuyen("tech_tasks", "create");
@@ -356,7 +357,7 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
   const [assignees, setAssignees] = useState([]);
   const [hangMuc, setHangMuc] = useState([]);     // [{category, items:[{id,label}]}]
   const [moId, setMoId] = useState(null);         // việc đang xem chi tiết
-  const [qlDauViec, setQlDauViec] = useState(false);
+  const [qlDauViec, setQlDauViec] = useState(false);   // false | true | đầu việc đang sửa
   const [newCat, setNewCat] = useState(null);
 
   const duocGiao = coQuyen("tech_tasks", "create");
@@ -440,6 +441,16 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
     try { await api.del(`/api/admin/tech-tasks/${x.id}`); if (moId === x.id) setMoId(null); taiLai(); } catch (e) { setErr(e.message); }
   };
 
+  /** Xoá đầu việc ngay từ nút 🗑 trên thẻ — máy chủ từ chối nếu đầu việc còn dữ liệu. */
+  const xoaDauViec = async (c) => {
+    if (!window.confirm(`Xóa đầu việc “${c.label}”?`)) return;
+    try {
+      await api.del(`/api/admin/tech-tasks/categories/${c.id}`);
+      if (fCategory === c.id) setFCategory("");
+      setErr(""); loadCategories(); loadSummary();
+    } catch (e) { setErr(e.message); }
+  };
+
   const exportCsv = async () => {
     try {
       const { blob, filename } = await api.blob("/api/admin/tech-tasks/export");
@@ -475,29 +486,43 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
         </div>
         <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
           <button className="btn btn-sm" onClick={() => { taiLai(); loadCategories(); }}><RefreshCw size={14} />Tải lại</button>
-          {(duocSua || duocXoa) && <button className="btn btn-sm" onClick={() => setQlDauViec((v) => !v)}><Pencil size={14} />Đầu việc</button>}
+          {(duocSua || duocXoa) && <button className="btn btn-sm" onClick={() => setQlDauViec((v) => (v ? false : true))}><Pencil size={14} />Sửa / xóa đầu việc</button>}
           {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
           {duocGiao && <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, fCategory)); }}><Plus size={14} />Giao việc mới</button>}
         </div>
       </div>
 
-      {qlDauViec && <QuanLyDauViec categories={categories} onDong={() => setQlDauViec(false)}
-        onDoi={() => { loadCategories(); loadSummary(); }} />}
+      {qlDauViec && <QuanLyDauViec key={typeof qlDauViec === "object" ? qlDauViec.id : "tat-ca"}
+        categories={categories} suaNgay={typeof qlDauViec === "object" ? qlDauViec : null}
+        onDong={() => setQlDauViec(false)} onDoi={() => { loadCategories(); loadSummary(); }} />}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {categories.map((c) => {
           const s = summary.find((x) => x.category === c.id) || { total: 0, overdue: 0, done: 0 };
           const on = fCategory === c.id;
+          // Thẻ là div (không phải button) để đặt được nút sửa/xoá bên trong.
           return (
-            <button key={c.id} className="card" style={{ textAlign: "left", cursor: "pointer", padding: 12, border: on ? `1.5px solid ${RED}` : undefined }}
-              onClick={() => setFCategory(on ? "" : c.id)}>
-              <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30 }}>{c.label}</p>
+            <div key={c.id} className="card" role="button" tabIndex={0}
+              style={{ textAlign: "left", cursor: "pointer", padding: 12, border: on ? `1.5px solid ${RED}` : undefined }}
+              onClick={() => setFCategory(on ? "" : c.id)}
+              onKeyDown={(e) => { if (e.key === "Enter") setFCategory(on ? "" : c.id); }}>
+              <div className="flex items-center" style={{ gap: 4 }}>
+                <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{c.label}</p>
+                {duocSua && (
+                  <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Sửa đầu việc “${c.label}”`}
+                    onClick={(e) => { e.stopPropagation(); setQlDauViec(c); }}><Pencil size={12} /></button>
+                )}
+                {duocXoa && (
+                  <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa đầu việc “${c.label}”`}
+                    onClick={(e) => { e.stopPropagation(); xoaDauViec(c); }}><Trash2 size={12} /></button>
+                )}
+              </div>
               <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 22, fontWeight: 800, color: RED }}>{s.total}</span>
                 {!!s.done && <span className="tag tag-green">{s.done} xong</span>}
                 {!!s.overdue && <span className="tag tag-red">{s.overdue} quá hạn</span>}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -639,16 +664,26 @@ export function TaskListTab({ locDauViec, onMoTienDo }) {
                   <td>{fmtDay(x.due_at)}</td>
                   <td><StatusTag task={x} /></td>
                   <td style={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                    {duocSua && <button className="btn btn-sm" onClick={() => suaViec(x)} title="Sửa"><Pencil size={13} /></button>}{" "}
-                    {duocXoa && <button className="btn btn-sm" onClick={() => del(x)} title="Xóa (vào Thùng rác)"><Trash2 size={13} /></button>}
+                    {duocSua && <button className="btn btn-sm" onClick={() => suaViec(x)} title="Sửa công việc"><Pencil size={13} />Sửa</button>}{" "}
+                    {duocXoa && <button className="btn btn-sm" onClick={() => del(x)} title="Xóa (vào Thùng rác)"><Trash2 size={13} />Xóa</button>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           {!filteredRows.length && (
-            <Empty title={cuaToi ? "Bạn chưa được gắn tên trong việc nào." : "Chưa có công việc."}
-              hint={rows.length ? "Không có dòng nào khớp bộ lọc." : duocGiao ? "Bấm “Giao việc mới” để bắt đầu." : ""} />
+            <>
+              <Empty title={cuaToi ? "Bạn chưa được gắn tên trong việc nào." : "Chưa có công việc."}
+                hint={rows.length ? "Không có dòng nào khớp bộ lọc."
+                  : duocGiao ? "Giao việc xong, mỗi dòng việc có nút Sửa / Xóa ở cuối dòng." : ""} />
+              {!rows.length && duocGiao && !form && (
+                <div style={{ textAlign: "center", paddingBottom: 20 }}>
+                  <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, fCategory)); }}>
+                    <Plus size={14} />Giao việc mới
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </Card>
