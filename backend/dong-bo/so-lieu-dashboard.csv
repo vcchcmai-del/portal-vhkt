@@ -1093,13 +1093,14 @@ VHKT_TARGET,2026-08,KPI TKM 24H,VTU,100.0
 VHKT_TARGET,2026-08,KPI TKM 3H,BDG,45.0
 VHKT_TARGET,2026-08,KPI TKM 3H,VCC HCM,45.0
 VHKT_TARGET,2026-08,KPI TKM 3H,VTU,45.0
-WO,2025-01,Tỷ lệ rời mạng CĐBR,,1.2
-WO,2025-02,Tỷ lệ rời mạng CĐBR,,0.92
-WO,2025-03,Tỷ lệ rời mạng CĐBR,,0.88
-WO,2025-04,Tỷ lệ rời mạng CĐBR,,0.77
-WO,2025-05,Tỷ lệ rời mạng CĐBR,,0.8
+WO,2025-01,Tỷ lệ rời mạng CĐBR,,1.15
+WO,2025-02,Tỷ lệ rời mạng CĐBR,,0.89
+WO,2025-03,Tỷ lệ rời mạng CĐBR,,0.9
+WO,2025-04,Tỷ lệ rời mạng CĐBR,,0.73
+WO,2025-05,Tỷ lệ rời mạng CĐBR,,0.79
 WO,2025-06,Tỷ lệ rời mạng CĐBR,,0.74
-WO,2025-07,Tỷ lệ rời mạng CĐBR,,0.74
+WO,2025-07,Tỷ lệ rời mạng CĐBR,,0.93
+WO,2025-08,Tỷ lệ rời mạng CĐBR,,0.96
 WO,2026-01,Tỷ lệ rời mạng CĐBR,,1.0
 WO,2026-02,Tỷ lệ rời mạng CĐBR,,0.95
 WO,2026-03,Tỷ lệ rời mạng CĐBR,,0.89
@@ -1107,6 +1108,7 @@ WO,2026-04,Tỷ lệ rời mạng CĐBR,,0.94
 WO,2026-05,Tỷ lệ rời mạng CĐBR,,0.92
 WO,2026-06,Tỷ lệ rời mạng CĐBR,,0.88
 WO,2026-07,Tỷ lệ rời mạng CĐBR,,0.83
+WO,2026-08,Tỷ lệ rời mạng CĐBR,,0.95
 WO_HUYEN_BD,2026-01,Số lượng rời mạng,Bàu Bàng,58.0
 WO_HUYEN_BD,2026-01,Số lượng rời mạng,Bắc Tân Uyên,43.0
 WO_HUYEN_BD,2026-01,Số lượng rời mạng,Bến Cát,249.0
@@ -1224,15 +1226,15 @@ WO_HUYEN_BD,2026-06,Tỷ lệ rời mạng,TP Dĩ An,1.13
 WO_HUYEN_BD,2026-06,Tỷ lệ rời mạng,TP Thuận An,1.23
 WO_HUYEN_BD,2026-06,Tỷ lệ rời mạng,TP Thủ Dầu Một,0.99
 WO_HUYEN_BD,2026-06,Tỷ lệ rời mạng,Tân Uyên,0.76
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,Bàu Bàng,75.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,Bắc Tân Uyên,37.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,Bến Cát,229.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,Dầu Tiếng,103.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,Phú Giáo,76.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,TP Dĩ An,506.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,TP Thuận An,820.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,TP Thủ Dầu Một,443.0
-WO_HUYEN_BD,2026-07,Số lượng rời mạng,Tân Uyên,283.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,Bàu Bàng,76.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,Bắc Tân Uyên,53.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,Bến Cát,253.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,Dầu Tiếng,107.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,Phú Giáo,69.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,TP Dĩ An,484.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,TP Thuận An,776.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,TP Thủ Dầu Một,376.0
+WO_HUYEN_BD,2026-07,Số lượng rời mạng,Tân Uyên,320.0
 WO_HUYEN_BD,2026-07,Thuê bao FTTH,Bàu Bàng,10620.0
 WO_HUYEN_BD,2026-07,Thuê bao FTTH,Bắc Tân Uyên,6178.0
 WO_HUYEN_BD,2026-07,Thuê bao FTTH,Bến Cát,25122.0
@@ -1242,24 +1244,24 @@ WO_HUYEN_BD,2026-07,Thuê bao FTTH,TP Dĩ An,44690.0
 WO_HUYEN_BD,2026-07,Thuê bao FTTH,TP Thuận An,66503.0
 WO_HUYEN_BD,2026-07,Thuê bao FTTH,TP Thủ Dầu Một,44821.0
 WO_HUYEN_BD,2026-07,Thuê bao FTTH,Tân Uyên,37106.0
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Bàu Bàng,0.71
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Bắc Tân Uyên,0.6
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Bến Cát,0.91
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Dầu Tiếng,0.88
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Phú Giáo,0.63
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,TP Dĩ An,1.13
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,TP Thuận An,1.23
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,TP Thủ Dầu Một,0.99
-WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Tân Uyên,0.76
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,Bàu Bàng,75.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,Bắc Tân Uyên,37.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,Bến Cát,229.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,Dầu Tiếng,103.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,Phú Giáo,76.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,TP Dĩ An,506.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,TP Thuận An,820.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,TP Thủ Dầu Một,443.0
-WO_HUYEN_BD,2026-08,Số lượng rời mạng,Tân Uyên,283.0
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Bàu Bàng,0.72
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Bắc Tân Uyên,0.86
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Bến Cát,1.01
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Dầu Tiếng,0.91
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Phú Giáo,0.57
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,TP Dĩ An,1.08
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,TP Thuận An,1.17
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,TP Thủ Dầu Một,0.84
+WO_HUYEN_BD,2026-07,Tỷ lệ rời mạng,Tân Uyên,0.86
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,Bàu Bàng,68.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,Bắc Tân Uyên,60.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,Bến Cát,204.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,Dầu Tiếng,130.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,Phú Giáo,78.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,TP Dĩ An,597.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,TP Thuận An,1196.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,TP Thủ Dầu Một,407.0
+WO_HUYEN_BD,2026-08,Số lượng rời mạng,Tân Uyên,295.0
 WO_HUYEN_BD,2026-08,Thuê bao FTTH,Bàu Bàng,10620.0
 WO_HUYEN_BD,2026-08,Thuê bao FTTH,Bắc Tân Uyên,6178.0
 WO_HUYEN_BD,2026-08,Thuê bao FTTH,Bến Cát,25122.0
@@ -1269,15 +1271,15 @@ WO_HUYEN_BD,2026-08,Thuê bao FTTH,TP Dĩ An,44690.0
 WO_HUYEN_BD,2026-08,Thuê bao FTTH,TP Thuận An,66503.0
 WO_HUYEN_BD,2026-08,Thuê bao FTTH,TP Thủ Dầu Một,44821.0
 WO_HUYEN_BD,2026-08,Thuê bao FTTH,Tân Uyên,37106.0
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Bàu Bàng,0.71
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Bắc Tân Uyên,0.6
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Bến Cát,0.91
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Dầu Tiếng,0.88
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Phú Giáo,0.63
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,TP Dĩ An,1.13
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,TP Thuận An,1.23
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,TP Thủ Dầu Một,0.99
-WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Tân Uyên,0.76
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Bàu Bàng,0.64
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Bắc Tân Uyên,0.97
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Bến Cát,0.81
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Dầu Tiếng,1.1
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Phú Giáo,0.65
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,TP Dĩ An,1.34
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,TP Thuận An,1.8
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,TP Thủ Dầu Một,0.91
+WO_HUYEN_BD,2026-08,Tỷ lệ rời mạng,Tân Uyên,0.8
 WO_HUYEN_BRVT,2026-01,Số lượng rời mạng,Bà Rịa,78.0
 WO_HUYEN_BRVT,2026-01,Số lượng rời mạng,Châu Đức,112.0
 WO_HUYEN_BRVT,2026-01,Số lượng rời mạng,Côn Đảo,22.0
@@ -1382,14 +1384,14 @@ WO_HUYEN_BRVT,2026-06,Tỷ lệ rời mạng,Phú Mỹ,0.81
 WO_HUYEN_BRVT,2026-06,Tỷ lệ rời mạng,Vũng Tàu,1.19
 WO_HUYEN_BRVT,2026-06,Tỷ lệ rời mạng,Xuyên Mộc,0.96
 WO_HUYEN_BRVT,2026-06,Tỷ lệ rời mạng,Đất Đỏ,0.65
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Bà Rịa,77.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Châu Đức,94.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Côn Đảo,13.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Long Điền,139.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Phú Mỹ,117.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Vũng Tàu,368.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Xuyên Mộc,112.0
-WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Đất Đỏ,58.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Bà Rịa,71.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Châu Đức,105.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Côn Đảo,15.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Long Điền,115.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Phú Mỹ,109.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Vũng Tàu,325.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Xuyên Mộc,79.0
+WO_HUYEN_BRVT,2026-07,Số lượng rời mạng,Đất Đỏ,49.0
 WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Bà Rịa,9466.0
 WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Châu Đức,14525.0
 WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Côn Đảo,1734.0
@@ -1398,22 +1400,22 @@ WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Phú Mỹ,14470.0
 WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Vũng Tàu,31025.0
 WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Xuyên Mộc,11670.0
 WO_HUYEN_BRVT,2026-07,Thuê bao FTTH,Đất Đỏ,8895.0
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Bà Rịa,0.81
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Châu Đức,0.65
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Côn Đảo,0.75
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Long Điền,0.83
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Phú Mỹ,0.81
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Vũng Tàu,1.19
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Xuyên Mộc,0.96
-WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Đất Đỏ,0.65
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Bà Rịa,77.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Châu Đức,94.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Côn Đảo,13.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Long Điền,139.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Phú Mỹ,117.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Vũng Tàu,368.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Xuyên Mộc,112.0
-WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Đất Đỏ,58.0
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Bà Rịa,0.75
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Châu Đức,0.72
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Côn Đảo,0.87
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Long Điền,0.68
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Phú Mỹ,0.75
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Vũng Tàu,1.05
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Xuyên Mộc,0.68
+WO_HUYEN_BRVT,2026-07,Tỷ lệ rời mạng,Đất Đỏ,0.55
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Bà Rịa,56.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Châu Đức,111.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Côn Đảo,14.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Long Điền,58.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Phú Mỹ,142.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Vũng Tàu,341.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Xuyên Mộc,103.0
+WO_HUYEN_BRVT,2026-08,Số lượng rời mạng,Đất Đỏ,14.0
 WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Bà Rịa,9466.0
 WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Châu Đức,14525.0
 WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Côn Đảo,1734.0
@@ -1422,14 +1424,14 @@ WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Phú Mỹ,14470.0
 WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Vũng Tàu,31025.0
 WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Xuyên Mộc,11670.0
 WO_HUYEN_BRVT,2026-08,Thuê bao FTTH,Đất Đỏ,8895.0
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Bà Rịa,0.81
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Châu Đức,0.65
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Côn Đảo,0.75
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Long Điền,0.83
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Phú Mỹ,0.81
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Vũng Tàu,1.19
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Xuyên Mộc,0.96
-WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Đất Đỏ,0.65
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Bà Rịa,0.59
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Châu Đức,0.76
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Côn Đảo,0.81
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Long Điền,0.34
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Phú Mỹ,0.98
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Vũng Tàu,1.1
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Xuyên Mộc,0.88
+WO_HUYEN_BRVT,2026-08,Tỷ lệ rời mạng,Đất Đỏ,0.16
 WO_TARGET,2026-01,Tỷ lệ rời mạng CĐBR,,0.61
 WO_TARGET,2026-02,Tỷ lệ rời mạng CĐBR,,0.61
 WO_TARGET,2026-03,Tỷ lệ rời mạng CĐBR,,0.61
@@ -1456,9 +1458,9 @@ WO_TINH,2026-05,Số lượng KH rời mạng,VTU,1039.0
 WO_TINH,2026-06,Số lượng KH rời mạng,BDG,2580.0
 WO_TINH,2026-06,Số lượng KH rời mạng,VCC HCM,3569.0
 WO_TINH,2026-06,Số lượng KH rời mạng,VTU,989.0
-WO_TINH,2026-07,Số lượng KH rời mạng,BDG,2580.0
-WO_TINH,2026-07,Số lượng KH rời mạng,VCC HCM,3569.0
-WO_TINH,2026-07,Số lượng KH rời mạng,VTU,989.0
-WO_TINH,2026-08,Số lượng KH rời mạng,BDG,2580.0
-WO_TINH,2026-08,Số lượng KH rời mạng,VCC HCM,3569.0
-WO_TINH,2026-08,Số lượng KH rời mạng,VTU,989.0
+WO_TINH,2026-07,Số lượng KH rời mạng,BDG,2514.0
+WO_TINH,2026-07,Số lượng KH rời mạng,VCC HCM,3382.0
+WO_TINH,2026-07,Số lượng KH rời mạng,VTU,868.0
+WO_TINH,2026-08,Số lượng KH rời mạng,BDG,3035.0
+WO_TINH,2026-08,Số lượng KH rời mạng,VCC HCM,3874.0
+WO_TINH,2026-08,Số lượng KH rời mạng,VTU,839.0
