@@ -39,10 +39,10 @@ BANG_TRA = {
     "vtu": VUNG_TAU,
 }
 
-# CỐ Ý bỏ qua hai bảng rời mạng theo huyện: cột đơn vị ở đó chứa TÊN HUYỆN, mà
-# huyện Vũng Tàu là một địa bàn khác hẳn tỉnh Bà Rịa - Vũng Tàu. Đổi theo bảng
-# tra sẽ biến huyện thành mã tỉnh và làm hỏng biểu đồ rời mạng theo địa bàn.
-BANG_THEO_HUYEN = {"WO_HUYEN_BD", "WO_HUYEN_BRVT"}
+# CỐ Ý bỏ qua các bảng theo huyện: cột đơn vị ở đó chứa TÊN HUYỆN, mà huyện
+# Vũng Tàu là một địa bàn khác hẳn tỉnh Bà Rịa - Vũng Tàu. Đổi theo bảng tra sẽ
+# biến huyện thành mã tỉnh và làm hỏng các bảng theo địa bàn.
+BANG_THEO_HUYEN = {"WO_HUYEN_BD", "WO_HUYEN_BRVT", "CL_HUYEN_BD", "CL_HUYEN_BRVT"}
 
 
 # Thứ tự đọc của báo cáo gốc: mức toàn chi nhánh trước, rồi Bình Dương, rồi Vũng

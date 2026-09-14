@@ -28,6 +28,7 @@ TAB_DASHBOARD = [
     ("TKM CĐBR", ["VHKT", "VHKT_TARGET"]),
     ("PAKH 10k-TB", ["PAKH10K", "PAKH10K_TARGET"]),
     ("Tỉ lệ lặp", ["TL_LAP", "TL_LAP_TARGET"]),
+    ("Chất lượng theo huyện", ["CL_HUYEN_BD", "CL_HUYEN_BRVT"]),
     ("Tỉ lệ đáp ứng", ["TL_DAPUNG", "TL_DAPUNG_TARGET"]),
     ("Tuyển dụng (số liệu)", ["HIRE"]),
 ]

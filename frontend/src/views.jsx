@@ -1286,6 +1286,75 @@ function BieuDoTheoTinh({ compare, chiTieu, nam }) {
   return <DanhSachBieuDoDoc data={data} dsChuoi={donVi} mauMap={mauMap} dinhDang={(v) => v?.toLocaleString("vi-VN")} />;
 }
 
+/**
+ * Bảng chỉ tiêu chất lượng theo huyện (XLCS 3h/10h/24h, PAKH 10k/TB, Tỉ lệ lặp):
+ * mỗi tỉnh một bảng, tháng mới nhất trước, kèm bình quân. Ô chưa đạt target mức
+ * chi nhánh tô đỏ — đúng chiều của từng chỉ tiêu (XLCS càng cao càng tốt, PAKH
+ * và tỉ lệ lặp càng thấp càng tốt).
+ */
+function BangChatLuongTheoHuyen({ duLieu, chiTieuList, tieuDe }) {
+  const [chon, setChon] = useState(chiTieuList[0]);
+  const ds = duLieu?.huyen || [];
+  if (!ds.length) return null;
+  const chiTieu = chiTieuList.includes(chon) ? chon : chiTieuList[0];
+  const target = duLieu.target?.[chiTieu];
+  const huong = duLieu.huong?.[chiTieu] || "cao";
+  const phanTram = donViChiTieu(chiTieu) === "%";
+  const hien = (v) => (v == null ? "—" : `${Number(v).toFixed(2)}${phanTram ? "%" : ""}`);
+  const chuaDat = (v) => v != null && target != null && (huong === "thap" ? v > target : v < target);
+  const ky = [...new Set(ds.flatMap((h) => Object.keys(h.chi_tieu?.[chiTieu] || {})))].sort().reverse();
+  const nhom = {};
+  ds.forEach((h) => { if (h.chi_tieu?.[chiTieu]) (nhom[h.tinh] ||= []).push(h); });
+  const chonChiTieu = chiTieuList.length > 1 && (
+    <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
+      {chiTieuList.map((c) => (
+        <button key={c} className={`chip ${c === chiTieu ? "on" : ""}`} onClick={() => setChon(c)}>{c}</button>
+      ))}
+    </div>
+  );
+  return (
+    <>
+      {Object.entries(nhom).map(([tinh, danhSach], i) => (
+        <Card key={tinh} title={`${tieuDe} theo huyện — ${tinh}`} icon={MapPin} pad={false}
+          action={i === 0 ? chonChiTieu : null}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Huyện</th>
+                  {ky.map((k) => <th key={k} style={{ textAlign: "right" }}>{`T${parseInt(k.split("-")[1], 10)}`}</th>)}
+                  <th style={{ textAlign: "right" }}>Bình quân</th>
+                </tr>
+              </thead>
+              <tbody>
+                {danhSach.map((h) => (
+                  <tr key={h.huyen}>
+                    <td style={{ fontWeight: 600 }}>{h.huyen}</td>
+                    {ky.map((k) => {
+                      const v = h.chi_tieu[chiTieu]?.[k];
+                      return (
+                        <td key={k} className="mono" style={{ textAlign: "right", color: chuaDat(v) ? RED_DARK : undefined,
+                          background: chuaDat(v) ? "#FBF4F5" : undefined, fontWeight: chuaDat(v) ? 700 : 400 }}>{hien(v)}</td>
+                      );
+                    })}
+                    <td className="mono" style={{ textAlign: "right", fontWeight: 700,
+                      color: chuaDat(h.binh_quan?.[chiTieu]) ? RED_DARK : undefined }}>{hien(h.binh_quan?.[chiTieu])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {target != null && (
+            <p className="muted" style={{ fontSize: 12, padding: "8px 16px" }}>
+              Tô đỏ: {huong === "thap" ? "cao hơn" : "thấp hơn"} chỉ tiêu {hien(target)} (target mức chi nhánh kỳ gần nhất).
+            </p>
+          )}
+        </Card>
+      ))}
+    </>
+  );
+}
+
 /** Bảng chi tiết rời mạng theo huyện, gộp nhóm theo tỉnh — kèm thuê bao FTTH và bình quân. */
 function BangRoMangTheoHuyen({ diaBan }) {
   if (!diaBan?.tinh?.length && !diaBan?.huyen?.length) return null;
@@ -1625,7 +1694,7 @@ const NAM_HIEN_TAI = "2026";
 // Thứ tự hiển thị các chỉ tiêu trong cùng một kỳ ở bảng "Đối chiếu chỉ tiêu &
 // cùng kỳ năm trước" — mặc định (chưa liệt kê) giữ nguyên thứ tự dữ liệu trả về.
 const THU_TU_CHI_TIEU = {
-  "Số PA phát sinh trong tháng": 0, "XLCS 3h": 1, "XLCS 10h": 2, "XLCS 24h": 3,
+  "Tổng sự cố": 0, "Số PA phát sinh trong tháng": 0, "XLCS 3h": 1, "XLCS 10h": 2, "XLCS 24h": 3,
   "Tổng triển khai đã NT": 0, "Triển khai đã NT dây mới": 1, "Triển khai đã NT dây sẵn": 2,
   "KPI TKM 3H": 3, "KPI TKM 10H": 4, "KPI TKM 24H": 5,
 };
@@ -1962,6 +2031,8 @@ export function DashView({ bangMoSan }) {
           </Card>
           <BangDanhGiaKPI compare={compareXem} chiTieuList={[motChiTieu.chiTieu]}
             huongTot={motChiTieu.huong} />
+          <BangChatLuongTheoHuyen duLieu={duLieu?.cl_huyen} tieuDe={motChiTieu.chiTieu}
+            chiTieuList={[motChiTieu.chiTieu]} />
         </>
       ) : laPAKH ? (
         <>
@@ -2004,6 +2075,13 @@ export function DashView({ bangMoSan }) {
               dinhDang={dinhDangPhanTram} />
           </Card>
           <BangDanhGiaKPI compare={compareXem} huongTot="cao"
+            chiTieuList={["XLCS 3h", "XLCS 10h", "XLCS 24h"]} />
+          {(duLieu?.compare || []).some((r) => r.chi_tieu === "Tổng sự cố") && (
+            <Card title="Tổng sự cố theo tháng" icon={board.icon}>
+              <BieuDoTheoTinh compare={duLieu?.compare} chiTieu="Tổng sự cố" nam={NAM_HIEN_TAI} />
+            </Card>
+          )}
+          <BangChatLuongTheoHuyen duLieu={duLieu?.cl_huyen} tieuDe="XLCS"
             chiTieuList={["XLCS 3h", "XLCS 10h", "XLCS 24h"]} />
         </>
       ) : laVHKT ? (

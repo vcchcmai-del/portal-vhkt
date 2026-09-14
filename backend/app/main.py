@@ -1028,6 +1028,47 @@ def _ro_mang_dia_ban(db: Session):
     }
 
 
+# Chỉ tiêu chất lượng theo huyện (bảng CL_HUYEN_BD / CL_HUYEN_BRVT): tab nào
+# hiện chỉ tiêu nào, chiều "tốt" để tô ô chưa đạt, và bảng target lấy ngưỡng.
+CL_THEO_BANG = {"NETWORK": ["XLCS 3h", "XLCS 10h", "XLCS 24h"],
+                "PAKH10K": ["PAKH 10k/TB"], "TL_LAP": ["Tỉ lệ lặp"]}
+CL_HUONG = {"XLCS 3h": "cao", "XLCS 10h": "cao", "XLCS 24h": "cao",
+            "PAKH 10k/TB": "thap", "Tỉ lệ lặp": "thap"}
+CL_BANG_TARGET = {"XLCS 3h": "NETWORK_TARGET", "XLCS 10h": "NETWORK_TARGET",
+                  "XLCS 24h": "NETWORK_TARGET", "PAKH 10k/TB": "PAKH10K_TARGET",
+                  "Tỉ lệ lặp": "TL_LAP_TARGET"}
+
+
+def _chat_luong_theo_huyen(db: Session, chi_tieu_list: list):
+    """Giá trị từng huyện theo tháng cho các chỉ tiêu cần xem, kèm bình quân,
+    ngưỡng target mức chi nhánh kỳ gần nhất và chiều tốt của từng chỉ tiêu."""
+    ds = []
+    for bang, ten_tinh in (("CL_HUYEN_BD", province_codes.BINH_DUONG),
+                           ("CL_HUYEN_BRVT", province_codes.VUNG_TAU)):
+        rows, _ = _flat_metric_rows(bang, db)
+        theo: dict = {}
+        for r in rows:
+            if r["chi_tieu"] in chi_tieu_list and r["don_vi"] and r["gia_tri"] is not None:
+                theo.setdefault(r["don_vi"], {}).setdefault(r["chi_tieu"], {})[r["ky"]] = r["gia_tri"]
+        for huyen, ct in theo.items():
+            ds.append({
+                "tinh": ten_tinh, "huyen": huyen, "chi_tieu": ct,
+                "binh_quan": {k: round(sum(v.values()) / len(v), 2) for k, v in ct.items() if v},
+            })
+    if not ds:
+        return None
+    target, huong = {}, {}
+    for ct in chi_tieu_list:
+        huong[ct] = CL_HUONG.get(ct, "cao")
+        tr, _ = _flat_metric_rows(CL_BANG_TARGET[ct], db) if ct in CL_BANG_TARGET else ([], None)
+        ung = [r for r in tr if r["chi_tieu"] == ct
+               and (not r["don_vi"] or province_codes.la_toan_chi_nhanh(r["don_vi"]))]
+        if ung:
+            target[ct] = max(ung, key=lambda r: r["ky"])["gia_tri"]
+    ds.sort(key=lambda x: (province_codes.khoa_sap_xep(x["tinh"]), x["huyen"]))
+    return {"huyen": ds, "target": target, "huong": huong}
+
+
 @app.get("/api/dashboard/{board}", tags=["Dashboard"])
 def dashboard(board: str, db: Session = Depends(get_db)):
     """
@@ -1049,7 +1090,14 @@ def dashboard(board: str, db: Session = Depends(get_db)):
 
     rows, nguon = _flat_metric_rows(board, db)
     rows = _bu_dong_tong_chi_nhanh(rows)
+    cl_huyen = _chat_luong_theo_huyen(db, CL_THEO_BANG[board]) if board in CL_THEO_BANG else None
     if not rows:
+        # Có số theo huyện mà chưa có số theo tỉnh (vd Tỉ lệ lặp) thì vẫn trả
+        # về để tab hiện bảng huyện, thay vì báo "chưa có số liệu".
+        if cl_huyen:
+            return {"board": board, "series": [], "source": "database", "compare": [],
+                    "canh_bao_trung_tam": [], "nhom_phat": None, "dia_ban": None,
+                    "cl_huyen": cl_huyen}
         raise HTTPException(404, f"Chưa có số liệu cho bảng {board}.")
 
     # Gom theo kỳ (hoặc đơn vị) để frontend vẽ biểu đồ ngay — giữ nguyên hành vi cũ
@@ -1121,6 +1169,7 @@ def dashboard(board: str, db: Session = Depends(get_db)):
         "canh_bao_trung_tam": canh_bao_trung_tam,
         "nhom_phat": _nhom_phat_vtt_vtnet(db) if board == "KPI" else None,
         "dia_ban": _ro_mang_dia_ban(db) if board == "WO" else None,
+        "cl_huyen": cl_huyen,
     }
 
 

@@ -33,7 +33,8 @@ W = "https://portal-vhkt-backend.n1.tinhgon.xyz"
 BANG = ["KPI", "KPI_TARGET", "KPI_VTT", "KPI_VTNET", "WO", "WO_TARGET", "WO_TINH",
         "WO_HUYEN_BD", "WO_HUYEN_BRVT", "PAKH", "PAKH_TARGET", "FUEL", "FUEL_TARGET",
         "OUTPUT", "OUTPUT_TARGET", "NETWORK", "NETWORK_TARGET", "VHKT", "VHKT_TARGET",
-        "HIRE"]
+        "PAKH10K", "PAKH10K_TARGET", "TL_LAP", "TL_LAP_TARGET", "TL_DAPUNG", "TL_DAPUNG_TARGET",
+        "CL_HUYEN_BD", "CL_HUYEN_BRVT", "HIRE"]
 
 
 def phien(base):
