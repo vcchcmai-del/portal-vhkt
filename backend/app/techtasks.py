@@ -370,27 +370,145 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
     return {"id": row.code, "label": row.label, "hint": row.hint or ""}
 
 
+def _dem_dang_dung(db: Session, code: str) -> dict:
+    """Đếm dữ liệu đang gắn với một đầu việc — để giao diện nói rõ xoá sẽ mất gì."""
+    return {
+        "viec": db.query(models.TechTask).filter(models.TechTask.category == code,
+                                                 models.TechTask.deleted_at.is_(None)).count(),
+        "viec_thung_rac": db.query(models.TechTask).filter(models.TechTask.category == code,
+                                                           models.TechTask.deleted_at.isnot(None)).count(),
+        "hang_muc": db.query(models.TechProgressItem).filter(models.TechProgressItem.category_code == code).count(),
+        "dong_tien_do": db.query(models.ProgressEntry).filter(models.ProgressEntry.category == code).count(),
+    }
+
+
+def _mo_ta_dang_dung(d: dict) -> str:
+    ten = {"viec": "công việc", "viec_thung_rac": "việc trong thùng rác",
+           "hang_muc": "hạng mục tiến độ", "dong_tien_do": "dòng tiến độ"}
+    return ", ".join(f"{d[k]} {ten[k]}" for k in ten if d.get(k))
+
+
+@admin_router.get("/tech-tasks/structure")
+def tech_structure(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
+    """Cơ cấu đầu việc: nhóm cấp 1 -> đầu việc, kèm số dữ liệu đang gắn ở mỗi
+    đầu việc. Màn hình sắp xếp lại cơ cấu đọc đúng một API này."""
+    ensure_seeded(db)
+    cats = (db.query(models.TechCategory).order_by(models.TechCategory.order_no, models.TechCategory.id).all())
+    dem = {c.code: _dem_dang_dung(db, c.code) for c in cats}
+    nhom = (db.query(models.TechGroup).filter(models.TechGroup.active.is_(True))
+            .order_by(models.TechGroup.order_no, models.TechGroup.id).all())
+
+    def ds(ma):
+        return [{"id": c.code, "label": c.label, "hint": c.hint or "", "active": bool(c.active),
+                 "order_no": c.order_no or 0, "dang_dung": dem[c.code]}
+                for c in cats if (c.group_code or "") == ma]
+
+    ra = [{"id": g.code, "label": g.label, "note": g.note or "", "categories": ds(g.code)} for g in nhom]
+    ra.append({"id": "", "label": "Chưa xếp nhóm", "note": "", "categories": ds("")})
+    return {"nhom": ra, "tat_ca_dau_viec": [{"id": c.code, "label": c.label} for c in cats]}
+
+
+class NhieuDauViecIn(BaseModel):
+    labels: list[str]
+    group_code: Optional[str] = None
+
+
+@admin_router.post("/tech-tasks/categories/nhieu")
+def create_categories_bulk(data: NhieuDauViecIn, db: Session = Depends(get_db),
+                           user=Depends(require_module("tech_tasks", "create")), request: Request = None):
+    """Thêm nhiều đầu việc một lần (mỗi dòng một tên) — dựng lại cơ cấu cho nhanh.
+    Tên đã có thì bỏ qua, không báo lỗi cả mẻ."""
+    ensure_seeded(db)
+    nhom = (data.group_code or "").strip() or None
+    if nhom and not db.query(models.TechGroup).filter(models.TechGroup.code == nhom).first():
+        raise HTTPException(400, "Nhóm đầu việc không tồn tại.")
+    dang_co = {c.label.strip().casefold() for c in db.query(models.TechCategory).all()}
+    cuoi = db.query(models.TechCategory).order_by(models.TechCategory.order_no.desc()).first()
+    thu_tu = (cuoi.order_no + 1) if cuoi else 0
+    them, bo_qua = [], []
+    for dong in data.labels:
+        label = re.sub(r"\s+", " ", str(dong or "")).strip()
+        if not label:
+            continue
+        if label.casefold() in dang_co:
+            bo_qua.append(label)
+            continue
+        dang_co.add(label.casefold())
+        row = models.TechCategory(code=_ma_chua_dung(db, models.TechCategory, _slug(label)), label=label,
+                                  hint="", group_code=nhom, order_no=thu_tu, active=True)
+        thu_tu += 1
+        db.add(row)
+        them.append(label)
+    db.commit()
+    if them:
+        log_action(db, user, "create", "tech_tasks", None, "Thêm đầu việc hàng loạt",
+                   detail=f"{len(them)} đầu việc: " + ", ".join(them[:10]), request=request)
+    return {"da_them": them, "bo_qua_trung_ten": bo_qua}
+
+
+class ThuTuIn(BaseModel):
+    codes: list[str]
+
+
+@admin_router.post("/tech-tasks/categories/sap-xep")
+def sort_categories(data: ThuTuIn, db: Session = Depends(get_db),
+                    user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Ghi lại thứ tự hiện các đầu việc theo danh sách mã gửi lên."""
+    co = {c.code: c for c in db.query(models.TechCategory).all()}
+    for i, ma in enumerate(data.codes):
+        if ma in co:
+            co[ma].order_no = i
+    db.commit()
+    log_action(db, user, "update", "tech_tasks", None, "Sắp xếp đầu việc", request=request)
+    return {"da_sap_xep": len([m for m in data.codes if m in co])}
+
+
 @admin_router.delete("/tech-tasks/categories/{code}")
-def delete_category(code: str, db: Session = Depends(get_db),
+def delete_category(code: str, chuyen_sang: Optional[str] = None, xoa_du_lieu: bool = False,
+                    db: Session = Depends(get_db),
                     user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
-    """Chỉ xoá được đầu việc chưa dùng — còn công việc, hạng mục hoặc dòng tiến
-    độ tham chiếu thì từ chối, tránh để lại dữ liệu mồ côi không tra ngược được."""
+    """Xoá một đầu việc.
+
+    Còn dữ liệu gắn vào thì mặc định từ chối (409 kèm số lượng) để không mất dữ
+    liệu ngoài ý muốn. Giao diện hỏi lại rồi gọi lại với một trong hai cách:
+      - chuyen_sang=<mã đầu việc khác>: dời công việc, hạng mục và dòng tiến độ sang đó;
+      - xoa_du_lieu=true: xoá luôn các dữ liệu đó.
+    """
     row = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
     if not row:
         raise HTTPException(404, "Không tìm thấy đầu việc.")
-    dang_dung = [
-        (db.query(models.TechTask).filter(models.TechTask.category == code).count(), "công việc"),
-        (db.query(models.TechProgressItem).filter(models.TechProgressItem.category_code == code).count(), "hạng mục tiến độ"),
-        (db.query(models.ProgressEntry).filter(models.ProgressEntry.category == code).count(), "dòng tiến độ"),
-    ]
-    vuong = [f"{n} {ten}" for n, ten in dang_dung if n]
-    if vuong:
-        raise HTTPException(400, "Đầu việc đang được dùng (" + ", ".join(vuong)
-                            + "). Hãy xoá hoặc chuyển các mục đó trước.")
+    dung = _dem_dang_dung(db, code)
+    co_du_lieu = any(dung.values())
+    if co_du_lieu and not chuyen_sang and not xoa_du_lieu:
+        raise HTTPException(409, "Đầu việc đang có " + _mo_ta_dang_dung(dung)
+                            + ". Chọn chuyển sang đầu việc khác, hoặc xoá kèm dữ liệu.")
+
+    da_chuyen = da_xoa = 0
+    if chuyen_sang:
+        dich = db.query(models.TechCategory).filter(models.TechCategory.code == chuyen_sang).first()
+        if not dich or dich.code == code:
+            raise HTTPException(400, "Đầu việc nhận dữ liệu không hợp lệ.")
+        da_chuyen += (db.query(models.TechTask).filter(models.TechTask.category == code)
+                      .update({models.TechTask.category: chuyen_sang}, synchronize_session=False))
+        da_chuyen += (db.query(models.TechProgressItem).filter(models.TechProgressItem.category_code == code)
+                      .update({models.TechProgressItem.category_code: chuyen_sang}, synchronize_session=False))
+        da_chuyen += (db.query(models.ProgressEntry).filter(models.ProgressEntry.category == code)
+                      .update({models.ProgressEntry.category: chuyen_sang}, synchronize_session=False))
+    elif xoa_du_lieu:
+        for t in db.query(models.TechTask).filter(models.TechTask.category == code).all():
+            db.delete(t)          # xoá qua ORM để kéo theo đính kèm và dòng đơn vị
+            da_xoa += 1
+        da_xoa += (db.query(models.ProgressEntry).filter(models.ProgressEntry.category == code)
+                   .delete(synchronize_session=False))
+        da_xoa += (db.query(models.TechProgressItem).filter(models.TechProgressItem.category_code == code)
+                   .delete(synchronize_session=False))
+
     label = row.label
     db.delete(row); db.commit()
-    log_action(db, user, "delete", "tech_tasks", None, f"Đầu việc: {label}", request=request)
-    return {"deleted": code}
+    log_action(db, user, "delete", "tech_tasks", None, f"Đầu việc: {label}",
+               detail=(f"Chuyển {da_chuyen} bản ghi sang {chuyen_sang}" if chuyen_sang else
+                       (f"Xoá kèm {da_xoa} bản ghi" if xoa_du_lieu else "")), request=request)
+    return {"deleted": code, "da_chuyen": da_chuyen, "da_xoa": da_xoa}
 
 
 @admin_router.get("/tech-tasks/groups")
