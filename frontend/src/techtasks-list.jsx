@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Download, ExternalLink, FileText, Link2,
+  AlertTriangle, ArrowLeft, ClipboardList, Download, ExternalLink, FileText, Link2,
   ListChecks, Paperclip, Pencil, Play, Plus, RefreshCw, Trash2, Upload, User, Users, X,
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
@@ -344,20 +344,6 @@ function TheNhiemVu({ task, onMo, onSua, onXoa, dangMo }) {
       <div style={{ marginTop: 8, height: 6, background: "#EEF1F6", borderRadius: 99, overflow: "hidden" }}>
         <div style={{ width: `${Math.min(task.percent || 0, 100)}%`, height: "100%", background: mau }} />
       </div>
-    </div>
-  );
-}
-
-/** Ô số nhỏ ở cột trái màn hình chi tiết đầu việc. */
-function OSoNho({ nhan, so, mau, icon: I }) {
-  return (
-    <div className="card flex items-center gap-2" style={{ padding: 12 }}>
-      <div style={{ flex: 1 }}>
-        <p className="muted" style={{ fontSize: 12 }}>{nhan}</p>
-        <p style={{ fontSize: 22, fontWeight: 800, color: mau, lineHeight: 1.2 }}>{so}</p>
-      </div>
-      <span style={{ width: 34, height: 34, borderRadius: 10, background: `${mau}16`, color: mau,
-                     display: "inline-flex", alignItems: "center", justifyContent: "center" }}><I size={17} /></span>
     </div>
   );
 }
@@ -1373,24 +1359,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             )}
           </div>
 
-          <div className={dauViecDangXem.total ? "grid lg:grid-cols-4 gap-4" : "flex flex-col gap-4"}>
-            {!!dauViecDangXem.total && (
+          {/* Mọi đầu việc bày như nhau: nhiệm vụ ở trên, số liệu cụm/FT ở dưới
+              (đầu việc giao cho cá nhân thì phần cụm/FT tự ẩn). */}
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3">
-              <OSoNho nhan="Tổng nhiệm vụ" so={dauViecDangXem.total} mau="#0E6CD6" icon={ListChecks} />
-              <OSoNho nhan="Hoàn thành" so={dauViecDangXem.done} mau="#16A34A" icon={CheckCircle2} />
-              <OSoNho nhan="Đang thực hiện" so={dauViecDangXem.doing} mau="#F2A007" icon={Play} />
-              <OSoNho nhan="Quá hạn" so={dauViecDangXem.overdue} mau={dauViecDangXem.overdue ? RED : "#16A34A"} icon={AlertTriangle} />
-              <div className="card" style={{ padding: 12 }}>
-                <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
-                  <span className="muted">Hoàn thành <b style={{ color: "#1C1A1B" }}>{dauViecDangXem.done}/{dauViecDangXem.total}</b></span>
-                  <b>{dauViecDangXem.percent}%</b>
-                </div>
-                <TienDoNho percent={dauViecDangXem.percent} rong="100%" anSo />
-              </div>
-            </div>
-            )}
-
-            <div className={`${dauViecDangXem.total ? "lg:col-span-3 " : ""}flex flex-col gap-3`}>
               {!!dauViecDangXem.total && (
               <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
                 <input className="inp" style={{ maxWidth: 240 }} placeholder="🔎 Tìm nhiệm vụ…" value={search}

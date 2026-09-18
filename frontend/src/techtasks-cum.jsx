@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, coQuyen, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
-import { Card, Empty, Field, RED, ThaoTac } from "./ui";
+import { Card, Field, RED, ThaoTac } from "./ui";
 
 /*
  * Số liệu theo cụm (trung tâm) và theo FT của MỘT đầu việc, đặt ngay trong màn
@@ -83,6 +83,26 @@ export function SoLieuCumFT({ category, label }) {
     kh: a.kh + (c.plan_qty || 0), th: a.th + (c.done_qty || 0),
   }), { kh: 0, th: 0 }), [cums]);
 
+  /* Đầu việc làm theo cụm thì bày đủ danh mục trung tâm — cụm chưa có số liệu
+     vẫn đứng đó để nhập, chứ không biến mất khiến tưởng là không phải làm. */
+  const dong = useMemo(() => {
+    const co = new Map(cums.map((c) => [c.center, c]));
+    const ds = dsTrungTam.map((t) => co.get(t.code) || { center: t.code, trong: true });
+    for (const c of cums) if (!dsTrungTam.some((t) => t.code === c.center)) ds.push(c);
+    return ds;
+  }, [cums, dsTrungTam]);
+
+  /** Biến đầu việc cá nhân thành đầu việc theo cụm: tạo hạng mục cùng tên rồi
+   *  bảng 13 trung tâm hiện ra để nhập. */
+  const moTheoCum = async () => {
+    try {
+      const hm = await api.post("/api/admin/progress/items", { category, label });
+      setHangMuc([{ id: hm.id || hm.code, label }]);
+      setItem(hm.id || hm.code);
+      setErr("");
+    } catch (e) { setErr(e.message); }
+  };
+
   const luuCum = async () => {
     try {
       if (!formCum.center) throw new Error("Chưa chọn cụm.");
@@ -122,8 +142,8 @@ export function SoLieuCumFT({ category, label }) {
   const lech = cumDangMo && (ftTong.kh !== (cumDangMo.plan_qty || 0) || ftTong.th !== (cumDangMo.done_qty || 0));
 
   return (
-    <Card title={`Số liệu theo cụm / FT — ${label}`}
-      action={(
+    <Card title={hangMuc.length ? `Số liệu theo cụm / FT — ${label}` : "Số liệu theo cụm / FT"}
+      action={hangMuc.length ? (
         <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
           <input className="inp" style={{ maxWidth: 120 }} value={period} list="ky-cum"
             onChange={(e) => setPeriod(e.target.value)} placeholder="2026-09" />
@@ -131,10 +151,13 @@ export function SoLieuCumFT({ category, label }) {
           <button className="btn btn-sm" onClick={() => { taiCum(); if (moFt) taiFt(); }}><RefreshCw size={13} />Tải lại</button>
           {duocThem && <button className="btn btn-sm" onClick={() => setNhap((v) => !v)}><Upload size={13} />Nhập Excel</button>}
         </div>
-      )}>
+      ) : null}>
       {!hangMuc.length ? (
-        <Empty title="Đầu việc này chưa có hạng mục định lượng."
-          hint="Vào tab Tiến độ, bấm “Chỉnh sửa danh mục” rồi thêm hạng mục cho đầu việc này (vd: Số WO kiểm soát), sau đó nhập số liệu theo cụm ở đây." />
+        <p className="muted" style={{ fontSize: 12.5 }}>
+          Đầu việc này theo dõi theo nhiệm vụ cá nhân, không chia số liệu theo cụm.
+          {duocThem && <> <button className="btn btn-sm" style={{ marginLeft: 6 }} onClick={moTheoCum}>
+            <Plus size={13} />Chuyển sang theo dõi theo cụm</button></>}
+        </p>
       ) : (
         <>
           {hangMuc.length > 1 && (
@@ -207,20 +230,22 @@ export function SoLieuCumFT({ category, label }) {
                 </tr>
               </thead>
               <tbody>
-                {cums.map((c) => (
-                  <React.Fragment key={c.id}>
-                    <tr style={{ cursor: "pointer" }} onClick={() => moCum(c.center)}>
-                      <td>{moFt === c.center ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                {dong.map((c) => (
+                  <React.Fragment key={c.id || c.center}>
+                    <tr style={{ cursor: c.trong ? "default" : "pointer" }} onClick={() => !c.trong && moCum(c.center)}>
+                      <td>{c.trong ? "" : (moFt === c.center ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}</td>
                       <td><b>{tenTrungTam(c.center)}</b></td>
-                      <td>{so(c.plan_qty)}</td>
-                      <td>{so(c.done_qty)}</td>
-                      <td>{so((c.plan_qty || 0) - (c.done_qty || 0))}</td>
-                      <td><ThanhNho kh={c.plan_qty} th={c.done_qty} /> {pct(c.plan_qty, c.done_qty)}</td>
+                      <td>{c.trong ? <span className="muted">—</span> : so(c.plan_qty)}</td>
+                      <td>{c.trong ? <span className="muted">—</span> : so(c.done_qty)}</td>
+                      <td>{c.trong ? <span className="muted">—</span> : so((c.plan_qty || 0) - (c.done_qty || 0))}</td>
+                      <td>{c.trong ? <span className="muted" style={{ fontSize: 12 }}>chưa nhập</span>
+                        : <><ThanhNho kh={c.plan_qty} th={c.done_qty} /> {pct(c.plan_qty, c.done_qty)}</>}</td>
                       <td className="muted" style={{ fontSize: 12.5 }}>{c.note || "—"}</td>
                       <td style={{ textAlign: "right" }}>
-                        <ThaoTac onView={() => moCum(c.center)} xemTitle="Xem chi tiết theo FT"
-                          onEdit={duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty, done_qty: c.done_qty }) : null}
-                          onDelete={duocXoa ? () => xoaCum(c) : null} />
+                        <ThaoTac onView={c.trong ? null : () => moCum(c.center)} xemTitle="Xem chi tiết theo FT"
+                          onEdit={duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty ?? "", done_qty: c.done_qty ?? "" }) : null}
+                          suaTitle={c.trong ? "Nhập số liệu cho cụm này" : "Sửa số liệu cụm"}
+                          onDelete={duocXoa && !c.trong ? () => xoaCum(c) : null} />
                       </td>
                     </tr>
                     {moFt === c.center && (
@@ -286,11 +311,6 @@ export function SoLieuCumFT({ category, label }) {
               </tbody>
             </table>
           </div>
-
-          {!cums.length && (
-            <Empty title={`Kỳ ${period} chưa có số liệu cụm nào.`}
-              hint={duocThem ? "Bấm “Thêm cụm” để nhập tay, hoặc “Nhập Excel” để nạp cả tệp." : ""} />
-          )}
 
           {duocThem && (
             <button className="btn btn-sm" style={{ marginTop: 10 }}
