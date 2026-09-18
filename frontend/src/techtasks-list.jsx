@@ -435,6 +435,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
   const [nhomMoi, setNhomMoi] = useState(null);
   const [xoaHoi, setXoaHoi] = useState(null);           // { cats: [...], cach, dich }
   const [chon, setChon] = useState([]);                // mã đầu việc đang tích
+  const [suaNhom, setSuaNhom] = useState(null);        // { id, label } nhóm đang đổi tên
   const [loi, setLoi] = useState("");
   const [tin, setTin] = useState("");
   const duocThem = coQuyen("tech_tasks", "create");
@@ -475,6 +476,28 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
       setHangLoat({ mo: false, nhom: "", text: "" });
       setTin(`Đã thêm ${r.da_them.length} đầu việc.` + (r.bo_qua_trung_ten.length ? ` Bỏ qua ${r.bo_qua_trung_ten.length} tên đã có.` : ""));
     });
+  };
+
+  /** Đổi thứ tự nhóm cấp 1: đảo chỗ với nhóm liền kề rồi ghi lại order_no. */
+  const doiThuTuNhom = (g, buoc) => {
+    const ds = (dl?.nhom || []).filter((x) => x.id);      // "Chưa xếp nhóm" luôn ở cuối
+    const i = ds.findIndex((x) => x.id === g.id);
+    const j = i + buoc;
+    if (i < 0 || j < 0 || j >= ds.length) return;
+    lam(async () => {
+      await api.put(`/api/admin/tech-tasks/groups/${ds[i].id}`, { order_no: j });
+      await api.put(`/api/admin/tech-tasks/groups/${ds[j].id}`, { order_no: i });
+    });
+  };
+
+  const luuTenNhom = () => lam(async () => {
+    await api.put(`/api/admin/tech-tasks/groups/${suaNhom.id}`, { label: suaNhom.label });
+    setSuaNhom(null);
+  }, "Đã đổi tên nhóm.");
+
+  const xoaNhom = (g) => {
+    if (!window.confirm(`Xóa nhóm “${g.label}”?\n\n${g.categories.length} đầu việc trong nhóm vẫn còn, chỉ quay về mục “Chưa xếp nhóm”.`)) return;
+    lam(() => api.del(`/api/admin/tech-tasks/groups/${g.id}`), "Đã xóa nhóm.");
   };
 
   const doiThuTu = (cat, buoc) => {
@@ -560,8 +583,30 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
       {(dl?.nhom || []).map((g) => (
         <div key={g.id || "chua"} style={{ marginBottom: 14 }}>
           <div className="flex items-center gap-2" style={{ marginBottom: 6, flexWrap: "wrap" }}>
-            <p className="eyebrow-grey">{g.label}</p>
+            {g.id && duocSua && (
+              <span style={{ whiteSpace: "nowrap" }}>
+                <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Đưa nhóm lên trên"
+                  onClick={() => doiThuTuNhom(g, -1)}>▲</button>{" "}
+                <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Đưa nhóm xuống dưới"
+                  onClick={() => doiThuTuNhom(g, 1)}>▼</button>
+              </span>
+            )}
+            {suaNhom?.id === g.id ? (
+              <>
+                <input className="inp" style={{ maxWidth: 240 }} autoFocus value={suaNhom.label}
+                  onChange={(e) => setSuaNhom({ ...suaNhom, label: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuTenNhom(); } if (e.key === "Escape") setSuaNhom(null); }} />
+                <button className="btn btn-red btn-sm" onClick={luuTenNhom}>Lưu</button>
+                <button className="btn btn-sm" onClick={() => setSuaNhom(null)}>Hủy</button>
+              </>
+            ) : (
+              <p className="eyebrow-grey">{g.label}</p>
+            )}
             <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
+            {g.id && suaNhom?.id !== g.id && (
+              <ThaoTac onEdit={duocSua ? () => setSuaNhom({ id: g.id, label: g.label }) : null} suaTitle="Đổi tên nhóm"
+                onDelete={duocXoa ? () => xoaNhom(g) : null} xoaTitle="Xóa nhóm (đầu việc vẫn giữ)" />
+            )}
             {duocThem && (
               <>
                 <input className="inp" style={{ maxWidth: 240 }} placeholder="Thêm đầu việc vào nhóm này…"
