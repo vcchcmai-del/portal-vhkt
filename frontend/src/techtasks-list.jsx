@@ -119,13 +119,20 @@ async function taiDinhKem(a) {
 
 /* ---------------------------------------------------------------- chọn người */
 
-function DanhSachNguoi({ id, assignees }) {
+/** Ô chọn người từ danh bạ nhân viên + tài khoản (không gõ tay để tránh sai tên). */
+function ChonNguoi({ value, onChange, assignees, style, trong = "— Chưa đặt —" }) {
+  const co = (assignees || []).some((a) => a.name === value);
   return (
-    <datalist id={id}>
-      {assignees.map((a) => (
-        <option key={a.name} value={a.name}>{[a.role, a.dept, a.nguon].filter(Boolean).join(" · ")}</option>
+    <select className="inp" style={style} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{trong}</option>
+      {/* Tên cũ không còn trong danh bạ vẫn giữ để không mất dữ liệu khi lưu lại */}
+      {!!value && !co && <option value={value}>{value} (không còn trong danh bạ)</option>}
+      {(assignees || []).map((a) => (
+        <option key={a.name} value={a.name}>
+          {a.name}{a.role ? ` — ${a.role}` : ""}
+        </option>
       ))}
-    </datalist>
+    </select>
   );
 }
 
@@ -140,13 +147,10 @@ function NhieuNguoi({ value, onChange, assignees, listId }) {
   return (
     <div>
       <div className="flex gap-2">
-        <input className="inp" list={listId} placeholder="Chọn hoặc gõ tên rồi Enter…" value={go}
-          onChange={(e) => setGo(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); them(); } }}
-          onBlur={them} />
+        <ChonNguoi value={go} assignees={(assignees || []).filter((a) => !value.some((v) => v === a.name))}
+          trong="— Chọn người phối hợp —" onChange={setGo} />
         <button type="button" className="btn btn-sm" onClick={them} title="Thêm người phối hợp"><Plus size={14} /></button>
       </div>
-      <DanhSachNguoi id={listId} assignees={assignees} />
       {!!value.length && (
         <div className="flex gap-2" style={{ flexWrap: "wrap", marginTop: 6 }}>
           {value.map((ten) => (
@@ -269,8 +273,10 @@ export function BangDonVi({ units, onChange, donViTinh, chiSuaKhoiLuong = false,
                       placeholder="Mã/tên đơn vị" onChange={(e) => doi(i, "unit_name", e.target.value)} />
                   </td>
                   <td>
-                    <input className="inp" style={{ minWidth: 130 }} list="ds-phu-trach" value={u.assignee || ""} disabled={chiSuaKhoiLuong}
-                      onChange={(e) => doi(i, "assignee", e.target.value)} />
+                    {chiSuaKhoiLuong
+                      ? <input className="inp" style={{ minWidth: 130 }} value={u.assignee || ""} disabled />
+                      : <ChonNguoi value={u.assignee} assignees={assignees} style={{ minWidth: 150 }}
+                          trong="— Chưa gán —" onChange={(v) => doi(i, "assignee", v)} />}
                   </td>
                   <td><input className="inp" type="number" style={{ width: 96 }} value={u.volume_plan ?? ""} disabled={chiSuaKhoiLuong}
                     onChange={(e) => doi(i, "volume_plan", e.target.value)} /></td>
@@ -714,9 +720,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(); } }} />
             </Field>
             <Field label="Nhân sự chủ trì">
-              <input className="inp" list="ds-phu-trach" placeholder="Chọn hoặc gõ tên…" value={dvMoi.owner}
-                onChange={(e) => setDvMoi({ ...dvMoi, owner: e.target.value })} />
-              <DanhSachNguoi id="ds-phu-trach" assignees={assignees} />
+              <ChonNguoi value={dvMoi.owner} assignees={assignees} onChange={(v) => setDvMoi({ ...dvMoi, owner: v })} />
             </Field>
             <Field label="Thuộc nhóm">{oNhom(dvMoi.group, (v) => setDvMoi({ ...dvMoi, group: v }))}</Field>
           </div>
@@ -835,9 +839,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
                             <input className="inp" autoFocus value={sua.label} onChange={(e) => setSua({ ...sua, label: e.target.value })} />
                           </Field>
                           <Field label="Nhân sự chủ trì">
-                            <input className="inp" list="ds-phu-trach" value={sua.owner}
-                              onChange={(e) => setSua({ ...sua, owner: e.target.value })} />
-                            <DanhSachNguoi id="ds-phu-trach" assignees={assignees} />
+                            <ChonNguoi value={sua.owner} assignees={assignees} onChange={(v) => setSua({ ...sua, owner: v })} />
                           </Field>
                           <Field label="Thuộc nhóm">{oNhom(sua.group, (v) => setSua({ ...sua, group: v }))}</Field>
                           <Field label="Gợi ý phạm vi">
@@ -1230,7 +1232,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               <OSoNho nhan="Quá hạn" so={dauViecDangXem.overdue} mau={dauViecDangXem.overdue ? RED : "#16A34A"} icon={AlertTriangle} />
               <div className="card" style={{ padding: 12 }}>
                 <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
-                  <span className="muted">Tiến độ chung</span><b>{dauViecDangXem.percent}%</b>
+                  <span className="muted">Hoàn thành <b style={{ color: "#1C1A1B" }}>{dauViecDangXem.done}/{dauViecDangXem.total}</b></span>
+                  <b>{dauViecDangXem.percent}%</b>
                 </div>
                 <TienDoNho percent={dauViecDangXem.percent} rong="100%" anSo />
               </div>
@@ -1328,11 +1331,13 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 <div className="flex items-center gap-2" style={{ marginTop: 8, flexWrap: "wrap", fontSize: 12.5 }}>
                   <span className="flex items-center gap-1"><User size={13} />{c.owner || <span className="muted">chưa có chủ trì</span>}</span>
                   <span className="tag tag-grey">{c.total} nhiệm vụ</span>
+                  {!!c.doing && <span className="tag tag-amber">{c.doing} đang làm</span>}
                   {!!c.overdue && <span className="tag tag-red">{c.overdue} quá hạn</span>}
                 </div>
                 <div style={{ marginTop: 10 }}>
                   <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
-                    <span className="muted">Tiến độ</span><b>{c.percent}%</b>
+                    <span className="muted">Hoàn thành <b style={{ color: "#1C1A1B" }}>{c.done}/{c.total}</b> nhiệm vụ</span>
+                    <b>{c.percent}%</b>
                   </div>
                   <TienDoNho percent={c.percent} rong="100%" anSo />
                 </div>
@@ -1433,18 +1438,16 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
           <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Nhân sự</p>
           <div className="grid md:grid-cols-3 gap-3">
             <Field label="Phụ trách chính (người làm)">
-              <input className="inp" list="ds-phu-trach" placeholder="Chọn hoặc gõ tên…"
-                value={form.assignee || ""} onChange={(e) => setForm({ ...form, assignee: e.target.value })} />
-              <DanhSachNguoi id="ds-phu-trach" assignees={assignees} />
+              <ChonNguoi value={form.assignee} assignees={assignees} trong="— Chưa gán —"
+                onChange={(v) => setForm({ ...form, assignee: v })} />
             </Field>
             <Field label="Phối hợp">
               <NhieuNguoi value={form.coordinators || []} listId="ds-phoi-hop" assignees={assignees}
                 onChange={(v) => setForm({ ...form, coordinators: v })} />
             </Field>
             <Field label="Người báo cáo (trống = người phụ trách)">
-              <input className="inp" list="ds-bao-cao" placeholder="Chọn hoặc gõ tên…"
-                value={form.reporter || ""} onChange={(e) => setForm({ ...form, reporter: e.target.value })} />
-              <DanhSachNguoi id="ds-bao-cao" assignees={assignees} />
+              <ChonNguoi value={form.reporter} assignees={assignees} trong="— Như người phụ trách —"
+                onChange={(v) => setForm({ ...form, reporter: v })} />
             </Field>
           </div>
           <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
