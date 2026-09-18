@@ -526,13 +526,15 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
  * Xoá đầu việc còn dữ liệu: máy chủ trả 409 kèm số lượng, giao diện hỏi lại và
  * cho chọn chuyển dữ liệu sang đầu việc khác hoặc xoá kèm.
  */
-function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
+function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false }) {
   const [dl, setDl] = useState(null);                   // { nhom: [...], tat_ca_dau_viec: [...] }
   const [assignees, setAssignees] = useState([]);
   const [sua, setSua] = useState(suaNgay ? { id: suaNgay.id, label: suaNgay.label, hint: suaNgay.hint || "", owner: "", group: "" } : null);
-  const [mo, setMo] = useState("");                     // "nhom" | "dauviec" | "nhieu" | ""
+  const [mo, setMo] = useState(moThem ? "dauviec" : "");   // "nhom" | "dauviec" | "nhieu" | ""
+  // Mở từ một nhóm (nút ＋ / ✏️ trên thẻ Tổng quan) thì chỉ hiện nhóm đó cho đỡ rối.
+  const [nhomLoc, setNhomLoc] = useState(chiNhom || "");
   const [nhomMoi, setNhomMoi] = useState("");
-  const [dvMoi, setDvMoi] = useState({ label: "", owner: "", group: "" });
+  const [dvMoi, setDvMoi] = useState({ label: "", owner: "", group: chiNhom || "" });
   const [hangLoat, setHangLoat] = useState({ nhom: "", text: "" });
   const [suaNhom, setSuaNhom] = useState(null);
   const [xoaHoi, setXoaHoi] = useState(null);           // { cats: [...], cach, dich }
@@ -556,6 +558,8 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
 
   const nhomCoMa = (dl?.nhom || []).filter((g) => g.id);
   const phang = (dl?.nhom || []).flatMap((g) => g.categories);
+  const nhomHien = nhomLoc ? (dl?.nhom || []).filter((g) => g.id === nhomLoc) : (dl?.nhom || []);
+  const tenNhomLoc = (dl?.nhom || []).find((g) => g.id === nhomLoc)?.label || "";
   const coDuLieu = (c) => {
     const d = c.dang_dung || {};
     return (d.viec || 0) + (d.viec_thung_rac || 0) + (d.hang_muc || 0) + (d.dong_tien_do || 0);
@@ -790,9 +794,18 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
         </div>
       )}
 
+      {nhomLoc && (
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px", marginBottom: 10,
+                                                          background: "#F3F8FE", borderRadius: 10 }}>
+          <b style={{ fontSize: 13 }}>Đang xem nhóm: {tenNhomLoc}</b>
+          <span className="muted" style={{ fontSize: 12 }}>chỉ hiện đầu việc của nhóm này</span>
+          <button className="btn btn-sm" onClick={() => setNhomLoc("")}>Xem tất cả nhóm</button>
+        </div>
+      )}
+
       {!dl && <p className="muted">Đang tải…</p>}
 
-      {(dl?.nhom || []).map((g) => (
+      {nhomHien.map((g) => (
         <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 12 }}>
           <div className="flex items-center gap-2"
             style={{ padding: "9px 12px", background: "#FCFBFB", borderBottom: "1px solid #EFECED", flexWrap: "wrap" }}>
@@ -1176,8 +1189,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         <div className="tt-nen" style={{ alignItems: "flex-start", overflowY: "auto", padding: "24px 16px" }}
           onClick={() => setQlDauViec(false)}>
           <div style={{ width: "100%", maxWidth: 1100 }} onClick={(e) => e.stopPropagation()}>
-            <QuanLyDauViec key={typeof qlDauViec === "object" ? qlDauViec.id : "tat-ca"}
-              suaNgay={typeof qlDauViec === "object" ? qlDauViec : null}
+            <QuanLyDauViec key={typeof qlDauViec === "object" ? (qlDauViec.id || qlDauViec.nhom || "nhom") : "tat-ca"}
+              suaNgay={typeof qlDauViec === "object" && qlDauViec.id ? qlDauViec : null}
+              chiNhom={typeof qlDauViec === "object" ? (qlDauViec.nhom || null) : null}
+              moThem={typeof qlDauViec === "object" && !!qlDauViec.them}
               onDong={() => setQlDauViec(false)}
               onDoi={() => { loadCategories(); loadSummary(); loadGroups(); }} />
           </div>
@@ -1202,7 +1217,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               </p>
             </div>
             {duocSua && (
-              <button className="btn btn-sm" onClick={() => setQlDauViec({ id: dauViecDangXem.category, label: dauViecDangXem.label, hint: "" })}>
+              <button className="btn btn-sm" onClick={() => setQlDauViec({ id: dauViecDangXem.category, label: dauViecDangXem.label, hint: "", nhom: dauViecDangXem.group })}>
                 <Pencil size={14} />Sửa đầu việc
               </button>
             )}
@@ -1297,9 +1312,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                     <ThaoTac
                       truoc={duocThemDauViec ? (
                         <button type="button" className="tt-btn" title={`Thêm đầu việc vào “${g.label}”`}
-                          onClick={() => setQlDauViec(true)}><Plus size={16} /></button>
+                          onClick={() => setQlDauViec({ nhom: g.id, them: true })}><Plus size={16} /></button>
                       ) : null}
-                      onEdit={duocSua ? () => setQlDauViec(true) : null} suaTitle="Sửa nhóm trong Cơ cấu"
+                      onEdit={duocSua ? () => setQlDauViec({ nhom: g.id }) : null} suaTitle="Sửa nhóm trong Cơ cấu"
                       onDelete={duocXoa ? () => xoaNhomTQ(g) : null} xoaTitle="Xóa nhóm (đầu việc vẫn giữ)" />
                   )}
                 </div>
