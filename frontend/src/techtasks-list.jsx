@@ -928,10 +928,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [moId, setMoId] = useState(null);         // việc đang xem chi tiết
   const [qlDauViec, setQlDauViec] = useState(false);   // false | true | đầu việc đang sửa
   const [xemDauViec, setXemDauViec] = useState(null);  // mã đầu việc đang mở màn hình chi tiết
-  const [cheDoSua, setCheDoSua] = useState(false);      // hiện nút sửa/xoá trên thẻ đầu việc
   const [nhomDS, setNhomDS] = useState([]);            // nhóm đầu việc cấp 1 (vd CĐBR)
-  const [nhomMoi, setNhomMoi] = useState(null);        // tên nhóm đang thêm, null = không mở ô
-  const [dongNhom, setDongNhom] = useState([]);        // mã nhóm đang gập
   const [newCat, setNewCat] = useState(null);
 
   const duocGiao = coQuyen("tech_tasks", "create");
@@ -951,34 +948,6 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
   const loadGroups = () => api.get("/api/admin/tech-tasks/groups")
     .then((x) => setNhomDS(Array.isArray(x) ? x : [])).catch(() => {});
-
-  /** Thêm nhóm đầu việc cấp 1 (vd CĐBR) — đầu việc xếp vào nhóm ở khung Chỉnh sửa. */
-  const themNhom = async () => {
-    const label = (nhomMoi || "").trim();
-    if (!label) { setNhomMoi(null); return; }
-    try {
-      await api.post("/api/admin/tech-tasks/groups", { label });
-      setNhomMoi(null); setErr(""); loadGroups(); loadCategories();
-    } catch (e) { setErr(e.message); }
-  };
-
-  const xoaNhom = async (g) => {
-    if (!window.confirm(`Xóa nhóm “${g.label}”?\n\nCác đầu việc trong nhóm vẫn còn, chỉ quay về mục “Chưa xếp nhóm”.`)) return;
-    try { await api.del(`/api/admin/tech-tasks/groups/${g.id}`); setErr(""); loadGroups(); loadCategories(); }
-    catch (e) { setErr(e.message); }
-  };
-
-  const doiTenNhom = async (g) => {
-    const ten = window.prompt("Tên nhóm đầu việc:", g.label);
-    if (!ten || ten.trim() === g.label) return;
-    try { await api.put(`/api/admin/tech-tasks/groups/${g.id}`, { label: ten.trim() }); setErr(""); loadGroups(); loadCategories(); }
-    catch (e) { setErr(e.message); }
-  };
-
-  const xepNhom = async (catId, groupId) => {
-    try { await api.put(`/api/admin/tech-tasks/categories/${catId}`, { group_code: groupId }); loadGroups(); loadCategories(); }
-    catch (e) { setErr(e.message); }
-  };
 
   const loadCategories = () => api.get("/api/admin/tech-tasks/categories")
     .then((x) => setCategories(Array.isArray(x) ? x : [])).catch((e) => setErr(e.message));
