@@ -433,7 +433,8 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
   const [themVao, setThemVao] = useState({});           // { [maNhom]: "tên đang gõ" }
   const [hangLoat, setHangLoat] = useState({ mo: false, nhom: "", text: "" });
   const [nhomMoi, setNhomMoi] = useState(null);
-  const [xoaHoi, setXoaHoi] = useState(null);           // { cat, thongBao, cach, dich }
+  const [xoaHoi, setXoaHoi] = useState(null);           // { cats: [...], cach, dich }
+  const [chon, setChon] = useState([]);                // mã đầu việc đang tích
   const [loi, setLoi] = useState("");
   const [tin, setTin] = useState("");
   const duocThem = coQuyen("tech_tasks", "create");
@@ -485,25 +486,50 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
     lam(() => api.post("/api/admin/tech-tasks/categories/sap-xep", { codes: ds }));
   };
 
+  const coDuLieu = (c) => {
+    const d = c.dang_dung || {};
+    return (d.viec || 0) + (d.viec_thung_rac || 0) + (d.hang_muc || 0) + (d.dong_tien_do || 0);
+  };
+
   const xoa = async (cat) => {
-    const d = cat.dang_dung || {};
-    const co = (d.viec || 0) + (d.viec_thung_rac || 0) + (d.hang_muc || 0) + (d.dong_tien_do || 0);
-    if (!co) {
+    if (!coDuLieu(cat)) {
       if (window.confirm(`Xóa đầu việc “${cat.label}”?`)) lam(() => api.del(`/api/admin/tech-tasks/categories/${cat.id}`), "Đã xóa đầu việc.");
       return;
     }
-    setXoaHoi({ cat, cach: "chuyen", dich: phang.find((c) => c.id !== cat.id)?.id || "" });
+    setXoaHoi({ cats: [cat], cach: "chuyen", dich: phang.find((c) => c.id !== cat.id)?.id || "" });
+  };
+
+  /** Xóa các đầu việc đang tích. Cái nào trống thì xóa luôn, cái nào còn dữ liệu thì hỏi chung một lần. */
+  const xoaDaChon = () => {
+    const cats = phang.filter((c) => chon.includes(c.id));
+    if (!cats.length) return;
+    const conDuLieu = cats.filter(coDuLieu);
+    if (!conDuLieu.length) {
+      if (!window.confirm(`Xóa ${cats.length} đầu việc đã chọn?`)) return;
+      lam(async () => {
+        for (const c of cats) await api.del(`/api/admin/tech-tasks/categories/${c.id}`);
+        setChon([]); setTin(`Đã xóa ${cats.length} đầu việc.`);
+      });
+      return;
+    }
+    setXoaHoi({ cats, cach: "chuyen", dich: phang.find((c) => !chon.includes(c.id))?.id || "" });
   };
 
   const xacNhanXoa = () => {
-    const { cat, cach, dich } = xoaHoi;
+    const { cats, cach, dich } = xoaHoi;
     if (cach === "chuyen" && !dich) { setLoi("Chưa chọn đầu việc nhận dữ liệu."); return; }
+    if (cach === "chuyen" && cats.some((c) => c.id === dich)) { setLoi("Đầu việc nhận dữ liệu không được nằm trong danh sách xóa."); return; }
     const q = cach === "chuyen" ? `?chuyen_sang=${encodeURIComponent(dich)}` : "?xoa_du_lieu=true";
-    if (cach === "xoa" && !window.confirm(`Xóa “${cat.label}” và toàn bộ dữ liệu bên trong?\n\nKhông khôi phục được.`)) return;
+    const ten = cats.length === 1 ? `“${cats[0].label}”` : `${cats.length} đầu việc`;
+    if (cach === "xoa" && !window.confirm(`Xóa ${ten} và toàn bộ dữ liệu bên trong?\n\nKhông khôi phục được.`)) return;
     lam(async () => {
-      const r = await api.del(`/api/admin/tech-tasks/categories/${cat.id}${q}`);
-      setXoaHoi(null);
-      setTin(cach === "chuyen" ? `Đã chuyển ${r.da_chuyen} bản ghi và xóa đầu việc.` : `Đã xóa đầu việc cùng ${r.da_xoa} bản ghi.`);
+      let chuyen = 0, mat = 0;
+      for (const c of cats) {
+        const r = await api.del(`/api/admin/tech-tasks/categories/${c.id}${q}`);
+        chuyen += r.da_chuyen || 0; mat += r.da_xoa || 0;
+      }
+      setXoaHoi(null); setChon([]);
+      setTin(cach === "chuyen" ? `Đã chuyển ${chuyen} bản ghi và xóa ${ten}.` : `Đã xóa ${ten} cùng ${mat} bản ghi.`);
     });
   };
 
@@ -522,6 +548,15 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
       </p>
       {!dl && <p className="muted">Đang tải…</p>}
 
+      {!!chon.length && (
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px", marginBottom: 10,
+                                                          background: "#FBF4F5", borderRadius: 10 }}>
+          <b style={{ fontSize: 13 }}>Đã chọn {chon.length} đầu việc</b>
+          <button className="btn btn-sm" style={{ color: RED }} onClick={xoaDaChon}><Trash2 size={13} />Xóa đã chọn</button>
+          <button className="btn btn-sm" onClick={() => setChon([])}>Bỏ chọn</button>
+        </div>
+      )}
+
       {(dl?.nhom || []).map((g) => (
         <div key={g.id || "chua"} style={{ marginBottom: 14 }}>
           <div className="flex items-center gap-2" style={{ marginBottom: 6, flexWrap: "wrap" }}>
@@ -538,11 +573,11 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th style={{ width: 54 }}>Thứ tự</th><th>Tên đầu việc</th><th>Gợi ý phạm vi</th><th>Nhóm</th><th>Dữ liệu đang có</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
+              <thead><tr><th style={{ width: 34 }} /><th style={{ width: 54 }}>Thứ tự</th><th>Tên đầu việc</th><th>Gợi ý phạm vi</th><th>Nhóm</th><th>Dữ liệu đang có</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
               <tbody>
                 {g.categories.map((c) => (sua?.id === c.id ? (
                   <tr key={c.id}>
-                    <td />
+                    <td /><td />
                     <td><input className="inp" autoFocus value={sua.label} onChange={(e) => setSua({ ...sua, label: e.target.value })} /></td>
                     <td><textarea className="inp" rows="2" value={sua.hint} onChange={(e) => setSua({ ...sua, hint: e.target.value })} /></td>
                     <td colSpan={2} />
@@ -553,6 +588,12 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
                   </tr>
                 ) : (
                   <tr key={c.id}>
+                    <td>
+                      {duocXoa && (
+                        <input type="checkbox" checked={chon.includes(c.id)} aria-label={`Chọn ${c.label}`}
+                          onChange={() => setChon((ds) => (ds.includes(c.id) ? ds.filter((x) => x !== c.id) : [...ds, c.id]))} />
+                      )}
+                    </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {duocSua && (
                         <>
@@ -580,7 +621,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
                   </tr>
                 )))}
                 {!g.categories.length && (
-                  <tr><td colSpan={6} className="muted" style={{ fontSize: 12.5 }}>Nhóm này chưa có đầu việc nào.</td></tr>
+                  <tr><td colSpan={7} className="muted" style={{ fontSize: 12.5 }}>Nhóm này chưa có đầu việc nào.</td></tr>
                 )}
               </tbody>
             </table>
@@ -590,24 +631,28 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
 
       {xoaHoi && (
         <div className="card" style={{ padding: 12, marginBottom: 12, borderLeft: `4px solid ${RED}` }}>
-          <b>Xóa đầu việc “{xoaHoi.cat.label}”</b>
+          <b>Xóa {xoaHoi.cats.length === 1 ? `đầu việc “${xoaHoi.cats[0].label}”` : `${xoaHoi.cats.length} đầu việc đã chọn`}</b>
           <p className="muted" style={{ fontSize: 12.5, margin: "4px 0 8px" }}>
-            Đang có {theDuLieu(xoaHoi.cat.dang_dung || {})}. Chọn cách xử lý số dữ liệu này:
+            {xoaHoi.cats.length === 1
+              ? <>Đang có {theDuLieu(xoaHoi.cats[0].dang_dung || {})}. Chọn cách xử lý số dữ liệu này:</>
+              : <>{xoaHoi.cats.filter(coDuLieu).map((c) => c.label).join(", ")} còn dữ liệu bên trong. Chọn cách xử lý:</>}
           </p>
           <label className="flex items-center gap-2" style={{ fontSize: 13.5, marginBottom: 6 }}>
             <input type="radio" checked={xoaHoi.cach === "chuyen"} onChange={() => setXoaHoi({ ...xoaHoi, cach: "chuyen" })} />
             Chuyển sang đầu việc:
             <select className="inp" style={{ maxWidth: 260 }} value={xoaHoi.dich}
               onChange={(e) => setXoaHoi({ ...xoaHoi, cach: "chuyen", dich: e.target.value })}>
-              {phang.filter((c) => c.id !== xoaHoi.cat.id).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              {phang.filter((c) => !xoaHoi.cats.some((x) => x.id === c.id)).map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
           </label>
           <label className="flex items-center gap-2" style={{ fontSize: 13.5 }}>
             <input type="radio" checked={xoaHoi.cach === "xoa"} onChange={() => setXoaHoi({ ...xoaHoi, cach: "xoa" })} />
-            Xóa luôn toàn bộ dữ liệu của đầu việc này (không khôi phục được)
+            Xóa luôn toàn bộ dữ liệu bên trong (không khôi phục được)
           </label>
           <div className="flex gap-2" style={{ marginTop: 10 }}>
-            <button className="btn btn-red btn-sm" onClick={xacNhanXoa}>Xóa đầu việc</button>
+            <button className="btn btn-red btn-sm" onClick={xacNhanXoa}>
+              Xóa {xoaHoi.cats.length > 1 ? `${xoaHoi.cats.length} đầu việc` : "đầu việc"}
+            </button>
             <button className="btn btn-sm" onClick={() => setXoaHoi(null)}>Hủy</button>
           </div>
         </div>
@@ -826,14 +871,24 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     try { await api.del(`/api/admin/tech-tasks/${x.id}`); if (moId === x.id) setMoId(null); taiLai(); } catch (e) { setErr(e.message); }
   };
 
-  /** Xoá đầu việc ngay từ nút 🗑 trên thẻ — máy chủ từ chối nếu đầu việc còn dữ liệu. */
+  /** Xoá đầu việc ngay từ nút 🗑 trên thẻ. Còn dữ liệu bên trong thì máy chủ
+   *  trả về số lượng, hỏi lại rồi xoá kèm; muốn giữ dữ liệu thì chuyển sang
+   *  đầu việc khác ở màn hình "Cơ cấu đầu việc". */
   const xoaDauViec = async (c) => {
     if (!window.confirm(`Xóa đầu việc “${c.label}”?`)) return;
+    const xong = () => { if (fCategory === c.id) setFCategory(""); setErr(""); loadCategories(); loadSummary(); loadGroups(); };
     try {
       await api.del(`/api/admin/tech-tasks/categories/${c.id}`);
-      if (fCategory === c.id) setFCategory("");
-      setErr(""); loadCategories(); loadSummary();
-    } catch (e) { setErr(e.message); }
+      xong();
+    } catch (e) {
+      if (!/đang có/i.test(e.message)) { setErr(e.message); return; }
+      const dong_y = window.confirm(
+        `${e.message}\n\nXóa “${c.label}” cùng toàn bộ dữ liệu bên trong?\n`
+        + "Không khôi phục được. Muốn giữ dữ liệu thì bấm Hủy, rồi vào “Cơ cấu đầu việc” để chuyển sang đầu việc khác.");
+      if (!dong_y) return;
+      try { await api.del(`/api/admin/tech-tasks/categories/${c.id}?xoa_du_lieu=true`); xong(); }
+      catch (e2) { setErr(e2.message); }
+    }
   };
 
   const exportCsv = async () => {
