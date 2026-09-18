@@ -1099,11 +1099,16 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
 
     nguoi = {}
 
-    def gan(ten, vai, r):
+    def _nguoi(ten):
         ten = re.sub(r"\s+", " ", (ten or "")).strip()
         if not ten:
+            return None
+        return nguoi.setdefault(ten.casefold(), {"name": ten, "viec": {}, "chu_tri": []})
+
+    def gan(ten, vai, r):
+        p = _nguoi(ten)
+        if p is None:
             return
-        p = nguoi.setdefault(ten.casefold(), {"name": ten, "viec": {}})
         p["viec"].setdefault(r.id, {"row": r, "vai": set()})["vai"].add(vai)
 
     chua_giao = 0
@@ -1114,6 +1119,19 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
         for ten in _ds_ten(r.coordinators):
             gan(ten, "phoi_hop", r)
         gan(r.reporter, "bao_cao", r)
+
+    # Nhân sự chủ trì đầu việc: người phụ trách cả mảng, kể cả khi đầu việc đó
+    # theo dõi bằng khối lượng (số liệu cụm) chứ không chia thành nhiệm vụ con —
+    # không gom vào đây thì mở tab Theo nhân viên sẽ không thấy ai chủ trì.
+    khoi_luong = _khoi_luong_dau_viec(db)
+    for c in categories(db):
+        p = _nguoi(c.owner)
+        if p is not None:
+            kl = khoi_luong.get(c.code) or {}
+            p["chu_tri"].append({"category": c.code, "label": c.label,
+                                 "kl_period": kl.get("period", ""),
+                                 "kl_plan": round(kl.get("plan", 0), 1),
+                                 "kl_done": round(kl.get("done", 0), 1)})
 
     ra = []
     for p in nguoi.values():
@@ -1144,8 +1162,16 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
             canh_bao.append(f"tồn {m['ton']} việc")
         if m["sap_han"]:
             canh_bao.append(f"{m['sap_han']} việc sắp đến hạn")
+        chu_tri = sorted(p["chu_tri"], key=lambda x: thu_tu.get(x["category"], 999))
+        for d in chu_tri:
+            d.update({k: theo_dv[d["category"]][k] for k in ("tong", "done", "ton", "overdue")}
+                     if d["category"] in theo_dv else {"tong": 0, "done": 0, "ton": 0, "overdue": 0})
+        kl_plan = sum(d["kl_plan"] for d in chu_tri)
+        kl_done = sum(d["kl_done"] for d in chu_tri)
         ra.append({
             "name": p["name"], **m,
+            "dau_viec": len(chu_tri), "chu_tri": chu_tri,
+            "kl_plan": round(kl_plan, 1), "kl_done": round(kl_done, 1),
             "ty_le": (m["done"] / m["tong"]) if m["tong"] else None,
             "muc": "do" if m["overdue"] else ("vang" if (m["ton"] >= TON_NHIEU or m["sap_han"]) else "xanh"),
             "canh_bao": canh_bao,

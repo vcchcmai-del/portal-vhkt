@@ -13,6 +13,7 @@ import { Card, Empty, RED, ThaoTac } from "./ui";
  */
 
 const pct = (r) => (r == null ? "—" : `${Math.round(r * 100)}%`);
+const so = (n) => Number(n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 1 });
 const MAU_MUC = { do: "#C8102E", vang: "#F2A007", xanh: "#16A34A" };
 const NEN_MUC = { do: "#FDF1F3", vang: "#FFF8E8", xanh: undefined };
 
@@ -58,7 +59,8 @@ export function TheoNhanVienTab({ onXemViec }) {
   }, [nguoi, tim, chiCanhBao]);
   const tong = nguoi.reduce((a, p) => ({
     ton: a.ton + p.ton, overdue: a.overdue + p.overdue, sap_han: a.sap_han + p.sap_han, done: a.done + p.done,
-  }), { ton: 0, overdue: 0, sap_han: 0, done: 0 });
+    dauViec: a.dauViec + (p.dau_viec || 0),
+  }), { ton: 0, overdue: 0, sap_han: 0, done: 0, dauViec: 0 });
 
   if (err) return <p style={{ color: RED }}>{err}</p>;
   if (!data) return <p className="muted">Đang tải…</p>;
@@ -69,7 +71,8 @@ export function TheoNhanVienTab({ onXemViec }) {
         <div style={{ flex: 1, minWidth: 220 }}>
           <b>{data.toan_phong ? "Công việc theo nhân viên" : "Công việc của tôi"}</b>
           <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>
-            Tính mọi việc người đó được gắn tên (phụ trách, phối hợp hoặc báo cáo), mỗi việc một lần.
+            Gồm đầu việc người đó đứng chủ trì (kèm khối lượng theo cụm) và mọi nhiệm vụ được gắn tên
+            (phụ trách, phối hợp hoặc báo cáo), mỗi nhiệm vụ một lần.
             Cảnh báo <span style={{ color: MAU_MUC.do, fontWeight: 700 }}>đỏ</span> khi có việc quá hạn,
             <span style={{ color: MAU_MUC.vang, fontWeight: 700 }}> vàng</span> khi tồn từ {nguong.ton_nhieu} việc hoặc có việc còn ≤ {nguong.sap_han_ngay} ngày tới hạn.
           </p>
@@ -77,8 +80,10 @@ export function TheoNhanVienTab({ onXemViec }) {
         <button className="btn btn-sm" onClick={load}><RefreshCw size={14} />Tải lại</button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <OSo nhan={data.toan_phong ? "Nhân viên đang có việc" : "Số việc của tôi"} so={data.toan_phong ? nguoi.length : (nguoi[0]?.tong || 0)} mau="#0E6CD6" />
+        <OSo nhan="Đầu việc đã có chủ trì" so={tong.dauViec} mau={tong.dauViec ? "#0E6CD6" : MAU_MUC.vang}
+          goi_y="Số đầu việc đã gắn nhân sự chủ trì — đặt ở Cơ cấu đầu việc" />
         <OSo nhan="Việc tồn (chưa xong)" so={tong.ton} mau="#0E6CD6" goi_y="Cộng theo từng người — một việc nhiều người cùng làm được tính cho mỗi người" />
         <OSo nhan="Quá hạn" so={tong.overdue} mau={tong.overdue ? MAU_MUC.do : MAU_MUC.xanh} />
         <OSo nhan={`Sắp đến hạn (≤ ${nguong.sap_han_ngay} ngày)`} so={tong.sap_han} mau={tong.sap_han ? MAU_MUC.vang : MAU_MUC.xanh} />
@@ -117,7 +122,10 @@ export function TheoNhanVienTab({ onXemViec }) {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Nhân viên</th><th title="Số việc được gắn tên">Tổng</th><th>Phụ trách</th><th>Phối hợp</th>
+                <th>Nhân viên</th>
+                <th title="Số đầu việc người này đứng chủ trì">Đầu việc chủ trì</th>
+                <th title="Khối lượng thực hiện / kế hoạch của các đầu việc chủ trì">Khối lượng</th>
+                <th title="Số nhiệm vụ được gắn tên">Nhiệm vụ</th><th>Phụ trách</th><th>Phối hợp</th>
                 <th>Xong</th><th>Đang làm</th><th>Chưa bắt đầu</th><th>Quá hạn</th><th>Sắp hạn</th><th>Tồn</th>
                 <th>Hoàn thành</th><th>Cảnh báo</th><th style={{ textAlign: "right" }}>Thao tác</th>
               </tr>
@@ -134,6 +142,10 @@ export function TheoNhanVienTab({ onXemViec }) {
                           <span style={{ width: 8, height: 8, borderRadius: 99, background: MAU_MUC[p.muc], display: "inline-block" }} />
                           <b>{p.name}</b>
                         </span>
+                      </td>
+                      <td style={{ fontWeight: 700 }}>{p.dau_viec || <span className="muted">—</span>}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {p.kl_plan ? <>{so(p.kl_done)}/{so(p.kl_plan)}</> : <span className="muted">—</span>}
                       </td>
                       <td><b>{p.tong}</b></td>
                       <td>{p.phu_trach}</td>
@@ -154,8 +166,26 @@ export function TheoNhanVienTab({ onXemViec }) {
                     </tr>
                     {dangMo && (
                       <tr>
-                        <td colSpan={13} style={{ background: "#FCFBFB" }}>
-                          <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Theo đầu việc</p>
+                        <td colSpan={15} style={{ background: "#FCFBFB" }}>
+                          {!!p.chu_tri?.length && (
+                            <>
+                              <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Đầu việc đứng chủ trì</p>
+                              <div className="flex gap-2" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+                                {p.chu_tri.map((d) => (
+                                  <span key={d.category} className="card" style={{ padding: "6px 10px", fontSize: 12.5 }}>
+                                    <b>{d.label}</b>
+                                    {d.kl_plan
+                                      ? <> · khối lượng {so(d.kl_done)}/{so(d.kl_plan)}{d.kl_period ? ` (kỳ ${d.kl_period})` : ""}</>
+                                      : <> · {d.tong} nhiệm vụ · xong {d.done}</>}
+                                    {!!d.overdue && <span style={{ color: MAU_MUC.do, fontWeight: 700 }}> · quá hạn {d.overdue}</span>}
+                                  </span>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                          {!!p.theo_dau_viec.length && (
+                          <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Nhiệm vụ theo đầu việc</p>
+                          )}
                           <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
                             {p.theo_dau_viec.map((d) => (
                               <span key={d.category} className="card" style={{ padding: "6px 10px", fontSize: 12.5 }}>
@@ -165,6 +195,9 @@ export function TheoNhanVienTab({ onXemViec }) {
                               </span>
                             ))}
                           </div>
+                          {!p.chu_tri?.length && !p.theo_dau_viec.length && (
+                            <p className="muted" style={{ fontSize: 12.5 }}>Người này chưa chủ trì đầu việc nào và chưa được gắn nhiệm vụ.</p>
+                          )}
                         </td>
                       </tr>
                     )}

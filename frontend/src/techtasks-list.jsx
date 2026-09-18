@@ -67,11 +67,9 @@ export function TheUuTien({ muc }) {
 
 /** Trạng thái tổng hợp của một đầu việc, suy từ các nhiệm vụ bên trong. */
 function trangThaiDauViec(c) {
-  if (!c.total) return { nhan: "Chưa có nhiệm vụ", mau: "#8B5CF6" };
-  if (c.done === c.total) return { nhan: "Hoàn thành", mau: "#16A34A" };
   if (c.overdue) return { nhan: "Có việc quá hạn", mau: "#C8102E" };
-  if (c.doing) return { nhan: "Đang thực hiện", mau: "#0E6CD6" };
-  return { nhan: "Chưa bắt đầu", mau: "#F2A007" };
+  if (c.total && c.done === c.total) return { nhan: "Hoàn thành", mau: "#16A34A" };
+  return { nhan: "Đang theo dõi", mau: "#0E6CD6" };
 }
 
 /** Ô số tổng hợp ở đầu Tổng quan. */
@@ -1292,18 +1290,6 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
           dong={[["Trên tổng", tong.viec], ["Tỷ lệ", tong.viec ? `${Math.round(tong.quaHan / tong.viec * 100)}%` : "—"]]} />
       </div>
 
-      <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "10px 12px" }}>
-        <span className="muted" style={{ fontSize: 12 }}>Lọc nhanh:</span>
-        {[["", "Tất cả", tong.viec], ["todo", "Chưa bắt đầu", tong.chuaBatDau], ["doing", "Đang thực hiện", tong.dangLam],
-          ["done", "Hoàn thành", tong.xong], ["overdue", "Quá hạn", tong.quaHan]].map(([ma, nhan, n]) => (
-          <button key={ma || "all"} className={`btn btn-sm ${fStatus === ma ? "btn-red" : ""}`}
-            onClick={() => setFStatus(ma)}>{nhan} · {n}</button>
-        ))}
-        {fCategory && (
-          <button className="btn btn-sm" onClick={() => setFCategory("")}><X size={13} />Bỏ lọc đầu việc</button>
-        )}
-      </div>
-
       {/* Mỗi thẻ là một nhóm cấp 1; bên trong liệt kê đầu việc, bấm vào đầu việc
           mới xuống danh sách nhiệm vụ của nó. */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1314,7 +1300,6 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               <div style={{ height: 4, background: tt.mau }} />
               <div style={{ padding: 12 }}>
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-                  <span className="tag" style={{ background: `${tt.mau}14`, color: tt.mau, fontWeight: 700 }}>{tt.nhan}</span>
                   <span style={{ flex: 1 }} />
                   {g.id && (
                     <ThaoTac
