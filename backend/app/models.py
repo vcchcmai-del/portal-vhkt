@@ -672,6 +672,7 @@ class TechCategory(Base):
     label = Column(String(160), nullable=False)                         # vd "3. Kế hoạch 5G"
     hint = Column(Text)                     # gợi ý phạm vi, hiện trên form giao việc
     group_code = Column(String(40), nullable=True, index=True)   # khoá về TechGroup.code
+    owner = Column(String(160))             # nhân sự chủ trì đầu việc (mặc định cho việc giao mới)
     order_no = Column(Integer, default=0)
     active = Column(Boolean, default=True)
 

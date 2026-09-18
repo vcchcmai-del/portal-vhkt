@@ -303,6 +303,7 @@ def _duoc_bao_cao(user, row) -> bool:
 class CategoryIn(BaseModel):
     label: Optional[str] = None
     hint: Optional[str] = None
+    owner: Optional[str] = None
     group_code: Optional[str] = None
     order_no: Optional[int] = None
     active: Optional[bool] = None
@@ -319,7 +320,7 @@ class GroupIn(BaseModel):
 def list_categories(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
     ensure_seeded(db)
     ten_nhom = {g.code: g.label for g in db.query(models.TechGroup).all()}
-    return [{"id": c.code, "label": c.label, "hint": c.hint or "",
+    return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
              "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, "")}
             for c in categories(db)]
 
@@ -338,12 +339,14 @@ def create_category(data: CategoryIn, db: Session = Depends(get_db),
             .order_by(models.TechCategory.order_no.desc()).first())
     row = models.TechCategory(
         code=_ma_chua_dung(db, models.TechCategory, _slug(label)),
-        label=label, hint=(data.hint or "").strip(),
+        label=label, hint=(data.hint or "").strip(), owner=(data.owner or "").strip(),
+        group_code=(data.group_code or "").strip() or None,
         order_no=(last.order_no + 1) if last else 0, active=True,
     )
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, f"Đầu việc: {row.label}", request=request)
-    return {"id": row.code, "label": row.label, "hint": row.hint or ""}
+    return {"id": row.code, "label": row.label, "hint": row.hint or "", "owner": row.owner or "",
+            "group": row.group_code or ""}
 
 
 @admin_router.put("/tech-tasks/categories/{code}")
@@ -356,6 +359,8 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.label = data.label.strip()
     if data.hint is not None:
         row.hint = data.hint.strip()
+    if data.owner is not None:
+        row.owner = data.owner.strip()
     if data.group_code is not None:
         ma = data.group_code.strip()
         if ma and not db.query(models.TechGroup).filter(models.TechGroup.code == ma).first():
@@ -399,8 +404,8 @@ def tech_structure(db: Session = Depends(get_db), _=Depends(require_module("tech
             .order_by(models.TechGroup.order_no, models.TechGroup.id).all())
 
     def ds(ma):
-        return [{"id": c.code, "label": c.label, "hint": c.hint or "", "active": bool(c.active),
-                 "order_no": c.order_no or 0, "dang_dung": dem[c.code]}
+        return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
+                 "active": bool(c.active), "order_no": c.order_no or 0, "dang_dung": dem[c.code]}
                 for c in cats if (c.group_code or "") == ma]
 
     ra = [{"id": g.code, "label": g.label, "note": g.note or "", "categories": ds(g.code)} for g in nhom]

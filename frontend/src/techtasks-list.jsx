@@ -64,7 +64,9 @@ export function TheUuTien({ muc }) {
 }
 
 const blankTask = (categories, fCategory) => ({
-  category: fCategory || categories?.[0]?.id || "", title: "", description: "", assignee: "",
+  category: fCategory || categories?.[0]?.id || "", title: "", description: "",
+  // Chủ trì của đầu việc là người mặc định nhận việc mới trong đầu việc đó.
+  assignee: (categories || []).find((c) => c.id === (fCategory || categories?.[0]?.id))?.owner || "",
   coordinators: [], reporter: "", target: "", start_at: "", due_at: "", status: "todo",
   priority: "trung_binh", volume_unit: "", volume_plan: "", volume_done: "", percent: "",
   scope: "ca_nhan", units: [], link_url: "", progress_item: "", note: "",
@@ -420,73 +422,95 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
 
 /** Sửa tên/gợi ý, xoá đầu việc (thẻ ở đầu trang). Xoá chỉ được khi đầu việc chưa dùng. */
 /**
- * Cơ cấu đầu việc: nhóm cấp 1 -> đầu việc, tất cả thao tác dựng lại cơ cấu nằm
- * chung một chỗ — thêm hàng loạt, đổi tên, chuyển nhóm, đổi thứ tự, xoá.
+ * Cơ cấu đầu việc: nhóm cấp 1 -> đầu việc.
+ *
+ * Mọi thao tác "thêm" nằm chung một thanh trên cùng (nhóm mới, đầu việc, thêm
+ * nhiều cùng lúc) — trước đây mỗi nhóm có một ô nhập riêng và mỗi dòng có một
+ * ô chọn nhóm, nhìn rất rối. Nay ô chọn nhóm chỉ hiện khi sửa đúng dòng đó.
  *
  * Xoá đầu việc còn dữ liệu: máy chủ trả 409 kèm số lượng, giao diện hỏi lại và
- * cho chọn chuyển dữ liệu sang đầu việc khác hoặc xoá kèm — trước đây chỉ báo
- * "đang được dùng" rồi chịu, muốn dọn phải đi xoá thủ công từng hạng mục.
+ * cho chọn chuyển dữ liệu sang đầu việc khác hoặc xoá kèm.
  */
 function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
   const [dl, setDl] = useState(null);                   // { nhom: [...], tat_ca_dau_viec: [...] }
-  const [sua, setSua] = useState(suaNgay ? { id: suaNgay.id, label: suaNgay.label, hint: suaNgay.hint || "" } : null);
-  const [themVao, setThemVao] = useState({});           // { [maNhom]: "tên đang gõ" }
-  const [hangLoat, setHangLoat] = useState({ mo: false, nhom: "", text: "" });
-  const [nhomMoi, setNhomMoi] = useState(null);
+  const [assignees, setAssignees] = useState([]);
+  const [sua, setSua] = useState(suaNgay ? { id: suaNgay.id, label: suaNgay.label, hint: suaNgay.hint || "", owner: "", group: "" } : null);
+  const [mo, setMo] = useState("");                     // "nhom" | "dauviec" | "nhieu" | ""
+  const [nhomMoi, setNhomMoi] = useState("");
+  const [dvMoi, setDvMoi] = useState({ label: "", owner: "", group: "" });
+  const [hangLoat, setHangLoat] = useState({ nhom: "", text: "" });
+  const [suaNhom, setSuaNhom] = useState(null);
   const [xoaHoi, setXoaHoi] = useState(null);           // { cats: [...], cach, dich }
-  const [chon, setChon] = useState([]);                // mã đầu việc đang tích
-  const [suaNhom, setSuaNhom] = useState(null);        // { id, label } nhóm đang đổi tên
+  const [chon, setChon] = useState([]);
   const [loi, setLoi] = useState("");
   const [tin, setTin] = useState("");
   const duocThem = coQuyen("tech_tasks", "create");
   const duocSua = coQuyen("tech_tasks", "update");
   const duocXoa = coQuyen("tech_tasks", "delete");
 
-  const tai = () => api.get("/api/admin/tech-tasks/structure")
-    .then(setDl).catch((e) => setLoi(e.message));
-  useEffect(() => { tai(); }, []);
+  const tai = () => api.get("/api/admin/tech-tasks/structure").then(setDl).catch((e) => setLoi(e.message));
+  useEffect(() => {
+    tai();
+    api.get("/api/admin/tech-tasks/assignees").then((x) => setAssignees(Array.isArray(x) ? x : [])).catch(() => {});
+  }, []);
 
   const lam = async (viec, nhan = "") => {
     try { await viec(); setLoi(""); setTin(nhan); tai(); onDoi?.(); }
     catch (e) { setLoi(e.message); setTin(""); }
   };
 
+  const nhomCoMa = (dl?.nhom || []).filter((g) => g.id);
   const phang = (dl?.nhom || []).flatMap((g) => g.categories);
-
-  const luuTen = () => lam(async () => {
-    await api.put(`/api/admin/tech-tasks/categories/${sua.id}`, { label: sua.label, hint: sua.hint });
-    setSua(null);
-  }, "Đã lưu tên đầu việc.");
-
-  const themDauViec = (maNhom) => {
-    const label = (themVao[maNhom] || "").trim();
-    if (!label) return;
-    lam(async () => {
-      const c = await api.post("/api/admin/tech-tasks/categories", { label });
-      if (maNhom) await api.put(`/api/admin/tech-tasks/categories/${c.id}`, { group_code: maNhom });
-      setThemVao({ ...themVao, [maNhom]: "" });
-    }, `Đã thêm đầu việc “${label}”.`);
+  const coDuLieu = (c) => {
+    const d = c.dang_dung || {};
+    return (d.viec || 0) + (d.viec_thung_rac || 0) + (d.hang_muc || 0) + (d.dong_tien_do || 0);
   };
+
+  /* ------------------------------------------------------------ thêm mới */
+  const themNhom = () => nhomMoi.trim() && lam(async () => {
+    await api.post("/api/admin/tech-tasks/groups", { label: nhomMoi.trim() });
+    setNhomMoi(""); setMo("");
+  }, "Đã thêm nhóm.");
+
+  const themDauViec = () => dvMoi.label.trim() && lam(async () => {
+    await api.post("/api/admin/tech-tasks/categories", {
+      label: dvMoi.label.trim(), owner: dvMoi.owner.trim(), group_code: dvMoi.group || null });
+    setDvMoi({ label: "", owner: "", group: dvMoi.group });
+  }, "Đã thêm đầu việc.");
 
   const themHangLoat = () => {
     const labels = hangLoat.text.split("\n").map((x) => x.trim()).filter(Boolean);
     if (!labels.length) return;
     lam(async () => {
       const r = await api.post("/api/admin/tech-tasks/categories/nhieu", { labels, group_code: hangLoat.nhom || null });
-      setHangLoat({ mo: false, nhom: "", text: "" });
+      setHangLoat({ nhom: hangLoat.nhom, text: "" }); setMo("");
       setTin(`Đã thêm ${r.da_them.length} đầu việc.` + (r.bo_qua_trung_ten.length ? ` Bỏ qua ${r.bo_qua_trung_ten.length} tên đã có.` : ""));
     });
   };
 
-  /** Đổi thứ tự nhóm cấp 1: đảo chỗ với nhóm liền kề rồi ghi lại order_no. */
-  const doiThuTuNhom = (g, buoc) => {
-    const ds = (dl?.nhom || []).filter((x) => x.id);      // "Chưa xếp nhóm" luôn ở cuối
-    const i = ds.findIndex((x) => x.id === g.id);
+  /* ------------------------------------------------------------ sửa/xoá */
+  const luuDong = () => lam(async () => {
+    await api.put(`/api/admin/tech-tasks/categories/${sua.id}`, {
+      label: sua.label, hint: sua.hint, owner: sua.owner, group_code: sua.group });
+    setSua(null);
+  }, "Đã lưu đầu việc.");
+
+  const doiThuTu = (cat, buoc) => {
+    const ds = phang.map((c) => c.id);
+    const i = ds.indexOf(cat.id);
     const j = i + buoc;
     if (i < 0 || j < 0 || j >= ds.length) return;
+    [ds[i], ds[j]] = [ds[j], ds[i]];
+    lam(() => api.post("/api/admin/tech-tasks/categories/sap-xep", { codes: ds }));
+  };
+
+  const doiThuTuNhom = (g, buoc) => {
+    const i = nhomCoMa.findIndex((x) => x.id === g.id);
+    const j = i + buoc;
+    if (i < 0 || j < 0 || j >= nhomCoMa.length) return;
     lam(async () => {
-      await api.put(`/api/admin/tech-tasks/groups/${ds[i].id}`, { order_no: j });
-      await api.put(`/api/admin/tech-tasks/groups/${ds[j].id}`, { order_no: i });
+      await api.put(`/api/admin/tech-tasks/groups/${nhomCoMa[i].id}`, { order_no: j });
+      await api.put(`/api/admin/tech-tasks/groups/${nhomCoMa[j].id}`, { order_no: i });
     });
   };
 
@@ -500,21 +524,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
     lam(() => api.del(`/api/admin/tech-tasks/groups/${g.id}`), "Đã xóa nhóm.");
   };
 
-  const doiThuTu = (cat, buoc) => {
-    const ds = phang.map((c) => c.id);
-    const i = ds.indexOf(cat.id);
-    const j = i + buoc;
-    if (i < 0 || j < 0 || j >= ds.length) return;
-    [ds[i], ds[j]] = [ds[j], ds[i]];
-    lam(() => api.post("/api/admin/tech-tasks/categories/sap-xep", { codes: ds }));
-  };
-
-  const coDuLieu = (c) => {
-    const d = c.dang_dung || {};
-    return (d.viec || 0) + (d.viec_thung_rac || 0) + (d.hang_muc || 0) + (d.dong_tien_do || 0);
-  };
-
-  const xoa = async (cat) => {
+  const xoa = (cat) => {
     if (!coDuLieu(cat)) {
       if (window.confirm(`Xóa đầu việc “${cat.label}”?`)) lam(() => api.del(`/api/admin/tech-tasks/categories/${cat.id}`), "Đã xóa đầu việc.");
       return;
@@ -522,12 +532,10 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
     setXoaHoi({ cats: [cat], cach: "chuyen", dich: phang.find((c) => c.id !== cat.id)?.id || "" });
   };
 
-  /** Xóa các đầu việc đang tích. Cái nào trống thì xóa luôn, cái nào còn dữ liệu thì hỏi chung một lần. */
   const xoaDaChon = () => {
     const cats = phang.filter((c) => chon.includes(c.id));
     if (!cats.length) return;
-    const conDuLieu = cats.filter(coDuLieu);
-    if (!conDuLieu.length) {
+    if (!cats.some(coDuLieu)) {
       if (!window.confirm(`Xóa ${cats.length} đầu việc đã chọn?`)) return;
       lam(async () => {
         for (const c of cats) await api.del(`/api/admin/tech-tasks/categories/${c.id}`);
@@ -541,7 +549,6 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
   const xacNhanXoa = () => {
     const { cats, cach, dich } = xoaHoi;
     if (cach === "chuyen" && !dich) { setLoi("Chưa chọn đầu việc nhận dữ liệu."); return; }
-    if (cach === "chuyen" && cats.some((c) => c.id === dich)) { setLoi("Đầu việc nhận dữ liệu không được nằm trong danh sách xóa."); return; }
     const q = cach === "chuyen" ? `?chuyen_sang=${encodeURIComponent(dich)}` : "?xoa_du_lieu=true";
     const ten = cats.length === 1 ? `“${cats[0].label}”` : `${cats.length} đầu việc`;
     if (cach === "xoa" && !window.confirm(`Xóa ${ten} và toàn bộ dữ liệu bên trong?\n\nKhông khôi phục được.`)) return;
@@ -556,6 +563,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
     });
   };
 
+  /* ------------------------------------------------------------ hiển thị */
   const theDuLieu = (d) => {
     const ds = [[d.viec, "việc"], [d.viec_thung_rac, "việc ở thùng rác"], [d.hang_muc, "hạng mục"], [d.dong_tien_do, "dòng tiến độ"]]
       .filter(([n]) => n);
@@ -563,13 +571,93 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
     return ds.map(([n, t]) => <span key={t} className="tag tag-grey" style={{ marginRight: 4 }}>{n} {t}</span>);
   };
 
+  const oNhom = (giaTri, onChange, style) => (
+    <select className="inp" style={style} value={giaTri} onChange={(e) => onChange(e.target.value)}>
+      <option value="">— Chưa xếp nhóm —</option>
+      {nhomCoMa.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+    </select>
+  );
+
   return (
     <Card title="Cơ cấu đầu việc" action={<button className="btn btn-sm" onClick={onDong}><X size={13} />Đóng</button>}>
       <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
-        Nhóm cấp 1 gom các đầu việc cùng mảng (vd CĐBR). Đổi tên, chuyển nhóm, đổi thứ tự hoặc xóa ngay tại đây;
-        xóa đầu việc còn dữ liệu thì chọn chuyển dữ liệu sang đầu việc khác hoặc xóa kèm.
+        Nhóm cấp 1 (vd CĐBR) gom các đầu việc cùng mảng. Mỗi đầu việc có một nhân sự chủ trì — giao việc mới trong đầu việc đó
+        sẽ tự điền sẵn người này.
       </p>
-      {!dl && <p className="muted">Đang tải…</p>}
+
+      {/* Thanh thêm: gom mọi thao tác tạo mới về một chỗ */}
+      {duocThem && (
+        <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+          <button className={`btn btn-sm ${mo === "nhom" ? "btn-red" : ""}`} onClick={() => setMo(mo === "nhom" ? "" : "nhom")}>
+            <Plus size={13} />Nhóm mới
+          </button>
+          <button className={`btn btn-sm ${mo === "dauviec" ? "btn-red" : ""}`} onClick={() => setMo(mo === "dauviec" ? "" : "dauviec")}>
+            <Plus size={13} />Đầu việc mới
+          </button>
+          <button className={`btn btn-sm ${mo === "nhieu" ? "btn-red" : ""}`} onClick={() => setMo(mo === "nhieu" ? "" : "nhieu")}>
+            <Plus size={13} />Thêm nhiều đầu việc
+          </button>
+        </div>
+      )}
+
+      {mo === "nhom" && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div className="flex items-end gap-2" style={{ flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 260px" }}>
+              <Field label="Tên nhóm cấp 1">
+                <input className="inp" autoFocus placeholder="vd: CĐBR" value={nhomMoi}
+                  onChange={(e) => setNhomMoi(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themNhom(); } if (e.key === "Escape") setMo(""); }} />
+              </Field>
+            </div>
+            <button className="btn btn-red btn-sm" onClick={themNhom}>Thêm nhóm</button>
+            <button className="btn btn-sm" onClick={() => setMo("")}>Hủy</button>
+          </div>
+        </div>
+      )}
+
+      {mo === "dauviec" && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div className="grid md:grid-cols-3 gap-3">
+            <Field label="Tên đầu việc">
+              <input className="inp" autoFocus placeholder="vd: Kiểm soát WO" value={dvMoi.label}
+                onChange={(e) => setDvMoi({ ...dvMoi, label: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(); } }} />
+            </Field>
+            <Field label="Nhân sự chủ trì">
+              <input className="inp" list="ds-phu-trach" placeholder="Chọn hoặc gõ tên…" value={dvMoi.owner}
+                onChange={(e) => setDvMoi({ ...dvMoi, owner: e.target.value })} />
+              <DanhSachNguoi id="ds-phu-trach" assignees={assignees} />
+            </Field>
+            <Field label="Thuộc nhóm">{oNhom(dvMoi.group, (v) => setDvMoi({ ...dvMoi, group: v }))}</Field>
+          </div>
+          <div className="flex gap-2" style={{ marginTop: 8 }}>
+            <button className="btn btn-red btn-sm" onClick={themDauViec}>Thêm đầu việc</button>
+            <button className="btn btn-sm" onClick={() => setMo("")}>Xong</button>
+            <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>Thêm xong ô tên tự trống để nhập tiếp.</span>
+          </div>
+        </div>
+      )}
+
+      {mo === "nhieu" && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div className="grid md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <Field label="Mỗi dòng một tên đầu việc">
+                <textarea className="inp" rows="6" autoFocus value={hangLoat.text}
+                  placeholder={"Kiểm soát WO\nTriển khai 5G\nCủng cố hạ tầng"}
+                  onChange={(e) => setHangLoat({ ...hangLoat, text: e.target.value })} />
+              </Field>
+            </div>
+            <Field label="Xếp vào nhóm">{oNhom(hangLoat.nhom, (v) => setHangLoat({ ...hangLoat, nhom: v }))}</Field>
+          </div>
+          <div className="flex gap-2" style={{ marginTop: 8 }}>
+            <button className="btn btn-red btn-sm" onClick={themHangLoat}>Thêm tất cả</button>
+            <button className="btn btn-sm" onClick={() => setMo("")}>Hủy</button>
+            <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>Chủ trì đặt sau bằng nút ✏️ trên từng dòng.</span>
+          </div>
+        </div>
+      )}
 
       {!!chon.length && (
         <div className="flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px", marginBottom: 10,
@@ -579,100 +667,6 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
           <button className="btn btn-sm" onClick={() => setChon([])}>Bỏ chọn</button>
         </div>
       )}
-
-      {(dl?.nhom || []).map((g) => (
-        <div key={g.id || "chua"} style={{ marginBottom: 14 }}>
-          <div className="flex items-center gap-2" style={{ marginBottom: 6, flexWrap: "wrap" }}>
-            {g.id && duocSua && (
-              <span style={{ whiteSpace: "nowrap" }}>
-                <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Đưa nhóm lên trên"
-                  onClick={() => doiThuTuNhom(g, -1)}>▲</button>{" "}
-                <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Đưa nhóm xuống dưới"
-                  onClick={() => doiThuTuNhom(g, 1)}>▼</button>
-              </span>
-            )}
-            {suaNhom?.id === g.id ? (
-              <>
-                <input className="inp" style={{ maxWidth: 240 }} autoFocus value={suaNhom.label}
-                  onChange={(e) => setSuaNhom({ ...suaNhom, label: e.target.value })}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuTenNhom(); } if (e.key === "Escape") setSuaNhom(null); }} />
-                <button className="btn btn-red btn-sm" onClick={luuTenNhom}>Lưu</button>
-                <button className="btn btn-sm" onClick={() => setSuaNhom(null)}>Hủy</button>
-              </>
-            ) : (
-              <p className="eyebrow-grey">{g.label}</p>
-            )}
-            <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
-            {g.id && suaNhom?.id !== g.id && (
-              <ThaoTac onEdit={duocSua ? () => setSuaNhom({ id: g.id, label: g.label }) : null} suaTitle="Đổi tên nhóm"
-                onDelete={duocXoa ? () => xoaNhom(g) : null} xoaTitle="Xóa nhóm (đầu việc vẫn giữ)" />
-            )}
-            {duocThem && (
-              <>
-                <input className="inp" style={{ maxWidth: 240 }} placeholder="Thêm đầu việc vào nhóm này…"
-                  value={themVao[g.id] || ""} onChange={(e) => setThemVao({ ...themVao, [g.id]: e.target.value })}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(g.id); } }} />
-                <button className="btn btn-sm" onClick={() => themDauViec(g.id)}><Plus size={13} />Thêm</button>
-              </>
-            )}
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th style={{ width: 34 }} /><th style={{ width: 54 }}>Thứ tự</th><th>Tên đầu việc</th><th>Gợi ý phạm vi</th><th>Nhóm</th><th>Dữ liệu đang có</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
-              <tbody>
-                {g.categories.map((c) => (sua?.id === c.id ? (
-                  <tr key={c.id}>
-                    <td /><td />
-                    <td><input className="inp" autoFocus value={sua.label} onChange={(e) => setSua({ ...sua, label: e.target.value })} /></td>
-                    <td><textarea className="inp" rows="2" value={sua.hint} onChange={(e) => setSua({ ...sua, hint: e.target.value })} /></td>
-                    <td colSpan={2} />
-                    <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
-                      <button className="btn btn-red btn-sm" onClick={luuTen}>Lưu</button>{" "}
-                      <button className="btn btn-sm" onClick={() => setSua(null)}>Hủy</button>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={c.id}>
-                    <td>
-                      {duocXoa && (
-                        <input type="checkbox" checked={chon.includes(c.id)} aria-label={`Chọn ${c.label}`}
-                          onChange={() => setChon((ds) => (ds.includes(c.id) ? ds.filter((x) => x !== c.id) : [...ds, c.id]))} />
-                      )}
-                    </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      {duocSua && (
-                        <>
-                          <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Lên" onClick={() => doiThuTu(c, -1)}>▲</button>{" "}
-                          <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Xuống" onClick={() => doiThuTu(c, 1)}>▼</button>
-                        </>
-                      )}
-                    </td>
-                    <td><b>{c.label}</b></td>
-                    <td className="muted" style={{ fontSize: 12.5, maxWidth: 320 }}>{c.hint || "—"}</td>
-                    <td>
-                      {duocSua ? (
-                        <select className="inp" style={{ minWidth: 150, fontSize: 12.5 }} value={g.id}
-                          onChange={(e) => lam(() => api.put(`/api/admin/tech-tasks/categories/${c.id}`, { group_code: e.target.value }), "Đã chuyển nhóm.")}>
-                          <option value="">— Chưa xếp nhóm —</option>
-                          {(dl?.nhom || []).filter((x) => x.id).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-                        </select>
-                      ) : g.label}
-                    </td>
-                    <td style={{ fontSize: 12 }}>{theDuLieu(c.dang_dung || {})}</td>
-                    <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
-                      <ThaoTac onEdit={duocSua ? () => setSua({ id: c.id, label: c.label, hint: c.hint || "" }) : null}
-                        suaTitle="Đổi tên / gợi ý" onDelete={duocXoa ? () => xoa(c) : null} xoaTitle="Xóa đầu việc" />
-                    </td>
-                  </tr>
-                )))}
-                {!g.categories.length && (
-                  <tr><td colSpan={7} className="muted" style={{ fontSize: 12.5 }}>Nhóm này chưa có đầu việc nào.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
 
       {xoaHoi && (
         <div className="card" style={{ padding: 12, marginBottom: 12, borderLeft: `4px solid ${RED}` }}>
@@ -703,47 +697,111 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginTop: 6 }}>
-        {duocThem && (nhomMoi === null ? (
-          <button className="btn btn-sm" onClick={() => setNhomMoi("")}><Plus size={13} />Thêm nhóm cấp 1</button>
-        ) : (
-          <>
-            <input className="inp" style={{ maxWidth: 240 }} autoFocus placeholder="Tên nhóm, vd: CĐBR"
-              value={nhomMoi} onChange={(e) => setNhomMoi(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); lam(async () => { await api.post("/api/admin/tech-tasks/groups", { label: nhomMoi.trim() }); setNhomMoi(null); }, "Đã thêm nhóm."); } }} />
-            <button className="btn btn-red btn-sm" onClick={() => lam(async () => { await api.post("/api/admin/tech-tasks/groups", { label: nhomMoi.trim() }); setNhomMoi(null); }, "Đã thêm nhóm.")}>Thêm</button>
-            <button className="btn btn-sm" onClick={() => setNhomMoi(null)}>Hủy</button>
-          </>
-        ))}
-        {duocThem && (
-          <button className="btn btn-sm" onClick={() => setHangLoat({ ...hangLoat, mo: !hangLoat.mo })}>
-            <Plus size={13} />Thêm nhiều đầu việc một lần
-          </button>
-        )}
-      </div>
+      {!dl && <p className="muted">Đang tải…</p>}
 
-      {hangLoat.mo && (
-        <div className="card" style={{ padding: 12, marginTop: 10 }}>
-          <Field label="Mỗi dòng một tên đầu việc">
-            <textarea className="inp" rows="6" value={hangLoat.text} placeholder={"Kiểm soát WO\nTriển khai 5G\nCủng cố hạ tầng"}
-              onChange={(e) => setHangLoat({ ...hangLoat, text: e.target.value })} />
-          </Field>
-          <div className="flex items-center gap-2" style={{ marginTop: 8, flexWrap: "wrap" }}>
-            <Field label="Xếp vào nhóm">
-              <select className="inp" style={{ maxWidth: 240 }} value={hangLoat.nhom}
-                onChange={(e) => setHangLoat({ ...hangLoat, nhom: e.target.value })}>
-                <option value="">— Chưa xếp nhóm —</option>
-                {(dl?.nhom || []).filter((x) => x.id).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-              </select>
-            </Field>
-            <button className="btn btn-red btn-sm" onClick={themHangLoat}>Thêm tất cả</button>
-            <button className="btn btn-sm" onClick={() => setHangLoat({ mo: false, nhom: "", text: "" })}>Đóng</button>
+      {(dl?.nhom || []).map((g) => (
+        <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden", marginBottom: 12 }}>
+          <div className="flex items-center gap-2"
+            style={{ padding: "9px 12px", background: "#FCFBFB", borderBottom: "1px solid #EFECED", flexWrap: "wrap" }}>
+            {g.id && duocSua && suaNhom?.id !== g.id && (
+              <span style={{ whiteSpace: "nowrap" }}>
+                <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Đưa nhóm lên trên" onClick={() => doiThuTuNhom(g, -1)}>▲</button>{" "}
+                <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Đưa nhóm xuống dưới" onClick={() => doiThuTuNhom(g, 1)}>▼</button>
+              </span>
+            )}
+            {suaNhom?.id === g.id ? (
+              <>
+                <input className="inp" style={{ maxWidth: 240 }} autoFocus value={suaNhom.label}
+                  onChange={(e) => setSuaNhom({ ...suaNhom, label: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuTenNhom(); } if (e.key === "Escape") setSuaNhom(null); }} />
+                <button className="btn btn-red btn-sm" onClick={luuTenNhom}>Lưu</button>
+                <button className="btn btn-sm" onClick={() => setSuaNhom(null)}>Hủy</button>
+              </>
+            ) : (
+              <b style={{ fontSize: 13.5 }}>{g.label}</b>
+            )}
+            <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
+            <span style={{ flex: 1 }} />
+            {g.id && suaNhom?.id !== g.id && (
+              <ThaoTac onEdit={duocSua ? () => setSuaNhom({ id: g.id, label: g.label }) : null} suaTitle="Đổi tên nhóm"
+                onDelete={duocXoa ? () => xoaNhom(g) : null} xoaTitle="Xóa nhóm (đầu việc vẫn giữ)" />
+            )}
           </div>
-        </div>
-      )}
 
-      {tin && <p style={{ color: "#16A34A", fontSize: 12.5, marginTop: 8 }}>{tin}</p>}
-      {loi && <p style={{ color: RED, fontSize: 12.5, marginTop: 8 }}>{loi}</p>}
+          {g.categories.length ? (
+            <div style={{ overflowX: "auto" }}>
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 30 }} /><th style={{ width: 60 }}>Thứ tự</th><th>Tên đầu việc</th>
+                    <th>Chủ trì</th><th>Dữ liệu đang có</th><th style={{ textAlign: "right" }}>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {g.categories.map((c) => (sua?.id === c.id ? (
+                    <tr key={c.id}>
+                      <td colSpan={6} style={{ background: "#FCFBFB" }}>
+                        <div className="grid md:grid-cols-4 gap-3">
+                          <Field label="Tên đầu việc">
+                            <input className="inp" autoFocus value={sua.label} onChange={(e) => setSua({ ...sua, label: e.target.value })} />
+                          </Field>
+                          <Field label="Nhân sự chủ trì">
+                            <input className="inp" list="ds-phu-trach" value={sua.owner}
+                              onChange={(e) => setSua({ ...sua, owner: e.target.value })} />
+                            <DanhSachNguoi id="ds-phu-trach" assignees={assignees} />
+                          </Field>
+                          <Field label="Thuộc nhóm">{oNhom(sua.group, (v) => setSua({ ...sua, group: v }))}</Field>
+                          <Field label="Gợi ý phạm vi">
+                            <textarea className="inp" rows="2" value={sua.hint} onChange={(e) => setSua({ ...sua, hint: e.target.value })} />
+                          </Field>
+                        </div>
+                        <div className="flex gap-2" style={{ marginTop: 8 }}>
+                          <button className="btn btn-red btn-sm" onClick={luuDong}>Lưu</button>
+                          <button className="btn btn-sm" onClick={() => setSua(null)}>Hủy</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={c.id}>
+                      <td>
+                        {duocXoa && (
+                          <input type="checkbox" checked={chon.includes(c.id)} aria-label={`Chọn ${c.label}`}
+                            onChange={() => setChon((ds) => (ds.includes(c.id) ? ds.filter((x) => x !== c.id) : [...ds, c.id]))} />
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {duocSua && (
+                          <>
+                            <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Lên" onClick={() => doiThuTu(c, -1)}>▲</button>{" "}
+                            <button className="btn btn-sm" style={{ padding: "2px 5px" }} title="Xuống" onClick={() => doiThuTu(c, 1)}>▼</button>
+                          </>
+                        )}
+                      </td>
+                      <td>
+                        <b>{c.label}</b>
+                        {c.hint && <><br /><span className="muted" style={{ fontSize: 12 }}>{c.hint.length > 90 ? `${c.hint.slice(0, 89)}…` : c.hint}</span></>}
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>{c.owner || <span className="muted">chưa đặt</span>}</td>
+                      <td style={{ fontSize: 12 }}>{theDuLieu(c.dang_dung || {})}</td>
+                      <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+                        <ThaoTac onEdit={duocSua ? () => setSua({ id: c.id, label: c.label, hint: c.hint || "", owner: c.owner || "", group: g.id }) : null}
+                          suaTitle="Sửa tên, chủ trì, nhóm" onDelete={duocXoa ? () => xoa(c) : null} xoaTitle="Xóa đầu việc" />
+                      </td>
+                    </tr>
+                  )))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="muted" style={{ fontSize: 12.5, padding: "10px 12px" }}>
+              Nhóm này chưa có đầu việc — bấm “Đầu việc mới” ở trên rồi chọn nhóm này.
+            </p>
+          )}
+        </div>
+      ))}
+
+      {tin && <p style={{ color: "#16A34A", fontSize: 12.5 }}>{tin}</p>}
+      {loi && <p style={{ color: RED, fontSize: 12.5 }}>{loi}</p>}
     </Card>
   );
 }
@@ -1157,7 +1215,14 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             <Field label="Đầu việc">
               {newCat === null ? (
                 <div className="flex gap-2">
-                  <select className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value, progress_item: "" })}>
+                  <select className="inp" value={form.category} onChange={(e) => {
+                    const chuTri = categories.find((c) => c.id === e.target.value)?.owner || "";
+                    const cuTri = categories.find((c) => c.id === form.category)?.owner || "";
+                    // Đổi đầu việc: điền chủ trì mới nếu ô đang trống hoặc đang là chủ trì của đầu việc cũ.
+                    const giuNguoi = form.assignee && form.assignee !== cuTri;
+                    setForm({ ...form, category: e.target.value, progress_item: "",
+                              assignee: giuNguoi ? form.assignee : chuTri });
+                  }}>
                     {!form.category && <option value="">— Chọn đầu việc —</option>}
                     {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                   </select>
