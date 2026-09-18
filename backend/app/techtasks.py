@@ -82,9 +82,12 @@ def _phan_tram(row) -> float:
     mất phần làm thêm. Việc đã Hoàn thành không bao giờ dưới 100%."""
     xong = (row.status or "") == "done"
     ke_hoach, thuc_hien = row.volume_plan or 0, row.volume_done or 0
+    bkk = row.volume_bkk or 0
     if (row.scope or "ca_nhan") == "nhieu_don_vi" and row.units:
         ke_hoach = sum(u.volume_plan or 0 for u in row.units) or ke_hoach
         thuc_hien = sum(u.volume_done or 0 for u in row.units) or thuc_hien
+        bkk = sum(u.volume_bkk or 0 for u in row.units) or bkk
+    ke_hoach = max(ke_hoach - bkk, 0)        # BKK không tính vào kế hoạch phải làm
     if ke_hoach > 0:
         pt = max(thuc_hien / ke_hoach * 100, 0)
         return round(max(pt, 100.0) if xong else pt, 1)
@@ -103,9 +106,10 @@ def _khoang(pt: float) -> str:
 def _out_unit(u):
     ke_hoach, thuc_hien = u.volume_plan or 0, u.volume_done or 0
     return {"id": u.id, "unit_name": u.unit_name, "assignee": u.assignee or "",
-            "volume_plan": ke_hoach, "volume_done": thuc_hien,
+            "volume_plan": ke_hoach, "volume_done": thuc_hien, "volume_bkk": u.volume_bkk or 0,
             # Đơn vị làm vượt phần được chia thì để đúng số vượt, đừng cắt ở 100%.
-            "percent": round(thuc_hien / ke_hoach * 100, 1) if ke_hoach > 0 else round(u.percent or 0, 1),
+            "percent": round(thuc_hien / con * 100, 1) if (con := max(ke_hoach - (u.volume_bkk or 0), 0)) > 0
+            else round(u.percent or 0, 1),
             "note": u.note or "", "order_no": u.order_no or 0}
 
 
@@ -156,7 +160,7 @@ def _out(row, labels: Optional[dict] = None, it_labels: Optional[dict] = None,
         "start_at": row.start_at, "priority": row.priority or "trung_binh",
         "priority_label": UU_TIEN_LABELS.get(row.priority or "trung_binh", row.priority),
         "volume_unit": row.volume_unit or "", "volume_plan": row.volume_plan or 0,
-        "volume_done": row.volume_done or 0,
+        "volume_done": row.volume_done or 0, "volume_bkk": row.volume_bkk or 0,
         "percent": _phan_tram(row), "khoang_tien_do": _khoang(_phan_tram(row)),
         "scope": row.scope or "ca_nhan",
         "scope_label": PHAM_VI_LABELS.get(row.scope or "ca_nhan", row.scope),
@@ -212,9 +216,10 @@ def _khoi_luong_dau_viec(db: Session) -> dict:
         dv = thuoc.get(r.item)
         if not dv or r.period != ky_moi.get(dv):
             continue
-        b = ra.setdefault(dv, {"period": r.period, "plan": 0.0, "done": 0.0})
+        b = ra.setdefault(dv, {"period": r.period, "plan": 0.0, "done": 0.0, "bkk": 0.0})
         b["plan"] += r.plan_qty or 0
         b["done"] += r.done_qty or 0
+        b["bkk"] += r.bkk_qty or 0
     return ra
 
 
@@ -233,6 +238,7 @@ class TechTaskIn(BaseModel):
     volume_unit: Optional[str] = None
     volume_plan: Optional[float] = None
     volume_done: Optional[float] = None
+    volume_bkk: Optional[float] = None
     percent: Optional[float] = None
     scope: Optional[str] = None
     units: Optional[list[dict]] = None      # [{unit_name, assignee, volume_plan, volume_done, percent, note}]
@@ -319,6 +325,7 @@ def _ghi_don_vi(db: Session, row, ds) -> None:
         row.units.append(models.TechTaskUnit(
             unit_name=ten[:120], assignee=(u.get("assignee") or "").strip()[:160],
             volume_plan=float(u.get("volume_plan") or 0), volume_done=float(u.get("volume_done") or 0),
+            volume_bkk=float(u.get("volume_bkk") or 0),
             percent=float(u.get("percent") or 0), note=(u.get("note") or "").strip(), order_no=i))
 
 
@@ -726,10 +733,13 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
         b["kl_period"] = kl["period"] if kl else ""
         b["kl_plan"] = round(kl["plan"], 1) if kl else 0
         b["kl_done"] = round(kl["done"], 1) if kl else 0
+        b["kl_bkk"] = round(kl["bkk"], 1) if kl else 0
+        b["kl_ton"] = round(max(b["kl_plan"] - b["kl_bkk"] - b["kl_done"], 0), 1)
         # Không có nhiệm vụ con nhưng có khối lượng theo cụm thì lấy khối lượng
         # làm tiến độ — nếu không thẻ đầu việc mãi đứng ở 0%.
-        if not tong and b["kl_plan"]:
-            b["percent"] = round(b["kl_done"] / b["kl_plan"] * 100, 1)
+        phai_lam = max(b["kl_plan"] - b["kl_bkk"], 0)
+        if not tong and phai_lam:
+            b["percent"] = round(b["kl_done"] / phai_lam * 100, 1)
         g = nhom.get(c.code) or {"code": "", "label": ""}
         ra.append({"category": c.code, "label": c.label, "owner": c.owner or "",
                    "group": g["code"], "group_label": g["label"], **b})
@@ -752,7 +762,7 @@ def admin_create_task(data: TechTaskIn, db: Session = Depends(get_db),
         status=data.status or "todo", link_url=(data.link_url or "").strip(),
         start_at=data.start_at, priority=data.priority or "trung_binh",
         volume_unit=(data.volume_unit or "").strip(), volume_plan=data.volume_plan or 0,
-        volume_done=data.volume_done or 0, percent=data.percent or 0,
+        volume_done=data.volume_done or 0, volume_bkk=data.volume_bkk or 0, percent=data.percent or 0,
         scope=data.scope or "ca_nhan",
         progress_item=(data.progress_item or "").strip() or None,
         note=(data.note or "").strip(),
@@ -806,6 +816,7 @@ class BaoCaoIn(BaseModel):
     note: Optional[str] = None
     percent: Optional[float] = None
     volume_done: Optional[float] = None
+    volume_bkk: Optional[float] = None
     units: Optional[list[dict]] = None
 
 
@@ -826,11 +837,13 @@ def report_task(item_id: int, data: BaoCaoIn, db: Session = Depends(get_db),
     if data.note is not None:
         row.note = data.note.strip()
     if data.percent is not None:
-        if not (0 <= data.percent <= 100):
-            raise HTTPException(400, "Tiến độ phải trong khoảng 0–100%.")
+        if data.percent < 0:
+            raise HTTPException(400, "Tiến độ không được âm.")
         row.percent = data.percent
     if data.volume_done is not None:
         row.volume_done = data.volume_done
+    if data.volume_bkk is not None:
+        row.volume_bkk = data.volume_bkk
     if data.units is not None:
         _ghi_don_vi(db, row, data.units)
     db.commit(); db.refresh(row)
@@ -1137,56 +1150,89 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
             p["chu_tri"].append({"category": c.code, "label": c.label,
                                  "kl_period": kl.get("period", ""),
                                  "kl_plan": round(kl.get("plan", 0), 1),
-                                 "kl_done": round(kl.get("done", 0), 1)})
+                                 "kl_done": round(kl.get("done", 0), 1),
+                                 "kl_bkk": round(kl.get("bkk", 0), 1)})
+
+    ky_nay = f"{today.year:04d}-{today.month:02d}"
+
+    def _cong(b, kh, th, bkk, qua_han):
+        """Cộng một phần khối lượng vào ô tổng; tồn = kế hoạch - BKK - thực hiện."""
+        b["ke_hoach"] += kh
+        b["thuc_hien"] += th
+        b["bkk"] += bkk
+        ton = max(kh - bkk - th, 0)
+        b["ton"] += ton
+        if qua_han:
+            b["ton_qua_han"] += ton
+
+    def _o():
+        return {"ke_hoach": 0.0, "thuc_hien": 0.0, "bkk": 0.0, "ton": 0.0, "ton_qua_han": 0.0}
 
     ra = []
     for p in nguoi.values():
-        m = {"tong": 0, "phu_trach": 0, "phoi_hop": 0, "bao_cao": 0,
-             "done": 0, "doing": 0, "todo": 0, "overdue": 0, "ton": 0, "sap_han": 0}
-        theo_dv = defaultdict(lambda: {"tong": 0, "done": 0, "ton": 0, "overdue": 0})
+        m = _o()
+        m.update({"viec": 0, "viec_qua_han": 0, "viec_chua_kl": 0})
+        theo_dv = defaultdict(_o)
+
+        # 1) Nhiệm vụ người này PHỤ TRÁCH — khối lượng của việc là của họ. Việc
+        #    chỉ phối hợp thì không cộng khối lượng để khỏi đếm trùng cả phòng.
         for v in p["viec"].values():
-            r, st = v["row"], _trang_thai(v["row"], today)
-            m["tong"] += 1
-            for vai in v["vai"]:
-                m[vai] += 1
-            m[st] = m.get(st, 0) + 1
-            d = theo_dv[r.category]
-            d["tong"] += 1
+            r = v["row"]
+            if "phu_trach" not in v["vai"]:
+                continue
+            st = _trang_thai(r, today)
+            m["viec"] += 1
+            if st == "overdue":
+                m["viec_qua_han"] += 1
+            kh, th = r.volume_plan or 0, r.volume_done or 0
+            bkk = r.volume_bkk or 0
+            if (r.scope or "ca_nhan") == "nhieu_don_vi" and r.units:
+                kh = sum(u.volume_plan or 0 for u in r.units) or kh
+                th = sum(u.volume_done or 0 for u in r.units) or th
+                bkk = sum(u.volume_bkk or 0 for u in r.units) or bkk
+            if not kh:
+                m["viec_chua_kl"] += 1
+                continue
             if st == "done":
-                d["done"] += 1
-            else:
-                m["ton"] += 1
-                d["ton"] += 1
-                if st == "overdue":
-                    d["overdue"] += 1
-                elif r.due_at and today <= r.due_at <= han_gan:
-                    m["sap_han"] += 1
-        canh_bao = []
-        if m["overdue"]:
-            canh_bao.append(f"{m['overdue']} việc quá hạn")
-        if m["ton"] >= TON_NHIEU:
-            canh_bao.append(f"tồn {m['ton']} việc")
-        if m["sap_han"]:
-            canh_bao.append(f"{m['sap_han']} việc sắp đến hạn")
+                th = max(th, kh - bkk)
+            _cong(m, kh, th, bkk, st == "overdue")
+            _cong(theo_dv[r.category], kh, th, bkk, st == "overdue")
+
+        # 2) Đầu việc người này CHỦ TRÌ — khối lượng cộng từ số liệu cụm; kỳ đã
+        #    qua mà còn tồn thì tính là tồn quá hạn.
         chu_tri = sorted(p["chu_tri"], key=lambda x: thu_tu.get(x["category"], 999))
         for d in chu_tri:
-            d.update({k: theo_dv[d["category"]][k] for k in ("tong", "done", "ton", "overdue")}
-                     if d["category"] in theo_dv else {"tong": 0, "done": 0, "ton": 0, "overdue": 0})
-        kl_plan = sum(d["kl_plan"] for d in chu_tri)
-        kl_done = sum(d["kl_done"] for d in chu_tri)
+            qua_han = bool(d["kl_period"]) and d["kl_period"] < ky_nay
+            d["ton"] = round(max(d["kl_plan"] - d["kl_bkk"] - d["kl_done"], 0), 1)
+            d["ton_qua_han"] = d["ton"] if qua_han else 0
+            if d["kl_plan"]:
+                _cong(m, d["kl_plan"], d["kl_done"], d["kl_bkk"], qua_han)
+                _cong(theo_dv[d["category"]], d["kl_plan"], d["kl_done"], d["kl_bkk"], qua_han)
+
+        phai_lam = max(m["ke_hoach"] - m["bkk"], 0)
+        ghi_chu = []
+        if m["viec_qua_han"]:
+            ghi_chu.append(f"{m['viec_qua_han']} việc quá hạn")
+        if m["viec_chua_kl"]:
+            ghi_chu.append(f"{m['viec_chua_kl']} việc chưa khai khối lượng")
+        ky = sorted({d["kl_period"] for d in chu_tri if d["kl_period"]})
+        if ky:
+            ghi_chu.append("số liệu kỳ " + ", ".join(ky))
         ra.append({
-            "name": p["name"], **m,
+            "name": p["name"],
+            **{k: round(v, 1) for k, v in m.items()},
             "dau_viec": len(chu_tri), "chu_tri": chu_tri,
-            "kl_plan": round(kl_plan, 1), "kl_done": round(kl_done, 1),
-            "ty_le": (m["done"] / m["tong"]) if m["tong"] else None,
-            "muc": "do" if m["overdue"] else ("vang" if (m["ton"] >= TON_NHIEU or m["sap_han"]) else "xanh"),
-            "canh_bao": canh_bao,
+            "ty_le": (m["thuc_hien"] / phai_lam) if phai_lam else None,
+            "muc": "do" if m["ton_qua_han"] else ("vang" if m["ton"] else "xanh"),
+            "ghi_chu": ghi_chu,
+            "canh_bao": ghi_chu,
             "theo_dau_viec": sorted(
-                [{"category": c, "label": labels.get(c, c), **d} for c, d in theo_dv.items()],
+                [{"category": c, "label": labels.get(c, c), **{k: round(v, 1) for k, v in d.items()}}
+                 for c, d in theo_dv.items()],
                 key=lambda x: thu_tu.get(x["category"], 999)),
         })
     thu_tu_muc = {"do": 0, "vang": 1, "xanh": 2}
-    ra.sort(key=lambda x: (thu_tu_muc[x["muc"]], -x["overdue"], -x["ton"], x["name"]))
+    ra.sort(key=lambda x: (thu_tu_muc[x["muc"]], -x["ton_qua_han"], -x["ton"], x["name"]))
 
     toan_phong = _duoc_sua(user)
     if not toan_phong:
@@ -1333,14 +1379,16 @@ def _ma_chua_dung(db: Session, model, base: str) -> str:
 def _out_progress(row, cat_labels: Optional[dict] = None, it_labels: Optional[dict] = None):
     cat_labels = cat_labels if cat_labels is not None else {}
     it_labels = it_labels if it_labels is not None else {}
-    plan, done = row.plan_qty or 0, row.done_qty or 0
+    plan, done, bkk = row.plan_qty or 0, row.done_qty or 0, row.bkk_qty or 0
+    phai_lam = max(plan - bkk, 0)        # BKK không phải làm nên trừ khỏi kế hoạch
     return {
         "id": row.id, "category": row.category,
         "category_label": cat_labels.get(row.category, row.category),
         "item": row.item, "item_label": it_labels.get(row.item, row.item),
         "period": row.period, "center": row.center, "ft_name": row.ft_name,
-        "plan_qty": plan, "done_qty": done, "remaining": plan - done,
-        "rate": (done / plan) if plan else None,
+        "plan_qty": plan, "done_qty": done, "bkk_qty": bkk,
+        "remaining": max(phai_lam - done, 0),
+        "rate": (done / phai_lam) if phai_lam else None,
         "note": row.note, "created_at": row.created_at, "updated_at": row.updated_at,
     }
 
@@ -1353,6 +1401,7 @@ class ProgressIn(BaseModel):
     ft_name: Optional[str] = None
     plan_qty: Optional[float] = None
     done_qty: Optional[float] = None
+    bkk_qty: Optional[float] = None
     note: Optional[str] = None
 
 
@@ -1373,7 +1422,8 @@ def _get_progress(db, item_id):
 
 
 def upsert_progress_center(db: Session, category: str, item: str, period: str, center: str,
-                            plan_qty: float, done_qty: float, note: str = "") -> models.ProgressEntry:
+                            plan_qty: float, done_qty: float, note: str = "",
+                            bkk_qty: float = 0) -> models.ProgressEntry:
     """Ghi dòng tổng theo Trung tâm — trùng (đầu việc, hạng mục, kỳ, trung tâm)
     thì cập nhật đè, không tạo dòng mới. Dùng chung cho form thủ công và nhập
     Excel hàng loạt (bulkimport.py)."""
@@ -1383,12 +1433,13 @@ def upsert_progress_center(db: Session, category: str, item: str, period: str, c
                    models.ProgressEntry.ft_name.is_(None))
            .first())
     if row:
-        row.plan_qty, row.done_qty = plan_qty, done_qty
+        row.plan_qty, row.done_qty, row.bkk_qty = plan_qty, done_qty, bkk_qty or 0
         if note:
             row.note = note
     else:
         row = models.ProgressEntry(category=category, item=item, period=period, center=center,
-                                    ft_name=None, plan_qty=plan_qty, done_qty=done_qty, note=note or "")
+                                    ft_name=None, plan_qty=plan_qty, done_qty=done_qty,
+                                    bkk_qty=bkk_qty or 0, note=note or "")
         db.add(row)
     db.flush()
     return row
@@ -1548,7 +1599,7 @@ def create_progress_center(data: ProgressIn, db: Session = Depends(get_db),
         raise HTTPException(400, "Chưa nhập trung tâm.")
     _validate_progress(data, db)
     row = upsert_progress_center(db, data.category, data.item, data.period.strip(), data.center.strip(),
-                                  data.plan_qty or 0, data.done_qty or 0, data.note or "")
+                                  data.plan_qty or 0, data.done_qty or 0, data.note or "", data.bkk_qty or 0)
     db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, f"{row.item}/{row.center}/{row.period}", request=request)
     return _out_progress(row, category_labels(db), item_labels(db))

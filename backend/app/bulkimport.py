@@ -198,6 +198,7 @@ KINDS = {
             ("trung_tam", "Trung tâm", True, "Thới Hòa"),
             ("ke_hoach", "Kế hoạch", True, "21"),
             ("thuc_hien", "Thực hiện", True, "4"),
+            ("bkk", "BKK (bất khả kháng)", False, ""),
             ("ghi_chu", "Ghi chú", False, ""),
         ],
         "note": "Trùng cả đầu việc, hạng mục, kỳ và trung tâm thì cập nhật, không tạo dòng mới. "
@@ -1030,6 +1031,9 @@ def _check_progress(row, db, models, auth):
     done_qty = _to_number(row.get("thuc_hien"))
     if done_qty is None:
         raise ImportError_(f"Thực hiện “{row.get('thuc_hien')}” không phải là số.")
+    bkk_qty = _to_number(row.get("bkk")) if _clean(row.get("bkk")) else 0
+    if bkk_qty is None:
+        raise ImportError_(f"BKK “{row.get('bkk')}” không phải là số.")
 
     existing = (db.query(models.ProgressEntry)
                 .filter(models.ProgressEntry.category == category, models.ProgressEntry.item == item,
@@ -1040,7 +1044,8 @@ def _check_progress(row, db, models, auth):
         "_action": "update" if existing else "create",
         "id": existing.id if existing else None,
         "category": category, "item": item, "period": period, "center": center,
-        "plan_qty": plan_qty, "done_qty": done_qty, "note": _clean(row.get("ghi_chu")),
+        "plan_qty": plan_qty, "done_qty": done_qty, "bkk_qty": bkk_qty,
+        "note": _clean(row.get("ghi_chu")),
     }
 
 
@@ -1048,7 +1053,7 @@ def _apply_progress(item, db, models, auth):
     p = db.get(models.ProgressEntry, item["id"]) if item["id"] else models.ProgressEntry()
     p.category = item["category"]; p.item = item["item"]; p.period = item["period"]; p.center = item["center"]
     p.ft_name = None
-    p.plan_qty = item["plan_qty"]; p.done_qty = item["done_qty"]
+    p.plan_qty = item["plan_qty"]; p.done_qty = item["done_qty"]; p.bkk_qty = item.get("bkk_qty") or 0
     if item["note"]:
         p.note = item["note"]
     if not item["id"]:

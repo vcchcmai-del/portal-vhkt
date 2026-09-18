@@ -80,8 +80,8 @@ export function SoLieuCumFT({ category, label }) {
   };
 
   const tong = useMemo(() => cums.reduce((a, c) => ({
-    kh: a.kh + (c.plan_qty || 0), th: a.th + (c.done_qty || 0),
-  }), { kh: 0, th: 0 }), [cums]);
+    kh: a.kh + (c.plan_qty || 0), th: a.th + (c.done_qty || 0), bkk: a.bkk + (c.bkk_qty || 0),
+  }), { kh: 0, th: 0, bkk: 0 }), [cums]);
 
   /* Đầu việc làm theo cụm thì bày đủ danh mục trung tâm — cụm chưa có số liệu
      vẫn đứng đó để nhập, chứ không biến mất khiến tưởng là không phải làm. */
@@ -108,7 +108,7 @@ export function SoLieuCumFT({ category, label }) {
       if (!formCum.center) throw new Error("Chưa chọn cụm.");
       const body = { category, item, period, center: formCum.center,
                      plan_qty: Number(formCum.plan_qty) || 0, done_qty: Number(formCum.done_qty) || 0,
-                     note: formCum.note || "" };
+                     bkk_qty: Number(formCum.bkk_qty) || 0, note: formCum.note || "" };
       if (formCum.id) await api.put(`/api/admin/progress/centers/${formCum.id}`, body);
       else await api.post("/api/admin/progress/centers", body);
       setFormCum(null); setErr(""); taiCum();
@@ -186,15 +186,16 @@ export function SoLieuCumFT({ category, label }) {
               <b>Mức chi nhánh (tổng {cums.length} cụm):</b>
               <span>Kế hoạch <b>{so(tong.kh)}</b></span>
               <span>Thực hiện <b>{so(tong.th)}</b></span>
-              <span>Tồn <b>{so(tong.kh - tong.th)}</b></span>
-              <ThanhNho kh={tong.kh} th={tong.th} />
-              <b>{pct(tong.kh, tong.th)}</b>
+              <span>Tồn <b>{so(Math.max(tong.kh - tong.bkk - tong.th, 0))}</b></span>
+              <span>BKK <b>{so(tong.bkk)}</b></span>
+              <ThanhNho kh={tong.kh - tong.bkk} th={tong.th} />
+              <b>{pct(tong.kh - tong.bkk, tong.th)}</b>
             </div>
           </div>
 
           {formCum && (
             <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-              <div className="grid md:grid-cols-4 gap-3">
+              <div className="grid md:grid-cols-5 gap-3">
                 <Field label="Cụm / trung tâm">
                   <select className="inp" value={formCum.center} disabled={!!formCum.id}
                     onChange={(e) => setFormCum({ ...formCum, center: e.target.value })}>
@@ -209,6 +210,10 @@ export function SoLieuCumFT({ category, label }) {
                 <Field label="Thực hiện">
                   <input className="inp" type="number" value={formCum.done_qty}
                     onChange={(e) => setFormCum({ ...formCum, done_qty: e.target.value })} />
+                </Field>
+                <Field label="BKK (bất khả kháng)">
+                  <input className="inp" type="number" value={formCum.bkk_qty ?? ""}
+                    onChange={(e) => setFormCum({ ...formCum, bkk_qty: e.target.value })} />
                 </Field>
                 <Field label="Ghi chú">
                   <input className="inp" value={formCum.note || ""} onChange={(e) => setFormCum({ ...formCum, note: e.target.value })} />
@@ -226,7 +231,8 @@ export function SoLieuCumFT({ category, label }) {
               <thead>
                 <tr>
                   <th style={{ width: 30 }} /><th>Cụm / trung tâm</th><th>Kế hoạch</th><th>Thực hiện</th>
-                  <th>Tồn</th><th>Tỷ lệ</th><th>Ghi chú</th><th style={{ textAlign: "right" }}>Thao tác</th>
+                  <th>Tồn</th><th title="Bất khả kháng">BKK</th><th>Tỷ lệ</th><th>Ghi chú</th>
+                  <th style={{ textAlign: "right" }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,20 +243,24 @@ export function SoLieuCumFT({ category, label }) {
                       <td><b>{tenTrungTam(c.center)}</b></td>
                       <td>{c.trong ? <span className="muted">—</span> : so(c.plan_qty)}</td>
                       <td>{c.trong ? <span className="muted">—</span> : so(c.done_qty)}</td>
-                      <td>{c.trong ? <span className="muted">—</span> : so((c.plan_qty || 0) - (c.done_qty || 0))}</td>
+                      <td>{c.trong ? <span className="muted">—</span>
+                        : so(Math.max((c.plan_qty || 0) - (c.bkk_qty || 0) - (c.done_qty || 0), 0))}</td>
+                      <td>{c.trong ? <span className="muted">—</span> : so(c.bkk_qty)}</td>
                       <td>{c.trong ? <span className="muted" style={{ fontSize: 12 }}>chưa nhập</span>
-                        : <><ThanhNho kh={c.plan_qty} th={c.done_qty} /> {pct(c.plan_qty, c.done_qty)}</>}</td>
+                        : <><ThanhNho kh={(c.plan_qty || 0) - (c.bkk_qty || 0)} th={c.done_qty} />{" "}
+                          {pct((c.plan_qty || 0) - (c.bkk_qty || 0), c.done_qty)}</>}</td>
                       <td className="muted" style={{ fontSize: 12.5 }}>{c.note || "—"}</td>
                       <td style={{ textAlign: "right" }}>
                         <ThaoTac onView={c.trong ? null : () => moCum(c.center)} xemTitle="Xem chi tiết theo FT"
-                          onEdit={duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty ?? "", done_qty: c.done_qty ?? "" }) : null}
+                          onEdit={duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty ?? "",
+                            done_qty: c.done_qty ?? "", bkk_qty: c.bkk_qty ?? "" }) : null}
                           suaTitle={c.trong ? "Nhập số liệu cho cụm này" : "Sửa số liệu cụm"}
                           onDelete={duocXoa && !c.trong ? () => xoaCum(c) : null} />
                       </td>
                     </tr>
                     {moFt === c.center && (
                       <tr>
-                        <td colSpan={8} style={{ background: "#FCFBFB" }}>
+                        <td colSpan={9} style={{ background: "#FCFBFB" }}>
                           <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 8 }}>
                             <b style={{ fontSize: 13 }}>FT trong cụm {tenTrungTam(c.center)}</b>
                             <span className={lech ? "tag tag-amber" : "tag tag-grey"}>

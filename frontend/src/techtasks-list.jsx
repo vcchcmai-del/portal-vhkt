@@ -355,7 +355,7 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
   const duocBaoCao = duocSua || task.cua_toi;
   const [bc, setBc] = useState({
     status: task.status, note: task.note || "", percent: task.percent ?? "",
-    volume_done: task.volume_done ?? "", units: (task.units || []).map((u) => ({ ...u })),
+    volume_done: task.volume_done ?? "", volume_bkk: task.volume_bkk ?? "", units: (task.units || []).map((u) => ({ ...u })),
   });
   const [loi, setLoi] = useState("");
   const [daLuu, setDaLuu] = useState(false);
@@ -374,9 +374,11 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
         status: bc.status, note: bc.note,
         percent: task.scope === "nhieu_don_vi" || Number(task.volume_plan) > 0 ? undefined : so(bc.percent),
         volume_done: task.scope === "nhieu_don_vi" ? undefined : so(bc.volume_done),
+        volume_bkk: task.scope === "nhieu_don_vi" ? undefined : so(bc.volume_bkk),
         units: task.scope === "nhieu_don_vi"
           ? (bc.units || []).map((u) => ({ unit_name: u.unit_name, assignee: u.assignee || "",
-              volume_plan: Number(u.volume_plan) || 0, volume_done: Number(u.volume_done) || 0, note: u.note || "" }))
+              volume_plan: Number(u.volume_plan) || 0, volume_done: Number(u.volume_done) || 0,
+              volume_bkk: Number(u.volume_bkk) || 0, note: u.note || "" }))
           : undefined,
       });
       setLoi(""); setDaLuu(true); onDoi();
@@ -455,6 +457,12 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
               <Field label={`Khối lượng đã làm (trên ${soGon(task.volume_plan)} ${task.volume_unit || ""})`.trim()}>
                 <input className="inp" type="number" value={bc.volume_done}
                   onChange={(e) => setBc({ ...bc, volume_done: e.target.value })} />
+              </Field>
+            )}
+            {task.scope !== "nhieu_don_vi" && !!Number(task.volume_plan) && (
+              <Field label="BKK (bất khả kháng)">
+                <input className="inp" type="number" value={bc.volume_bkk}
+                  onChange={(e) => setBc({ ...bc, volume_bkk: e.target.value })} />
               </Field>
             )}
             {task.scope !== "nhieu_don_vi" && !Number(task.volume_plan) && (
@@ -997,6 +1005,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       const payload = {
         category: form.category, title: form.title, description: form.description || "",
         assignee: form.assignee || "", coordinators: form.coordinators || [],
+        volume_bkk: Number(form.volume_bkk) || 0,
         reporter: "",                       // người phụ trách chính báo cáo luôn
         target: form.target || "", start_at: form.start_at || null, due_at: form.due_at || null,
         status: form.status, priority: form.priority || "trung_binh",
@@ -1241,10 +1250,12 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             </Field>
             {form.scope !== "nhieu_don_vi" && field("Khối lượng giao", "volume_plan", "number")}
             {form.scope !== "nhieu_don_vi" && field("Khối lượng đã làm", "volume_done", "number")}
+            {form.scope !== "nhieu_don_vi" && field("BKK (bất khả kháng)", "volume_bkk", "number")}
             {form.scope !== "nhieu_don_vi" && (
               <Field label={Number(form.volume_plan) > 0 ? "Tiến độ (tự tính theo khối lượng)" : "Tiến độ tự nhập (%)"}>
                 <input className="inp" type="number" min="0" value={Number(form.volume_plan) > 0
-                  ? Math.round((Number(form.volume_done) || 0) / Number(form.volume_plan) * 1000) / 10
+                  ? Math.round((Number(form.volume_done) || 0)
+                      / Math.max(Number(form.volume_plan) - (Number(form.volume_bkk) || 0), 0.0001) * 1000) / 10
                   : (form.percent ?? "")}
                   disabled={Number(form.volume_plan) > 0}
                   onChange={(e) => setForm({ ...form, percent: e.target.value })} />

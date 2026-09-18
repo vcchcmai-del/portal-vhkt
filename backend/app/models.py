@@ -550,6 +550,7 @@ class TechTask(Base):
     volume_unit = Column(String(40))
     volume_plan = Column(Float, default=0)
     volume_done = Column(Float, default=0)
+    volume_bkk = Column(Float, default=0)   # khối lượng bất khả kháng, xem ProgressEntry.bkk_qty
     percent = Column(Float, default=0)      # tiến độ thực hiện, 0..100
     # ca_nhan = chỉ người được giao làm; nhieu_don_vi = có chia cho đơn vị khác
     scope = Column(String(20), default="ca_nhan")
@@ -588,6 +589,7 @@ class TechTaskUnit(Base):
     assignee = Column(String(160))                    # người của đơn vị đó phụ trách
     volume_plan = Column(Float, default=0)
     volume_done = Column(Float, default=0)
+    volume_bkk = Column(Float, default=0)
     percent = Column(Float, default=0)
     note = Column(Text)
     order_no = Column(Integer, default=0)
@@ -703,6 +705,10 @@ class ProgressEntry(Base):
     ft_name = Column(String(160), nullable=True)
     plan_qty = Column(Float, default=0)     # Kế hoạch
     done_qty = Column(Float, default=0)     # Thực hiện
+    # Khối lượng bất khả kháng: phần không làm được vì lý do khách quan (vướng
+    # mặt bằng, chờ đối tác...). Trừ khỏi kế hoạch khi tính tỷ lệ hoàn thành,
+    # còn tồn thì không tính phần này.
+    bkk_qty = Column(Float, default=0)
     note = Column(Text)
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
