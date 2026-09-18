@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ClipboardList, Download, ExternalLink, FileText, Link2, ListChecks, Paperclip, Pencil,
-  Play, Plus, RefreshCw, Trash2, Upload, User, Users, X,
+  AlertTriangle, ArrowLeft, CheckCircle2, ClipboardList, Download, ExternalLink, FileText, Link2,
+  ListChecks, Paperclip, Pencil, Play, Plus, RefreshCw, Trash2, Upload, User, Users, X,
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, RED, ThaoTac } from "./ui";
@@ -298,6 +298,59 @@ export function BangDonVi({ units, onChange, donViTinh, chiSuaKhoiLuong = false,
       {!chiSuaKhoiLuong && (
         <button type="button" className="btn btn-sm" style={{ marginTop: 8 }} onClick={them}><Plus size={13} />Thêm đơn vị</button>
       )}
+    </div>
+  );
+}
+
+/** Một nhiệm vụ trong màn hình chi tiết đầu việc — thẻ gọn, viền đỏ khi quá hạn. */
+function TheNhiemVu({ task, onMo, onSua, onXoa, dangMo }) {
+  const st = effectiveStatus(task);
+  const quaHan = st === "overdue";
+  const mau = { done: "#16A34A", doing: "#0E6CD6", todo: "#F2A007", overdue: "#C8102E" }[st] || "#0E6CD6";
+  return (
+    <div className="card" role="button" tabIndex={0} onClick={onMo}
+      onKeyDown={(e) => { if (e.key === "Enter") onMo(); }}
+      style={{ padding: 12, cursor: "pointer", borderColor: quaHan ? "#E8C4CB" : undefined,
+               boxShadow: dangMo ? "0 0 0 1.5px #C8102E inset" : undefined }}>
+      <div className="flex items-start gap-2">
+        <b style={{ fontSize: 13.5, flex: 1 }}>{task.title}</b>
+        {quaHan && <AlertTriangle size={15} color="#C8102E" />}
+      </div>
+      <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap", fontSize: 11.5 }}>
+        <span className="mono muted">NV{String(task.id).padStart(4, "0")}</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ color: quaHan ? "#C8102E" : "#807A7C", fontWeight: quaHan ? 700 : 400 }}>
+          {task.due_at ? fmtDay(task.due_at) : "chưa đặt hạn"}
+        </span>
+      </div>
+      <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
+        <StatusTag task={task} />
+        <TheUuTien muc={task.priority} />
+      </div>
+      <div className="flex items-center gap-2" style={{ marginTop: 8, fontSize: 12.5 }}>
+        <span className="flex items-center gap-1"><User size={13} />{task.assignee || <span className="muted">chưa gán</span>}</span>
+        <span style={{ flex: 1 }} />
+        <span onClick={(e) => e.stopPropagation()}>
+          <ThaoTac onEdit={onSua} suaTitle="Sửa nhiệm vụ" onDelete={onXoa} xoaTitle="Xóa (vào Thùng rác)" />
+        </span>
+      </div>
+      <div style={{ marginTop: 8, height: 6, background: "#EEF1F6", borderRadius: 99, overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(task.percent || 0, 100)}%`, height: "100%", background: mau }} />
+      </div>
+    </div>
+  );
+}
+
+/** Ô số nhỏ ở cột trái màn hình chi tiết đầu việc. */
+function OSoNho({ nhan, so, mau, icon: I }) {
+  return (
+    <div className="card flex items-center gap-2" style={{ padding: 12 }}>
+      <div style={{ flex: 1 }}>
+        <p className="muted" style={{ fontSize: 12 }}>{nhan}</p>
+        <p style={{ fontSize: 22, fontWeight: 800, color: mau, lineHeight: 1.2 }}>{so}</p>
+      </div>
+      <span style={{ width: 34, height: 34, borderRadius: 10, background: `${mau}16`, color: mau,
+                     display: "inline-flex", alignItems: "center", justifyContent: "center" }}><I size={17} /></span>
     </div>
   );
 }
@@ -872,6 +925,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [hangMuc, setHangMuc] = useState([]);     // [{category, items:[{id,label}]}]
   const [moId, setMoId] = useState(null);         // việc đang xem chi tiết
   const [qlDauViec, setQlDauViec] = useState(false);   // false | true | đầu việc đang sửa
+  const [xemDauViec, setXemDauViec] = useState(null);  // mã đầu việc đang mở màn hình chi tiết
   const [cheDoSua, setCheDoSua] = useState(false);      // hiện nút sửa/xoá trên thẻ đầu việc
   const [nhomDS, setNhomDS] = useState([]);            // nhóm đầu việc cấp 1 (vd CĐBR)
   const [nhomMoi, setNhomMoi] = useState(null);        // tên nhóm đang thêm, null = không mở ô
@@ -1087,6 +1141,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     return [...summary].sort((a, b) => hang(a) - hang(b));
   }, [summary, nhomDS]);
 
+  const moDauViec = (ma) => { setXemDauViec(ma); setFCategory(ma); setMoId(null); setForm(null); };
+  const dongDauViec = () => { setXemDauViec(null); setFCategory(""); setMoId(null); };
+  const dauViecDangXem = xemDauViec ? summary.find((c) => c.category === xemDauViec) : null;
+
   const dangMo = rows.find((x) => x.id === moId);
   const suaViec = (x) => {
     setMoId(null);
@@ -1123,11 +1181,90 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         </div>
       </div>
 
-      {qlDauViec && <QuanLyDauViec key={typeof qlDauViec === "object" ? qlDauViec.id : "tat-ca"}
-        suaNgay={typeof qlDauViec === "object" ? qlDauViec : null}
-        onDong={() => setQlDauViec(false)}
-        onDoi={() => { loadCategories(); loadSummary(); loadGroups(); }} />}
+      {qlDauViec && (
+        <div className="tt-nen" style={{ alignItems: "flex-start", overflowY: "auto", padding: "24px 16px" }}
+          onClick={() => setQlDauViec(false)}>
+          <div style={{ width: "100%", maxWidth: 1100 }} onClick={(e) => e.stopPropagation()}>
+            <QuanLyDauViec key={typeof qlDauViec === "object" ? qlDauViec.id : "tat-ca"}
+              suaNgay={typeof qlDauViec === "object" ? qlDauViec : null}
+              onDong={() => setQlDauViec(false)}
+              onDoi={() => { loadCategories(); loadSummary(); loadGroups(); }} />
+          </div>
+        </div>
+      )}
 
+      {/* Màn hình chi tiết một đầu việc: ô số bên trái, nhiệm vụ dạng thẻ bên phải */}
+      {dauViecDangXem && (
+        <>
+          <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+            <button className="btn btn-sm" onClick={dongDauViec}><ArrowLeft size={14} />Tất cả đầu việc</button>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <p className="muted" style={{ fontSize: 11.5, letterSpacing: ".06em", textTransform: "uppercase" }}>
+                {dauViecDangXem.group_label || "Chưa xếp nhóm"}
+              </p>
+              <b style={{ fontSize: 16 }}>{dauViecDangXem.label}</b>
+              <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                Chủ trì: {dauViecDangXem.owner || "chưa đặt"}
+                {(dauViecDangXem.start_at || dauViecDangXem.due_at)
+                  ? ` · ${dauViecDangXem.start_at ? fmtDay(dauViecDangXem.start_at) : "—"} → ${dauViecDangXem.due_at ? fmtDay(dauViecDangXem.due_at) : "—"}`
+                  : " · chưa đặt mốc thời gian"}
+              </p>
+            </div>
+            {duocSua && (
+              <button className="btn btn-sm" onClick={() => setQlDauViec({ id: dauViecDangXem.category, label: dauViecDangXem.label, hint: "" })}>
+                <Pencil size={14} />Sửa đầu việc
+              </button>
+            )}
+            {duocGiao && (
+              <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, dauViecDangXem.category)); }}>
+                <Plus size={14} />Thêm nhiệm vụ
+              </button>
+            )}
+          </div>
+
+          <div className="grid lg:grid-cols-4 gap-4">
+            <div className="flex flex-col gap-3">
+              <OSoNho nhan="Tổng nhiệm vụ" so={dauViecDangXem.total} mau="#0E6CD6" icon={ListChecks} />
+              <OSoNho nhan="Hoàn thành" so={dauViecDangXem.done} mau="#16A34A" icon={CheckCircle2} />
+              <OSoNho nhan="Đang thực hiện" so={dauViecDangXem.doing} mau="#F2A007" icon={Play} />
+              <OSoNho nhan="Quá hạn" so={dauViecDangXem.overdue} mau={dauViecDangXem.overdue ? RED : "#16A34A"} icon={AlertTriangle} />
+              <div className="card" style={{ padding: 12 }}>
+                <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
+                  <span className="muted">Tiến độ chung</span><b>{dauViecDangXem.percent}%</b>
+                </div>
+                <TienDoNho percent={dauViecDangXem.percent} rong="100%" anSo />
+              </div>
+            </div>
+
+            <div className="lg:col-span-3 flex flex-col gap-3">
+              <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
+                <input className="inp" style={{ maxWidth: 240 }} placeholder="🔎 Tìm nhiệm vụ…" value={search}
+                  onChange={(e) => setSearch(e.target.value)} />
+                {[["", "Tất cả"], ["todo", "Chưa bắt đầu"], ["doing", "Đang thực hiện"], ["done", "Hoàn thành"], ["overdue", "Quá hạn"]].map(([ma, nhan]) => (
+                  <button key={ma || "all"} className={`btn btn-sm ${fStatus === ma ? "btn-red" : ""}`}
+                    onClick={() => setFStatus(ma)}>{nhan}</button>
+                ))}
+              </div>
+              {filteredRows.length ? (
+                <div className="grid md:grid-cols-2 gap-3">
+                  {filteredRows.map((x) => (
+                    <TheNhiemVu key={x.id} task={x} dangMo={moId === x.id}
+                      onMo={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}
+                      onSua={duocSua ? () => suaViec(x) : null}
+                      onXoa={duocXoa ? () => del(x) : null} />
+                  ))}
+                </div>
+              ) : (
+                <Card><Empty title="Đầu việc này chưa có nhiệm vụ nào."
+                  hint={duocGiao ? "Bấm “Thêm nhiệm vụ” ở trên để giao việc đầu tiên." : ""} /></Card>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!dauViecDangXem && (
+        <>
       {/* Tổng quan: ô số tổng hợp -> lọc nhanh theo trạng thái -> thẻ từng đầu việc */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <OTongHop nhan="Tổng đầu việc" so={tong.dauViec} mau="#0E6CD6" icon={ClipboardList}
@@ -1159,8 +1296,11 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
           const tt = trangThaiDauViec(c);
           const on = fCategory === c.category;
           return (
-            <div key={c.category} className="card" style={{ padding: 0, overflow: "hidden",
-              border: on ? `1.5px solid ${RED}` : undefined }}>
+            <div key={c.category} className="card" role="button" tabIndex={0}
+              onClick={() => moDauViec(c.category)}
+              onKeyDown={(e) => { if (e.key === "Enter") moDauViec(c.category); }}
+              style={{ padding: 0, overflow: "hidden", cursor: "pointer",
+                       border: on ? `1.5px solid ${RED}` : undefined }}>
               <div style={{ height: 4, background: tt.mau }} />
               <div style={{ padding: 12 }}>
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
@@ -1171,7 +1311,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                       <button type="button" className="tt-btn" title={`Giao việc trong “${c.label}”`}
                         onClick={() => { setMoId(null); moForm(blankTask(categories, c.category)); }}><Plus size={16} /></button>
                     ) : null}
-                    onView={() => setFCategory(on ? "" : c.category)} xemTitle="Xem nhiệm vụ của đầu việc này"
+                    onView={() => moDauViec(c.category)} xemTitle="Mở đầu việc"
                     onEdit={duocSua ? () => setQlDauViec({ id: c.category, label: c.label, hint: "" }) : null}
                     suaTitle="Sửa đầu việc trong Cơ cấu"
                     onDelete={duocXoa ? () => xoaDauViec({ id: c.category, label: c.label }) : null} />
@@ -1202,6 +1342,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         })}
       </div>
 
+        </>
+      )}
+
+      {!dauViecDangXem && (
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <input className="inp" style={{ maxWidth: 280 }} placeholder="🔎 Tìm theo nội dung / người làm / phối hợp…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select className="inp" style={{ maxWidth: 240 }} value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
@@ -1239,6 +1383,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
           </span>
         )}
       </div>
+      )}
 
       {err && <p style={{ color: RED }}>{err}</p>}
 
@@ -1376,6 +1521,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
           onDoi={taiLai} onMoTienDo={onMoTienDo} />
       )}
 
+      {!dauViecDangXem && (
       <Card pad={false}>
         <div style={{ overflowX: "auto" }}>
           <table className="tbl">
@@ -1441,6 +1587,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
           )}
         </div>
       </Card>
+      )}
     </div>
   );
 }
