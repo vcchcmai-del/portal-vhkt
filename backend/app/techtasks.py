@@ -65,6 +65,42 @@ CATEGORY_HINTS = {
 STATUS_LABELS = {
     "todo": "Chưa bắt đầu", "doing": "Đang thực hiện", "done": "Hoàn thành", "overdue": "Quá hạn",
 }
+UU_TIEN_LABELS = {"cao": "Cao", "trung_binh": "Trung bình", "thap": "Thấp"}
+PHAM_VI_LABELS = {"ca_nhan": "Cá nhân được giao", "nhieu_don_vi": "Nhiều đơn vị"}
+# Khoảng tiến độ dùng chung cho biểu đồ và bộ lọc
+KHOANG_TIEN_DO = [(0, 25, "0-25%"), (26, 50, "26-50%"), (51, 75, "51-75%"), (76, 99, "76-99%"), (100, 100, "100%")]
+
+
+def _phan_tram(row) -> float:
+    """Tiến độ % của một nhiệm vụ.
+
+    Ưu tiên tính từ khối lượng (đã làm/được giao) vì đó là số đo thật; việc
+    chia cho nhiều đơn vị thì cộng khối lượng các đơn vị. Không khai khối lượng
+    thì lấy percent người phụ trách tự nhập. Việc đã Hoàn thành luôn là 100%."""
+    if (row.status or "") == "done":
+        return 100.0
+    ke_hoach, thuc_hien = row.volume_plan or 0, row.volume_done or 0
+    if (row.scope or "ca_nhan") == "nhieu_don_vi" and row.units:
+        ke_hoach = sum(u.volume_plan or 0 for u in row.units) or ke_hoach
+        thuc_hien = sum(u.volume_done or 0 for u in row.units) or thuc_hien
+    if ke_hoach > 0:
+        return round(min(thuc_hien / ke_hoach * 100, 100), 1)
+    return round(min(max(row.percent or 0, 0), 100), 1)
+
+
+def _khoang(pt: float) -> str:
+    for a, b, nhan in KHOANG_TIEN_DO:
+        if a <= pt <= b:
+            return nhan
+    return KHOANG_TIEN_DO[0][2]
+
+
+def _out_unit(u):
+    ke_hoach, thuc_hien = u.volume_plan or 0, u.volume_done or 0
+    return {"id": u.id, "unit_name": u.unit_name, "assignee": u.assignee or "",
+            "volume_plan": ke_hoach, "volume_done": thuc_hien,
+            "percent": round(min(thuc_hien / ke_hoach * 100, 100), 1) if ke_hoach > 0 else round(u.percent or 0, 1),
+            "note": u.note or "", "order_no": u.order_no or 0}
 
 
 def _ds_ten(v) -> list:
@@ -96,18 +132,29 @@ def _out_attachment(a):
 
 
 def _out(row, labels: Optional[dict] = None, it_labels: Optional[dict] = None,
-         tien_do: Optional[dict] = None, user=None):
+         tien_do: Optional[dict] = None, user=None, nhom: Optional[dict] = None):
     labels = labels if labels is not None else {}
+    nhom = nhom if nhom is not None else {}
     it_labels = it_labels if it_labels is not None else {}
     nguoi = _nguoi_cua_viec(row)
     return {
         "id": row.id, "category": row.category,
         "category_label": labels.get(row.category, row.category),
+        "group": (nhom.get(row.category) or {}).get("code", ""),
+        "group_label": (nhom.get(row.category) or {}).get("label", ""),
         "title": row.title, "description": row.description, "assignee": row.assignee,
         "coordinators": _ds_ten(row.coordinators), "reporter": row.reporter or "",
         "target": row.target, "due_at": row.due_at,
         "status": row.status, "status_label": STATUS_LABELS.get(row.status, row.status),
         "link_url": row.link_url, "note": row.note,
+        "start_at": row.start_at, "priority": row.priority or "trung_binh",
+        "priority_label": UU_TIEN_LABELS.get(row.priority or "trung_binh", row.priority),
+        "volume_unit": row.volume_unit or "", "volume_plan": row.volume_plan or 0,
+        "volume_done": row.volume_done or 0,
+        "percent": _phan_tram(row), "khoang_tien_do": _khoang(_phan_tram(row)),
+        "scope": row.scope or "ca_nhan",
+        "scope_label": PHAM_VI_LABELS.get(row.scope or "ca_nhan", row.scope),
+        "units": [_out_unit(u) for u in row.units],
         "progress_item": row.progress_item or "",
         "progress_item_label": it_labels.get(row.progress_item, row.progress_item or ""),
         # Kế hoạch/Thực hiện mới nhất của hạng mục liên kết, lấy từ tab Tiến độ.
@@ -148,8 +195,16 @@ class TechTaskIn(BaseModel):
     coordinators: Optional[list[str]] = None
     reporter: Optional[str] = None
     target: Optional[str] = None
+    start_at: Optional[dt.date] = None
     due_at: Optional[dt.date] = None
     status: Optional[str] = None
+    priority: Optional[str] = None
+    volume_unit: Optional[str] = None
+    volume_plan: Optional[float] = None
+    volume_done: Optional[float] = None
+    percent: Optional[float] = None
+    scope: Optional[str] = None
+    units: Optional[list[dict]] = None      # [{unit_name, assignee, volume_plan, volume_done, percent, note}]
     link_url: Optional[str] = None
     progress_item: Optional[str] = None
     note: Optional[str] = None
@@ -180,6 +235,18 @@ def _validate(data: TechTaskIn, db: Session, row=None):
         raise HTTPException(400, "Đầu việc không hợp lệ.")
     if data.status is not None and data.status not in STATUS_LABELS:
         raise HTTPException(400, "Trạng thái không hợp lệ.")
+    if data.priority is not None and data.priority not in UU_TIEN_LABELS:
+        raise HTTPException(400, "Mức ưu tiên không hợp lệ.")
+    if data.scope is not None and data.scope not in PHAM_VI_LABELS:
+        raise HTTPException(400, "Phạm vi không hợp lệ.")
+    if data.percent is not None and not (0 <= data.percent <= 100):
+        raise HTTPException(400, "Tiến độ phải trong khoảng 0–100%.")
+    batdau = data.start_at
+    ketthuc = data.due_at if data.due_at is not None else (row.due_at if row else None)
+    if batdau is None and row is not None:
+        batdau = row.start_at
+    if batdau and ketthuc and batdau > ketthuc:
+        raise HTTPException(400, "Ngày bắt đầu sau ngày kết thúc.")
     if data.progress_item:
         dau_viec = data.category or (row.category if row else None)
         thuoc = item_category(db).get(data.progress_item)
@@ -203,6 +270,27 @@ def _trang_thai(row, today) -> str:
     return row.status or "todo"
 
 
+def nhom_cua_dau_viec(db: Session) -> dict:
+    """{mã đầu việc: {code, label}} của nhóm cấp 1 — đầu việc chưa xếp nhóm thì thiếu khoá."""
+    ten = {g.code: g.label for g in db.query(models.TechGroup).all()}
+    return {c.code: {"code": c.group_code, "label": ten.get(c.group_code, c.group_code)}
+            for c in db.query(models.TechCategory).all() if c.group_code}
+
+
+def _ghi_don_vi(db: Session, row, ds) -> None:
+    """Thay toàn bộ danh sách đơn vị tham gia của một nhiệm vụ."""
+    row.units.clear()
+    db.flush()
+    for i, u in enumerate(ds or []):
+        ten = re.sub(r"\s+", " ", str(u.get("unit_name") or "")).strip()
+        if not ten:
+            continue
+        row.units.append(models.TechTaskUnit(
+            unit_name=ten[:120], assignee=(u.get("assignee") or "").strip()[:160],
+            volume_plan=float(u.get("volume_plan") or 0), volume_done=float(u.get("volume_done") or 0),
+            percent=float(u.get("percent") or 0), note=(u.get("note") or "").strip(), order_no=i))
+
+
 def _duoc_sua(user) -> bool:
     return "update" in effective_permission_matrix(user).get("tech_tasks", [])
 
@@ -215,6 +303,14 @@ def _duoc_bao_cao(user, row) -> bool:
 class CategoryIn(BaseModel):
     label: Optional[str] = None
     hint: Optional[str] = None
+    group_code: Optional[str] = None
+    order_no: Optional[int] = None
+    active: Optional[bool] = None
+
+
+class GroupIn(BaseModel):
+    label: Optional[str] = None
+    note: Optional[str] = None
     order_no: Optional[int] = None
     active: Optional[bool] = None
 
@@ -222,7 +318,10 @@ class CategoryIn(BaseModel):
 @admin_router.get("/tech-tasks/categories")
 def list_categories(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
     ensure_seeded(db)
-    return [{"id": c.code, "label": c.label, "hint": c.hint or ""} for c in categories(db)]
+    ten_nhom = {g.code: g.label for g in db.query(models.TechGroup).all()}
+    return [{"id": c.code, "label": c.label, "hint": c.hint or "",
+             "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, "")}
+            for c in categories(db)]
 
 
 @admin_router.post("/tech-tasks/categories")
@@ -257,6 +356,11 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.label = data.label.strip()
     if data.hint is not None:
         row.hint = data.hint.strip()
+    if data.group_code is not None:
+        ma = data.group_code.strip()
+        if ma and not db.query(models.TechGroup).filter(models.TechGroup.code == ma).first():
+            raise HTTPException(400, "Nhóm đầu việc không tồn tại.")
+        row.group_code = ma or None
     if data.order_no is not None:
         row.order_no = data.order_no
     if data.active is not None:
@@ -287,6 +391,110 @@ def delete_category(code: str, db: Session = Depends(get_db),
     db.delete(row); db.commit()
     log_action(db, user, "delete", "tech_tasks", None, f"Đầu việc: {label}", request=request)
     return {"deleted": code}
+
+
+@admin_router.get("/tech-tasks/groups")
+def list_groups(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
+    """Nhóm đầu việc cấp 1, kèm các đầu việc thuộc nhóm."""
+    ensure_seeded(db)
+    cats = categories(db)
+    ra = []
+    for g in (db.query(models.TechGroup).filter(models.TechGroup.active.is_(True))
+              .order_by(models.TechGroup.order_no, models.TechGroup.id).all()):
+        ra.append({"id": g.code, "label": g.label, "note": g.note or "", "order_no": g.order_no or 0,
+                   "categories": [{"id": c.code, "label": c.label} for c in cats if c.group_code == g.code]})
+    chua = [{"id": c.code, "label": c.label} for c in cats if not c.group_code]
+    if chua:
+        ra.append({"id": "", "label": "Chưa xếp nhóm", "note": "", "order_no": 999, "categories": chua})
+    return ra
+
+
+@admin_router.post("/tech-tasks/groups")
+def create_group(data: GroupIn, db: Session = Depends(get_db),
+                 user=Depends(require_module("tech_tasks", "create")), request: Request = None):
+    label = (data.label or "").strip()
+    if not label:
+        raise HTTPException(400, "Chưa nhập tên nhóm đầu việc.")
+    if db.query(models.TechGroup).filter(models.TechGroup.label == label).first():
+        raise HTTPException(400, "Nhóm đầu việc này đã có.")
+    cuoi = db.query(models.TechGroup).order_by(models.TechGroup.order_no.desc()).first()
+    row = models.TechGroup(code=_ma_chua_dung(db, models.TechGroup, _slug(label, "nhom")), label=label,
+                           note=(data.note or "").strip(),
+                           order_no=(cuoi.order_no + 1) if cuoi else 0, active=True)
+    db.add(row); db.commit(); db.refresh(row)
+    log_action(db, user, "create", "tech_tasks", row.id, "Nhóm đầu việc: " + row.label, request=request)
+    return {"id": row.code, "label": row.label, "note": row.note or "", "categories": []}
+
+
+@admin_router.put("/tech-tasks/groups/{code}")
+def update_group(code: str, data: GroupIn, db: Session = Depends(get_db),
+                 user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    row = db.query(models.TechGroup).filter(models.TechGroup.code == code).first()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy nhóm đầu việc.")
+    if data.label is not None and data.label.strip():
+        row.label = data.label.strip()
+    if data.note is not None:
+        row.note = data.note.strip()
+    if data.order_no is not None:
+        row.order_no = data.order_no
+    if data.active is not None:
+        row.active = data.active
+    db.commit()
+    log_action(db, user, "update", "tech_tasks", row.id, "Nhóm đầu việc: " + row.label, request=request)
+    return {"id": row.code, "label": row.label, "note": row.note or ""}
+
+
+@admin_router.delete("/tech-tasks/groups/{code}")
+def delete_group(code: str, db: Session = Depends(get_db),
+                 user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+    """Xoá nhóm. Đầu việc trong nhóm không mất, chỉ quay về mục Chưa xếp nhóm."""
+    row = db.query(models.TechGroup).filter(models.TechGroup.code == code).first()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy nhóm đầu việc.")
+    go = (db.query(models.TechCategory).filter(models.TechCategory.group_code == code)
+          .update({models.TechCategory.group_code: None}, synchronize_session=False))
+    label = row.label
+    db.delete(row); db.commit()
+    log_action(db, user, "delete", "tech_tasks", None, "Nhóm đầu việc: " + label,
+               detail=(f"Gỡ {go} đầu việc khỏi nhóm" if go else ""), request=request)
+    return {"deleted": code, "go_dau_viec": go}
+
+
+@admin_router.get("/tech-tasks/overview")
+def tasks_overview(db: Session = Depends(get_db), user=Depends(require_module("tech_tasks", "view"))):
+    """Tổng quan hai cấp: nhóm đầu việc cấp 1 -> đầu việc -> nhiệm vụ, kèm ngày
+    bắt đầu/kết thúc, nhân sự, khối lượng và tiến độ của từng nhiệm vụ."""
+    today = models.today()
+    rows = (db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
+            .order_by(models.TechTask.due_at.is_(None), models.TechTask.due_at, models.TechTask.id).all())
+    labels, it_labels = category_labels(db), item_labels(db)
+    tien_do, nhom_cua = _tien_do_moi_nhat(db), nhom_cua_dau_viec(db)
+    theo_dau_viec = defaultdict(list)
+    for r in rows:
+        theo_dau_viec[r.category].append(_out(r, labels, it_labels, tien_do, user, nhom_cua))
+
+    def gom(ds):
+        return {"tong": len(ds), "xong": sum(1 for x in ds if x["status"] == "done"),
+                "qua_han": sum(1 for x in ds if x["status"] != "done" and x["due_at"] and x["due_at"] < today),
+                "dang_mo": sum(1 for x in ds if x["status"] != "done"),
+                "phan_tram": round(sum(x["percent"] for x in ds) / len(ds), 1) if ds else 0.0}
+
+    cats = categories(db)
+    nhom_ds = (db.query(models.TechGroup).filter(models.TechGroup.active.is_(True))
+               .order_by(models.TechGroup.order_no, models.TechGroup.id).all())
+    ra = []
+    for g in list(nhom_ds) + [None]:
+        ma = g.code if g else ""
+        trong_nhom = [c for c in cats if (c.group_code or "") == ma]
+        if not trong_nhom:
+            continue
+        dau_viec = [{"category": c.code, "label": c.label, "tasks": theo_dau_viec.get(c.code, []),
+                     **gom(theo_dau_viec.get(c.code, []))} for c in trong_nhom]
+        tat_ca = [t for dv in dau_viec for t in dv["tasks"]]
+        ra.append({"group": ma, "label": g.label if g else "Chưa xếp nhóm",
+                   "note": (g.note or "") if g else "", "dau_viec": dau_viec, **gom(tat_ca)})
+    return {"nhom": ra, "hom_nay": today.isoformat()}
 
 
 @admin_router.get("/tech-tasks/assignees")
@@ -328,7 +536,8 @@ def admin_list_tasks(category: Optional[str] = None, status: Optional[str] = Non
         today = models.today()
         rows = [r for r in rows if _trang_thai(r, today) == status]
     labels, it_labels, tien_do = category_labels(db), item_labels(db), _tien_do_moi_nhat(db)
-    ra = [_out(x, labels, it_labels, tien_do, user) for x in rows]
+    nhom = nhom_cua_dau_viec(db)
+    ra = [_out(x, labels, it_labels, tien_do, user, nhom) for x in rows]
     return [x for x in ra if x["cua_toi"]] if mine else ra
 
 
@@ -367,13 +576,20 @@ def admin_create_task(data: TechTaskIn, db: Session = Depends(get_db),
         coordinators="; ".join(_ds_ten(data.coordinators)), reporter=(data.reporter or "").strip(),
         target=(data.target or "").strip(), due_at=data.due_at,
         status=data.status or "todo", link_url=(data.link_url or "").strip(),
+        start_at=data.start_at, priority=data.priority or "trung_binh",
+        volume_unit=(data.volume_unit or "").strip(), volume_plan=data.volume_plan or 0,
+        volume_done=data.volume_done or 0, percent=data.percent or 0,
+        scope=data.scope or "ca_nhan",
         progress_item=(data.progress_item or "").strip() or None,
         note=(data.note or "").strip(),
         done_at=models.now() if data.status == "done" else None,
     )
-    db.add(row); db.commit(); db.refresh(row)
+    db.add(row); db.flush()
+    if data.units is not None:
+        _ghi_don_vi(db, row, data.units)
+    db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, row.title, request=request)
-    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user)
+    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user, nhom_cua_dau_viec(db))
 
 
 @admin_router.put("/tech-tasks/{item_id}")
@@ -388,10 +604,13 @@ def admin_update_task(item_id: int, data: TechTaskIn, db: Session = Depends(get_
             and item_category(db).get(row.progress_item) != vals["category"]):
         vals["progress_item"] = None
     _doi_trang_thai(row, vals.get("status"))
+    ds_don_vi = vals.pop("units", None)
     _apply(row, vals)
+    if ds_don_vi is not None:
+        _ghi_don_vi(db, row, ds_don_vi)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "tech_tasks", row.id, row.title, request=request)
-    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user)
+    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user, nhom_cua_dau_viec(db))
 
 
 @admin_router.delete("/tech-tasks/{item_id}")
@@ -411,6 +630,9 @@ def admin_delete_task(item_id: int, db: Session = Depends(get_db),
 class BaoCaoIn(BaseModel):
     status: Optional[str] = None
     note: Optional[str] = None
+    percent: Optional[float] = None
+    volume_done: Optional[float] = None
+    units: Optional[list[dict]] = None
 
 
 @admin_router.post("/tech-tasks/{item_id}/report")
@@ -429,10 +651,18 @@ def report_task(item_id: int, data: BaoCaoIn, db: Session = Depends(get_db),
         row.status = data.status
     if data.note is not None:
         row.note = data.note.strip()
+    if data.percent is not None:
+        if not (0 <= data.percent <= 100):
+            raise HTTPException(400, "Tiến độ phải trong khoảng 0–100%.")
+        row.percent = data.percent
+    if data.volume_done is not None:
+        row.volume_done = data.volume_done
+    if data.units is not None:
+        _ghi_don_vi(db, row, data.units)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "tech_tasks", row.id, row.title,
                detail="Báo cáo tiến độ", request=request)
-    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user)
+    return _out(row, category_labels(db), item_labels(db), _tien_do_moi_nhat(db), user, nhom_cua_dau_viec(db))
 
 
 # ------------------------------------------------------------------ Đính kèm
@@ -543,18 +773,26 @@ def export_tasks_csv(db: Session = Depends(get_db),
     """Xuất toàn bộ công việc ra tệp CSV để báo cáo."""
     rows = (db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
             .order_by(models.TechTask.category, models.TechTask.due_at).all())
-    header = ["Đầu việc", "Nội dung công việc", "Mô tả", "Phụ trách", "Phối hợp", "Người báo cáo",
-              "Mục tiêu/chỉ tiêu", "Hạn xử lý", "Trạng thái", "Hạng mục tiến độ", "Link công cụ",
-              "Đính kèm", "Ghi chú tiến độ", "Ngày tạo"]
+    header = ["Nhóm đầu việc", "Đầu việc", "Nội dung công việc", "Mô tả", "Phụ trách", "Phối hợp",
+              "Người báo cáo", "Mục tiêu/chỉ tiêu", "Mức ưu tiên", "Ngày bắt đầu", "Ngày kết thúc",
+              "Trạng thái", "Đơn vị tính", "Khối lượng giao", "Khối lượng đã làm", "Tiến độ %",
+              "Phạm vi", "Đơn vị tham gia", "Hạng mục tiến độ", "Link công cụ", "Đính kèm",
+              "Ghi chú tiến độ", "Ngày tạo"]
     labels, it_labels = category_labels(db), item_labels(db)
+    nhom_cua = nhom_cua_dau_viec(db)
     lines = [",".join(header)]
     for r in rows:
         vals = [
+            (nhom_cua.get(r.category) or {}).get("label", ""),
             labels.get(r.category, r.category), r.title or "", r.description or "",
             r.assignee or "", "; ".join(_ds_ten(r.coordinators)), r.reporter or "",
-            r.target or "",
+            r.target or "", UU_TIEN_LABELS.get(r.priority or "trung_binh", ""),
+            r.start_at.strftime("%d/%m/%Y") if r.start_at else "",
             r.due_at.strftime("%d/%m/%Y") if r.due_at else "",
             STATUS_LABELS.get(r.status, r.status),
+            r.volume_unit or "", r.volume_plan or 0, r.volume_done or 0, _phan_tram(r),
+            PHAM_VI_LABELS.get(r.scope or "ca_nhan", ""),
+            "; ".join(f"{u.unit_name}: {u.volume_done or 0}/{u.volume_plan or 0}" for u in r.units),
             it_labels.get(r.progress_item, r.progress_item or ""), r.link_url or "",
             " | ".join(a.url if a.kind == "link" else a.filename or "" for a in r.attachments),
             r.note or "",
@@ -582,6 +820,10 @@ def tasks_report(weeks: int = 8, db: Session = Depends(get_db),
     labels = category_labels(db)
 
     trang_thai = {"done": 0, "doing": 0, "todo": 0, "overdue": 0}
+    nhom_cua = nhom_cua_dau_viec(db)
+    theo_nhom, uu_tien, khoang = {}, {}, {n: 0 for _, _, n in KHOANG_TIEN_DO}
+    for ma in UU_TIEN_LABELS:
+        uu_tien[ma] = {"muc": ma, "label": UU_TIEN_LABELS[ma], "tong": 0, "xong": 0, "qua_han": 0}
     theo_dv = {c.code: {"category": c.code, "label": c.label, "done": 0, "doing": 0, "todo": 0,
                         "overdue": 0, "total": 0} for c in cats}
     han = {"qua_han": 0, "trong_3_ngay": 0, "trong_7_ngay": 0, "sau_7_ngay": 0, "khong_han": 0}
@@ -592,6 +834,21 @@ def tasks_report(weeks: int = 8, db: Session = Depends(get_db),
                                             "done": 0, "doing": 0, "todo": 0, "overdue": 0, "total": 0})
         b[st] = b.get(st, 0) + 1
         b["total"] += 1
+
+        pt = _phan_tram(r)
+        khoang[_khoang(pt)] = khoang.get(_khoang(pt), 0) + 1
+        muc = r.priority or "trung_binh"
+        o = uu_tien.setdefault(muc, {"muc": muc, "label": UU_TIEN_LABELS.get(muc, muc), "tong": 0, "xong": 0, "qua_han": 0})
+        o["tong"] += 1
+        o["xong"] += st == "done"
+        o["qua_han"] += st == "overdue"
+        g = nhom_cua.get(r.category) or {"code": "", "label": "Chưa xếp nhóm"}
+        n = theo_nhom.setdefault(g["code"], {"group": g["code"], "label": g["label"] or "Chưa xếp nhóm",
+                                             "tong": 0, "done": 0, "doing": 0, "todo": 0, "overdue": 0, "_pt": 0.0})
+        n["tong"] += 1
+        n[st] = n.get(st, 0) + 1
+        n["_pt"] += pt
+
         if st == "done":
             continue
         if st == "overdue":
@@ -634,9 +891,15 @@ def tasks_report(weeks: int = 8, db: Session = Depends(get_db),
     for g in tien_do.values():
         g["rate"] = (g["done"] / g["plan"]) if g["plan"] else None
 
+    for n in theo_nhom.values():
+        n["phan_tram"] = round(n.pop("_pt") / n["tong"], 1) if n["tong"] else 0.0
+
     theo_nguoi = tasks_by_person(db=db, user=user)
     return {
         "tong": len(rows), "trang_thai": trang_thai,
+        "theo_nhom": sorted(theo_nhom.values(), key=lambda x: (-x["tong"], x["label"])),
+        "uu_tien": [uu_tien[m] for m in ("cao", "trung_binh", "thap") if m in uu_tien],
+        "khoang_tien_do": [{"khoang": n, "so": khoang.get(n, 0)} for _, _, n in KHOANG_TIEN_DO],
         "ty_le_hoan_thanh": (trang_thai["done"] / len(rows)) if rows else None,
         "theo_dau_viec": list(theo_dv.values()), "han": han, "xu_huong": xu_huong,
         "tien_do": sorted(tien_do.values(), key=lambda g: [c.code for c in cats].index(g["category"])
@@ -743,7 +1006,7 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
 def admin_get_task(item_id: int, db: Session = Depends(get_db),
                    user=Depends(require_module("tech_tasks", "view"))):
     return _out(_get(db, item_id), category_labels(db), item_labels(db),
-                _tien_do_moi_nhat(db), user)
+                _tien_do_moi_nhat(db), user, nhom_cua_dau_viec(db))
 
 
 # ============================================================ TIẾN ĐỘ HẠNG MỤC

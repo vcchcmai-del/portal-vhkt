@@ -37,10 +37,37 @@ function StatusTag({ task }) {
   return <span className={`tag ${STATUS_TAG[s] || "tag-grey"}`}>{STATUS_LABELS[s] || s}</span>;
 }
 
+export const UU_TIEN = { cao: "Cao", trung_binh: "Trung bình", thap: "Thấp" };
+const UU_TIEN_MAU = { cao: "#C8102E", trung_binh: "#0E6CD6", thap: "#16A34A" };
+const PHAM_VI = { ca_nhan: "Cá nhân được giao", nhieu_don_vi: "Có đơn vị khác cùng làm" };
+
+/** Thanh tiến độ nhỏ trong bảng và khung chi tiết. */
+export function TienDoNho({ percent, rong = 90 }) {
+  const p = Math.max(0, Math.min(percent || 0, 100));
+  const mau = p >= 100 ? "#16A34A" : p >= 50 ? "#0E6CD6" : p > 0 ? "#F2A007" : "#C9D6E8";
+  return (
+    <span className="flex items-center gap-2" style={{ whiteSpace: "nowrap" }}>
+      <span style={{ width: rong, height: 7, background: "#EAF1FB", borderRadius: 99, overflow: "hidden", display: "inline-block" }}>
+        <span style={{ display: "block", width: `${p}%`, height: "100%", background: mau, borderRadius: 99 }} />
+      </span>
+      <b style={{ fontSize: 12 }}>{p}%</b>
+    </span>
+  );
+}
+
+export function TheUuTien({ muc }) {
+  return (
+    <span style={{ fontSize: 11.5, fontWeight: 700, color: UU_TIEN_MAU[muc] || UU_TIEN_MAU.trung_binh }}>
+      ● {UU_TIEN[muc] || UU_TIEN.trung_binh}
+    </span>
+  );
+}
+
 const blankTask = (categories, fCategory) => ({
   category: fCategory || categories?.[0]?.id || "", title: "", description: "", assignee: "",
-  coordinators: [], reporter: "", target: "", due_at: "", status: "todo", link_url: "",
-  progress_item: "", note: "",
+  coordinators: [], reporter: "", target: "", start_at: "", due_at: "", status: "todo",
+  priority: "trung_binh", volume_unit: "", volume_plan: "", volume_done: "", percent: "",
+  scope: "ca_nhan", units: [], link_url: "", progress_item: "", note: "",
 });
 
 /** Tải tệp đính kèm (có token) rồi mở/lưu trên máy người dùng. */
@@ -182,19 +209,92 @@ function KhungDinhKem({ taskId, items, duocThem, duocXoa, onDoi, choGui, setChoG
   );
 }
 
+/** Bảng chia việc cho đơn vị khác: mỗi dòng một đơn vị, có khối lượng riêng. */
+export function BangDonVi({ units, onChange, donViTinh, chiSuaKhoiLuong = false, assignees = [] }) {
+  const doi = (i, k, v) => onChange(units.map((u, j) => (j === i ? { ...u, [k]: v } : u)));
+  const them = () => onChange([...units, { unit_name: "", assignee: "", volume_plan: "", volume_done: "", note: "" }]);
+  const xoa = (i) => onChange(units.filter((_, j) => j !== i));
+  const tong = units.reduce((a, u) => ({ plan: a.plan + (Number(u.volume_plan) || 0), done: a.done + (Number(u.volume_done) || 0) }), { plan: 0, done: 0 });
+  return (
+    <div>
+      <div style={{ overflowX: "auto" }}>
+        <table className="tbl">
+          <thead><tr><th>Đơn vị</th><th>Người phụ trách</th><th>Khối lượng giao</th><th>Đã làm</th><th>Tiến độ</th><th>Ghi chú</th><th></th></tr></thead>
+          <tbody>
+            {units.map((u, i) => {
+              const kh = Number(u.volume_plan) || 0;
+              const th = Number(u.volume_done) || 0;
+              return (
+                <tr key={i}>
+                  <td>
+                    <input className="inp" style={{ minWidth: 110 }} value={u.unit_name || ""} disabled={chiSuaKhoiLuong}
+                      placeholder="Mã/tên đơn vị" onChange={(e) => doi(i, "unit_name", e.target.value)} />
+                  </td>
+                  <td>
+                    <input className="inp" style={{ minWidth: 130 }} list="ds-phu-trach" value={u.assignee || ""} disabled={chiSuaKhoiLuong}
+                      onChange={(e) => doi(i, "assignee", e.target.value)} />
+                  </td>
+                  <td><input className="inp" type="number" style={{ width: 96 }} value={u.volume_plan ?? ""} disabled={chiSuaKhoiLuong}
+                    onChange={(e) => doi(i, "volume_plan", e.target.value)} /></td>
+                  <td><input className="inp" type="number" style={{ width: 96 }} value={u.volume_done ?? ""}
+                    onChange={(e) => doi(i, "volume_done", e.target.value)} /></td>
+                  <td><TienDoNho percent={kh > 0 ? Math.round(Math.min(th / kh, 1) * 1000) / 10 : 0} rong={70} /></td>
+                  <td><input className="inp" style={{ minWidth: 120 }} value={u.note || ""} onChange={(e) => doi(i, "note", e.target.value)} /></td>
+                  <td>{!chiSuaKhoiLuong && <button type="button" className="btn btn-sm" title="Bỏ đơn vị" onClick={() => xoa(i)}><Trash2 size={12} /></button>}</td>
+                </tr>
+              );
+            })}
+            {!!units.length && (
+              <tr style={{ fontWeight: 800 }}>
+                <td colSpan={2}>Tổng cộng</td>
+                <td>{tong.plan}{donViTinh ? ` ${donViTinh}` : ""}</td>
+                <td>{tong.done}</td>
+                <td><TienDoNho percent={tong.plan > 0 ? Math.round(Math.min(tong.done / tong.plan, 1) * 1000) / 10 : 0} rong={70} /></td>
+                <td colSpan={2} />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {!units.length && <p className="muted" style={{ fontSize: 12.5 }}>Chưa chia cho đơn vị nào.</p>}
+      {!chiSuaKhoiLuong && (
+        <button type="button" className="btn btn-sm" style={{ marginTop: 8 }} onClick={them}><Plus size={13} />Thêm đơn vị</button>
+      )}
+    </div>
+  );
+}
+
 /* ---------------------------------------------------------------- chi tiết */
 
 function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, duocXoa }) {
   const toi = (getUser()?.full_name || "").trim().toLowerCase();
   const duocBaoCao = duocSua || task.cua_toi;
-  const [bc, setBc] = useState({ status: task.status, note: task.note || "" });
+  const [bc, setBc] = useState({
+    status: task.status, note: task.note || "", percent: task.percent ?? "",
+    volume_done: task.volume_done ?? "", units: (task.units || []).map((u) => ({ ...u })),
+  });
   const [loi, setLoi] = useState("");
   const [daLuu, setDaLuu] = useState(false);
-  useEffect(() => { setBc({ status: task.status, note: task.note || "" }); setDaLuu(false); }, [task.id, task.status, task.note]);
+  useEffect(() => {
+    setBc({
+      status: task.status, note: task.note || "", percent: task.percent ?? "",
+      volume_done: task.volume_done ?? "", units: (task.units || []).map((u) => ({ ...u })),
+    });
+    setDaLuu(false);
+  }, [task.id, task.status, task.note, task.percent, task.volume_done, task.updated_at]);
 
   const guiBaoCao = async () => {
     try {
-      await api.post(`/api/admin/tech-tasks/${task.id}/report`, bc);
+      const so = (v) => (v === "" || v === null || v === undefined ? undefined : Number(v));
+      await api.post(`/api/admin/tech-tasks/${task.id}/report`, {
+        status: bc.status, note: bc.note,
+        percent: task.scope === "nhieu_don_vi" || Number(task.volume_plan) > 0 ? undefined : so(bc.percent),
+        volume_done: task.scope === "nhieu_don_vi" ? undefined : so(bc.volume_done),
+        units: task.scope === "nhieu_don_vi"
+          ? (bc.units || []).map((u) => ({ unit_name: u.unit_name, assignee: u.assignee || "",
+              volume_plan: Number(u.volume_plan) || 0, volume_done: Number(u.volume_done) || 0, note: u.note || "" }))
+          : undefined,
+      });
       setLoi(""); setDaLuu(true); onDoi();
     } catch (e) { setLoi(e.message); }
   };
@@ -219,7 +319,12 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
         <div>
           {dong("Đầu việc", task.category_label)}
           {dong("Trạng thái", <StatusTag task={task} />)}
-          {dong("Hạn xử lý", fmtDay(task.due_at))}
+          {dong("Mức ưu tiên", <TheUuTien muc={task.priority} />)}
+          {dong("Thời gian", `${task.start_at ? fmtDay(task.start_at) : "—"} → ${fmtDay(task.due_at)}`)}
+          {dong("Tiến độ", <TienDoNho percent={task.percent} />)}
+          {dong("Khối lượng", task.scope === "nhieu_don_vi"
+            ? `${task.units?.length || 0} đơn vị cùng làm`
+            : (task.volume_plan ? `${soGon(task.volume_done)} / ${soGon(task.volume_plan)} ${task.volume_unit || ""}`.trim() : ""))}
           {dong("Mục tiêu / chỉ tiêu", task.target)}
           {dong("Mô tả", task.description && <span style={{ whiteSpace: "pre-wrap" }}>{task.description}</span>)}
           {dong("Link công cụ", task.link_url && <a href={task.link_url} target="_blank" rel="noreferrer" style={{ color: "#0E6CD6", wordBreak: "break-all" }}>{task.link_url}</a>)}
@@ -262,6 +367,25 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
                   placeholder="Đã làm được gì, vướng mắc, cần hỗ trợ…" />
               </Field>
             </div>
+            {task.scope !== "nhieu_don_vi" && Number(task.volume_plan) > 0 && (
+              <Field label={`Khối lượng đã làm (trên ${soGon(task.volume_plan)} ${task.volume_unit || ""})`.trim()}>
+                <input className="inp" type="number" value={bc.volume_done}
+                  onChange={(e) => setBc({ ...bc, volume_done: e.target.value })} />
+              </Field>
+            )}
+            {task.scope !== "nhieu_don_vi" && !Number(task.volume_plan) && (
+              <Field label="Tiến độ (%)">
+                <input className="inp" type="number" min="0" max="100" value={bc.percent}
+                  onChange={(e) => setBc({ ...bc, percent: e.target.value })} />
+              </Field>
+            )}
+            {task.scope === "nhieu_don_vi" && (
+              <div className="md:col-span-4">
+                <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Khối lượng đã làm của từng đơn vị:</p>
+                <BangDonVi units={bc.units} onChange={(u) => setBc({ ...bc, units: u })}
+                  donViTinh={task.volume_unit} chiSuaKhoiLuong />
+              </div>
+            )}
             <div className="md:col-span-4 flex items-center gap-2">
               <button className="btn btn-red btn-sm" onClick={guiBaoCao}>Cập nhật tiến độ</button>
               {daLuu && <span className="tag tag-green">Đã lưu</span>}
@@ -269,7 +393,22 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
             </div>
           </div>
         ) : (
-          <p style={{ fontSize: 13.5, whiteSpace: "pre-wrap" }}>{task.note || <span className="muted">Chưa có ghi chú tiến độ.</span>}</p>
+          <>
+            <p style={{ fontSize: 13.5, whiteSpace: "pre-wrap" }}>{task.note || <span className="muted">Chưa có ghi chú tiến độ.</span>}</p>
+            {task.scope === "nhieu_don_vi" && !!task.units?.length && (
+              <div style={{ marginTop: 8 }}>
+                {task.units.map((u) => (
+                  <div key={u.id} className="flex items-center gap-2" style={{ fontSize: 13, padding: "3px 0", flexWrap: "wrap" }}>
+                    <b style={{ minWidth: 90 }}>{u.unit_name}</b>
+                    <span className="muted">{u.assignee || "chưa giao"}</span>
+                    <span>{soGon(u.volume_done)}/{soGon(u.volume_plan)}</span>
+                    <TienDoNho percent={u.percent} rong={70} />
+                    {u.note && <span className="muted">· {u.note}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
         {loi && <p style={{ color: RED, fontSize: 12.5 }}>{loi}</p>}
       </div>
@@ -371,6 +510,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [moId, setMoId] = useState(null);         // việc đang xem chi tiết
   const [qlDauViec, setQlDauViec] = useState(false);   // false | true | đầu việc đang sửa
   const [cheDoSua, setCheDoSua] = useState(false);      // hiện nút sửa/xoá trên thẻ đầu việc
+  const [nhomDS, setNhomDS] = useState([]);            // nhóm đầu việc cấp 1 (vd CĐBR)
+  const [nhomMoi, setNhomMoi] = useState(null);        // tên nhóm đang thêm, null = không mở ô
+  const [dongNhom, setDongNhom] = useState([]);        // mã nhóm đang gập
   const [newCat, setNewCat] = useState(null);
 
   const duocGiao = coQuyen("tech_tasks", "create");
@@ -387,6 +529,37 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const catHint = useMemo(() => categories.find((c) => c.id === form?.category)?.hint || "", [categories, form?.category]);
   const hangMucCuaDauViec = useMemo(
     () => hangMuc.find((g) => g.category === form?.category)?.items || [], [hangMuc, form?.category]);
+
+  const loadGroups = () => api.get("/api/admin/tech-tasks/groups")
+    .then((x) => setNhomDS(Array.isArray(x) ? x : [])).catch(() => {});
+
+  /** Thêm nhóm đầu việc cấp 1 (vd CĐBR) — đầu việc xếp vào nhóm ở khung Chỉnh sửa. */
+  const themNhom = async () => {
+    const label = (nhomMoi || "").trim();
+    if (!label) { setNhomMoi(null); return; }
+    try {
+      await api.post("/api/admin/tech-tasks/groups", { label });
+      setNhomMoi(null); setErr(""); loadGroups(); loadCategories();
+    } catch (e) { setErr(e.message); }
+  };
+
+  const xoaNhom = async (g) => {
+    if (!window.confirm(`Xóa nhóm “${g.label}”?\n\nCác đầu việc trong nhóm vẫn còn, chỉ quay về mục “Chưa xếp nhóm”.`)) return;
+    try { await api.del(`/api/admin/tech-tasks/groups/${g.id}`); setErr(""); loadGroups(); loadCategories(); }
+    catch (e) { setErr(e.message); }
+  };
+
+  const doiTenNhom = async (g) => {
+    const ten = window.prompt("Tên nhóm đầu việc:", g.label);
+    if (!ten || ten.trim() === g.label) return;
+    try { await api.put(`/api/admin/tech-tasks/groups/${g.id}`, { label: ten.trim() }); setErr(""); loadGroups(); loadCategories(); }
+    catch (e) { setErr(e.message); }
+  };
+
+  const xepNhom = async (catId, groupId) => {
+    try { await api.put(`/api/admin/tech-tasks/categories/${catId}`, { group_code: groupId }); loadGroups(); loadCategories(); }
+    catch (e) { setErr(e.message); }
+  };
 
   const loadCategories = () => api.get("/api/admin/tech-tasks/categories")
     .then((x) => setCategories(Array.isArray(x) ? x : [])).catch((e) => setErr(e.message));
@@ -405,7 +578,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
   useEffect(() => { load(); }, [fCategory, fStatus, cuaToi]);
   useEffect(() => {
-    loadCategories(); loadSummary();
+    loadCategories(); loadSummary(); loadGroups();
     api.get("/api/admin/tech-tasks/assignees").then((x) => setAssignees(Array.isArray(x) ? x : [])).catch(() => {});
     api.get("/api/admin/progress/items").then((x) => setHangMuc(Array.isArray(x) ? x : [])).catch(() => {});
   }, []);
@@ -429,10 +602,26 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       if (!form.title.trim()) throw new Error("Chưa nhập nội dung công việc.");
       if (form.link_url && !coLinkThat(form.link_url)) throw new Error("Link công cụ cần bắt đầu bằng http:// hoặc https://");
       setDangLuu(true);
+      const nhieuDonVi = form.scope === "nhieu_don_vi";
+      const soHoacKhong = (v) => (v === "" || v === null || v === undefined ? 0 : Number(v));
+      if (form.start_at && form.due_at && form.start_at > form.due_at) throw new Error("Ngày bắt đầu sau ngày kết thúc.");
       const payload = {
         category: form.category, title: form.title, description: form.description || "",
         assignee: form.assignee || "", coordinators: form.coordinators || [], reporter: form.reporter || "",
-        target: form.target || "", due_at: form.due_at || null, status: form.status,
+        target: form.target || "", start_at: form.start_at || null, due_at: form.due_at || null,
+        status: form.status, priority: form.priority || "trung_binh",
+        volume_unit: form.volume_unit || "",
+        volume_plan: nhieuDonVi ? 0 : soHoacKhong(form.volume_plan),
+        volume_done: nhieuDonVi ? 0 : soHoacKhong(form.volume_done),
+        percent: nhieuDonVi ? 0 : soHoacKhong(form.percent),
+        scope: form.scope || "ca_nhan",
+        units: nhieuDonVi
+          ? (form.units || []).filter((u) => (u.unit_name || "").trim()).map((u) => ({
+              unit_name: u.unit_name, assignee: u.assignee || "",
+              volume_plan: soHoacKhong(u.volume_plan), volume_done: soHoacKhong(u.volume_done),
+              percent: soHoacKhong(u.percent), note: u.note || "",
+            }))
+          : [],
         link_url: form.link_url || "", progress_item: form.progress_item || "", note: form.note || "",
       };
       const v = form.id
@@ -505,7 +694,14 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   }, [rows, search, fNguoi, fVaiTro]);
 
   const dangMo = rows.find((x) => x.id === moId);
-  const suaViec = (x) => { setMoId(null); moForm({ ...x, due_at: day(x.due_at), coordinators: x.coordinators || [], progress_item: x.progress_item || "" }); };
+  const suaViec = (x) => {
+    setMoId(null);
+    moForm({
+      ...x, start_at: day(x.start_at), due_at: day(x.due_at), coordinators: x.coordinators || [],
+      progress_item: x.progress_item || "", priority: x.priority || "trung_binh", scope: x.scope || "ca_nhan",
+      units: (x.units || []).map((u) => ({ ...u })),
+    });
+  };
 
   const field = (label, key, kind = "text", extra = {}) => (
     <Field label={label}>
@@ -537,43 +733,98 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         categories={categories} suaNgay={typeof qlDauViec === "object" ? qlDauViec : null}
         onDong={() => setQlDauViec(false)} onDoi={() => { loadCategories(); loadSummary(); }} />}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {categories.map((c) => {
-          const s = summary.find((x) => x.category === c.id) || { total: 0, overdue: 0, done: 0 };
-          const on = fCategory === c.id;
-          // Thẻ là div (không phải button) để đặt được nút sửa/xoá bên trong.
-          return (
-            <div key={c.id} className="card" role="button" tabIndex={0}
-              style={{ textAlign: "left", cursor: "pointer", padding: 12, border: on ? `1.5px solid ${RED}` : undefined }}
-              onClick={() => setFCategory(on ? "" : c.id)}
-              onKeyDown={(e) => { if (e.key === "Enter") setFCategory(on ? "" : c.id); }}>
-              <div className="flex items-center" style={{ gap: 4 }}>
-                <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{c.label}</p>
-                {cheDoSua && duocSua && (
-                  <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Sửa đầu việc “${c.label}”`}
-                    onClick={(e) => { e.stopPropagation(); setQlDauViec(c); }}><Pencil size={12} /></button>
-                )}
-                {cheDoSua && duocXoa && (
-                  <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa đầu việc “${c.label}”`}
-                    onClick={(e) => { e.stopPropagation(); xoaDauViec(c); }}><Trash2 size={12} /></button>
-                )}
-              </div>
-              <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 22, fontWeight: 800, color: RED }}>{s.total}</span>
-                {!!s.done && <span className="tag tag-green">{s.done} xong</span>}
-                {!!s.overdue && <span className="tag tag-red">{s.overdue} quá hạn</span>}
-              </div>
+      {/* Tổng quan: nhóm đầu việc cấp 1 (vd CĐBR) -> các đầu việc bên trong */}
+      {nhomDS.map((g) => {
+        const gap = dongNhom.includes(g.id);
+        const trong = g.categories.map((c) => ({
+          ...c, s: summary.find((x) => x.category === c.id) || { total: 0, overdue: 0, done: 0 },
+        }));
+        const tong = trong.reduce((a, c) => ({
+          total: a.total + c.s.total, done: a.done + c.s.done, overdue: a.overdue + c.s.overdue,
+        }), { total: 0, done: 0, overdue: 0 });
+        return (
+          <div key={g.id || "chua-nhom"} className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div className="flex items-center gap-2"
+              style={{ padding: "10px 14px", background: "#FCFBFB", borderBottom: gap ? "none" : "1px solid #EFECED", flexWrap: "wrap" }}>
+              <button type="button" className="flex items-center gap-1" onClick={() => setDongNhom((ds) => (ds.includes(g.id) ? ds.filter((x) => x !== g.id) : [...ds, g.id]))}
+                style={{ border: "none", background: "none", cursor: "pointer", padding: 0, fontWeight: 700, fontSize: 13.5, color: "inherit" }}>
+                {gap ? "▸" : "▾"} {g.label}
+              </button>
+              <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
+              <span className="tag tag-grey">{tong.total} việc</span>
+              {!!tong.done && <span className="tag tag-green">{tong.done} xong</span>}
+              {!!tong.overdue && <span className="tag tag-red">{tong.overdue} quá hạn</span>}
+              <span style={{ flex: 1 }} />
+              {cheDoSua && g.id && duocSua && (
+                <button className="btn btn-sm" onClick={() => doiTenNhom(g)}><Pencil size={12} />Đổi tên nhóm</button>
+              )}
+              {cheDoSua && g.id && duocXoa && (
+                <button className="btn btn-sm" onClick={() => xoaNhom(g)}><Trash2 size={12} />Xóa nhóm</button>
+              )}
             </div>
-          );
-        })}
-        {cheDoSua && duocGiao && (
-          <button type="button" className="card" onClick={() => setQlDauViec(true)}
-            style={{ padding: 12, cursor: "pointer", border: "1.5px dashed #E3C3C8", color: RED, fontWeight: 700,
-                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <Plus size={15} />Thêm đầu việc
-          </button>
-        )}
-      </div>
+            {!gap && (
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3" style={{ padding: 12 }}>
+                {trong.map((c) => {
+                  const on = fCategory === c.id;
+                  return (
+                    <div key={c.id} className="card" role="button" tabIndex={0}
+                      style={{ textAlign: "left", cursor: "pointer", padding: 12, border: on ? `1.5px solid ${RED}` : undefined }}
+                      onClick={() => setFCategory(on ? "" : c.id)}
+                      onKeyDown={(e) => { if (e.key === "Enter") setFCategory(on ? "" : c.id); }}>
+                      <div className="flex items-center" style={{ gap: 4 }}>
+                        <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{c.label}</p>
+                        {cheDoSua && duocSua && (
+                          <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Sửa đầu việc “${c.label}”`}
+                            onClick={(e) => { e.stopPropagation(); setQlDauViec({ id: c.id, label: c.label, hint: c.hint || "" }); }}><Pencil size={12} /></button>
+                        )}
+                        {cheDoSua && duocXoa && (
+                          <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa đầu việc “${c.label}”`}
+                            onClick={(e) => { e.stopPropagation(); xoaDauViec(c); }}><Trash2 size={12} /></button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 22, fontWeight: 800, color: RED }}>{c.s.total}</span>
+                        {!!c.s.done && <span className="tag tag-green">{c.s.done} xong</span>}
+                        {!!c.s.overdue && <span className="tag tag-red">{c.s.overdue} quá hạn</span>}
+                      </div>
+                      {cheDoSua && duocSua && (
+                        <select className="inp" style={{ marginTop: 8, fontSize: 12 }} value={g.id}
+                          onClick={(e) => e.stopPropagation()} onChange={(e) => xepNhom(c.id, e.target.value)}>
+                          <option value="">— Chưa xếp nhóm —</option>
+                          {nhomDS.filter((x) => x.id).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  );
+                })}
+                {cheDoSua && duocGiao && (
+                  <button type="button" className="card" onClick={() => setQlDauViec(true)}
+                    style={{ padding: 12, cursor: "pointer", border: "1.5px dashed #E3C3C8", color: RED, fontWeight: 700,
+                             display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Plus size={15} />Thêm đầu việc
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {cheDoSua && duocGiao && (
+        <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+          {nhomMoi === null ? (
+            <button className="btn btn-sm" onClick={() => setNhomMoi("")}><Plus size={14} />Thêm nhóm đầu việc cấp 1</button>
+          ) : (
+            <>
+              <input className="inp" style={{ maxWidth: 300 }} autoFocus placeholder="Tên nhóm, vd: CĐBR"
+                value={nhomMoi} onChange={(e) => setNhomMoi(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themNhom(); } if (e.key === "Escape") setNhomMoi(null); }} />
+              <button className="btn btn-red btn-sm" onClick={themNhom}>Thêm</button>
+              <button className="btn btn-sm" onClick={() => setNhomMoi(null)}>Hủy</button>
+            </>
+          )}
+          <span className="muted" style={{ fontSize: 12 }}>Nhóm cấp 1 gom nhiều đầu việc cùng mảng; mỗi thẻ đầu việc có ô chọn nhóm.</span>
+        </div>
+      )}
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <input className="inp" style={{ maxWidth: 280 }} placeholder="🔎 Tìm theo nội dung / người làm / phối hợp…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -672,10 +923,48 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             Người được gắn tên ở đây (đúng họ tên tài khoản đăng nhập) tự cập nhật tiến độ và đính kèm cho việc này, và thấy việc ở mục “Việc của tôi”.
           </p>
 
+          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Kế hoạch & tiến độ</p>
+          <div className="grid md:grid-cols-4 gap-3">
+            {field("Ngày bắt đầu", "start_at", "date")}
+            {field("Ngày kết thúc", "due_at", "date")}
+            <Field label="Mức ưu tiên">
+              <select className="inp" value={form.priority || "trung_binh"} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                {Object.entries(UU_TIEN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+            {field("Đơn vị tính khối lượng", "volume_unit", "text", { placeholder: "trạm, tủ, WO…" })}
+          </div>
+          <div className="grid md:grid-cols-4 gap-3">
+            <Field label="Phạm vi thực hiện">
+              <select className="inp" value={form.scope || "ca_nhan"} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
+                {Object.entries(PHAM_VI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+            {form.scope !== "nhieu_don_vi" && field("Khối lượng giao", "volume_plan", "number")}
+            {form.scope !== "nhieu_don_vi" && field("Khối lượng đã làm", "volume_done", "number")}
+            {form.scope !== "nhieu_don_vi" && (
+              <Field label={Number(form.volume_plan) > 0 ? "Tiến độ (tự tính theo khối lượng)" : "Tiến độ tự nhập (%)"}>
+                <input className="inp" type="number" min="0" max="100" value={Number(form.volume_plan) > 0
+                  ? Math.round(Math.min((Number(form.volume_done) || 0) / Number(form.volume_plan), 1) * 1000) / 10
+                  : (form.percent ?? "")}
+                  disabled={Number(form.volume_plan) > 0}
+                  onChange={(e) => setForm({ ...form, percent: e.target.value })} />
+              </Field>
+            )}
+          </div>
+          {form.scope === "nhieu_don_vi" && (
+            <div style={{ marginTop: 4 }}>
+              <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Chia khối lượng cho từng đơn vị; tiến độ của nhiệm vụ là tổng khối lượng đã làm trên tổng giao.
+              </p>
+              <BangDonVi units={form.units || []} onChange={(u) => setForm({ ...form, units: u })}
+                donViTinh={form.volume_unit} assignees={assignees} />
+            </div>
+          )}
+
           <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Mục tiêu & liên kết</p>
           <div className="grid md:grid-cols-2 gap-3">
             {field("Mục tiêu / chỉ tiêu", "target")}
-            {field("Hạn xử lý", "due_at", "date")}
             <Field label="Hạng mục tiến độ liên kết (tab Tiến độ)">
               <select className="inp" value={form.progress_item || ""} onChange={(e) => setForm({ ...form, progress_item: e.target.value })}
                 disabled={!hangMucCuaDauViec.length}>
@@ -707,7 +996,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       <Card pad={false}>
         <div style={{ overflowX: "auto" }}>
           <table className="tbl">
-            <thead><tr><th>Đầu việc</th><th>Nội dung</th><th>Nhân sự</th><th>Mục tiêu</th><th>Hạn xử lý</th><th>Trạng thái</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
+            <thead><tr><th>Đầu việc</th><th>Nội dung</th><th>Nhân sự</th><th>Ưu tiên</th><th>Thời gian</th><th>Khối lượng</th><th>Tiến độ</th><th>Trạng thái</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
             <tbody>
               {filteredRows.map((x) => (
                 <tr key={x.id} onClick={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}
@@ -732,8 +1021,17 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                     {!!x.coordinators?.length && <><br /><span className="muted">Phối hợp: {x.coordinators.join(", ")}</span></>}
                     {x.reporter && <><br /><span className="muted">Báo cáo: {x.reporter}</span></>}
                   </td>
-                  <td>{x.target || "—"}</td>
-                  <td>{fmtDay(x.due_at)}</td>
+                  <td><TheUuTien muc={x.priority} /></td>
+                  <td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                    {x.start_at ? fmtDay(x.start_at) : "—"}<br />
+                    <span className="muted">đến {fmtDay(x.due_at)}</span>
+                  </td>
+                  <td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                    {x.scope === "nhieu_don_vi"
+                      ? <span className="muted">{x.units?.length || 0} đơn vị</span>
+                      : (x.volume_plan ? `${soGon(x.volume_done)}/${soGon(x.volume_plan)}${x.volume_unit ? ` ${x.volume_unit}` : ""}` : "—")}
+                  </td>
+                  <td><TienDoNho percent={x.percent} rong={70} /></td>
                   <td><StatusTag task={x} /></td>
                   <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                     <ThaoTac onView={() => { setForm(null); setMoId(x.id); }} xemTitle="Xem chi tiết, đính kèm, báo cáo"

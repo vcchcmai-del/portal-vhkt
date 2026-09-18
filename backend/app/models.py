@@ -541,8 +541,18 @@ class TechTask(Base):
     coordinators = Column(Text)             # người phối hợp, nhiều tên ngăn bởi "; "
     reporter = Column(String(160))          # người báo cáo tiến độ (trống = chính người phụ trách)
     target = Column(String(300))            # mục tiêu/chỉ tiêu, vd "Line/NS < 1350"
-    due_at = Column(Date, nullable=True)
+    start_at = Column(Date, nullable=True)  # ngày bắt đầu
+    due_at = Column(Date, nullable=True)    # ngày kết thúc (hạn xử lý)
     status = Column(String(20), default="todo", index=True)  # todo|doing|done|overdue
+    priority = Column(String(20), default="trung_binh", index=True)   # cao|trung_binh|thap
+    # Khối lượng giao và đã làm, kèm đơn vị tính (trạm, tủ, WO...). Có khối
+    # lượng thì tiến độ % tự tính; không có thì người phụ trách tự nhập percent.
+    volume_unit = Column(String(40))
+    volume_plan = Column(Float, default=0)
+    volume_done = Column(Float, default=0)
+    percent = Column(Float, default=0)      # tiến độ thực hiện, 0..100
+    # ca_nhan = chỉ người được giao làm; nhieu_don_vi = có chia cho đơn vị khác
+    scope = Column(String(20), default="ca_nhan")
     link_url = Column(String(500))          # tool ngoài liên quan, vd manage-wo.pages.dev
     # Hạng mục định lượng bên tab Tiến độ mà việc này đẩy lên (vd 5g_srt5g) —
     # nhờ đó dòng công việc hiện luôn Kế hoạch/Thực hiện của hạng mục đó.
@@ -560,6 +570,30 @@ class TechTask(Base):
     attachments = relationship("TechTaskAttachment", back_populates="task",
                                cascade="all, delete-orphan",
                                order_by="TechTaskAttachment.id")
+    units = relationship("TechTaskUnit", back_populates="task",
+                         cascade="all, delete-orphan",
+                         order_by="TechTaskUnit.order_no, TechTaskUnit.id")
+
+
+class TechTaskUnit(Base):
+    """Phần việc chia cho một đơn vị khác (trung tâm, tổ, phòng) trong cùng một
+    nhiệm vụ: khối lượng và tiến độ riêng của đơn vị đó. Chỉ dùng khi nhiệm vụ
+    có scope = nhieu_don_vi; việc thuộc một cá nhân thì không cần dòng nào."""
+    __tablename__ = "tech_task_units"
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey("tech_tasks.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    unit_name = Column(String(120), nullable=False)   # mã/tên đơn vị, vd THA, Tổ KV1
+    assignee = Column(String(160))                    # người của đơn vị đó phụ trách
+    volume_plan = Column(Float, default=0)
+    volume_done = Column(Float, default=0)
+    percent = Column(Float, default=0)
+    note = Column(Text)
+    order_no = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    task = relationship("TechTask", back_populates="units")
 
 
 class TechTaskAttachment(Base):
@@ -613,6 +647,20 @@ class InfraStat(Base):
     value_text = Column(String(300), nullable=True)             # dự phòng nếu ô không phải số
 
 
+class TechGroup(Base):
+    """Nhóm đầu việc cấp 1 (vd CĐBR, Hạ tầng, Kinh doanh) — gom nhiều đầu việc
+    cùng mảng để Tổng quan và biểu đồ đánh giá theo nhóm, không phải nhìn 10+
+    đầu việc rời rạc."""
+    __tablename__ = "tech_groups"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(40), unique=True, nullable=False, index=True)   # vd cdbr
+    label = Column(String(160), nullable=False)                          # vd "CĐBR"
+    note = Column(Text)
+    order_no = Column(Integer, default=0)
+    active = Column(Boolean, default=True)
+
+
 class TechCategory(Base):
     """Đầu việc mảng kỹ thuật. Trước đây là danh sách cứng trong mã nguồn nên
     thêm đầu việc mới phải sửa code ở cả hai phía; nay lưu trong cơ sở dữ liệu
@@ -623,6 +671,7 @@ class TechCategory(Base):
     code = Column(String(40), unique=True, nullable=False, index=True)  # vd ke_hoach_5g
     label = Column(String(160), nullable=False)                         # vd "3. Kế hoạch 5G"
     hint = Column(Text)                     # gợi ý phạm vi, hiện trên form giao việc
+    group_code = Column(String(40), nullable=True, index=True)   # khoá về TechGroup.code
     order_no = Column(Integer, default=0)
     active = Column(Boolean, default=True)
 

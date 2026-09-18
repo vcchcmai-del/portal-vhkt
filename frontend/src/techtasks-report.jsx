@@ -21,6 +21,8 @@ import { Card, Empty, RED, ThaoTac, tooltipStyle } from "./ui";
 const MAU = { done: "#16A34A", doing: "#0E6CD6", todo: "#F2A007", overdue: "#C8102E" };
 const NHAN = { done: "Hoàn thành", doing: "Đang thực hiện", todo: "Chưa bắt đầu", overdue: "Quá hạn" };
 const THU_TU = ["overdue", "todo", "doing", "done"];   // xếp chồng: quá hạn ở đáy cho dễ thấy
+const MAU_UU_TIEN = { cao: "#C8102E", trung_binh: "#0E6CD6", thap: "#16A34A" };
+const MAU_KHOANG = { "0-25%": "#C8102E", "26-50%": "#F2A007", "51-75%": "#5B8DEF", "76-99%": "#0E6CD6", "100%": "#16A34A" };
 const HAN = [
   ["qua_han", "Quá hạn", "#C8102E"], ["trong_3_ngay", "≤ 3 ngày", "#F2A007"],
   ["trong_7_ngay", "4–7 ngày", "#5B8DEF"], ["sau_7_ngay", "> 7 ngày", "#0E6CD6"],
@@ -75,6 +77,9 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
   const nguoi = [...(d.nguoi || [])].sort((a, b) => b.tong - a.tong || a.name.localeCompare(b.name, "vi")).slice(0, 15)
     .map((p) => ({ ten: p.name, xong: p.done, dang_mo: p.ton - p.overdue, qua_han: p.overdue, tong: p.tong }));
   const han = HAN.map(([k, n, m]) => ({ ten: n, so: d.han?.[k] || 0, mau: m }));
+  const theoNhom = (d.theo_nhom || []).map((g) => ({ ...g, ten: g.label }));
+  const uuTien = (d.uu_tien || []).filter((x) => x.tong > 0);
+  const khoang = (d.khoang_tien_do || []).map((x) => ({ ...x, ten: x.khoang }));
   const tienDo = (d.tien_do || []).map((g) => ({ ten: boSo(g.label), ke_hoach: g.plan, thuc_hien: g.done, ty_le: g.rate, ky: g.period }));
   const kyTienDo = tienDo[0]?.ky;
 
@@ -141,6 +146,59 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
               </PieChart>
           </Khung>
         </div>
+      )}
+
+      {!!d.tong && (
+        <div className="grid lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
+            <Khung tieuDe="Đánh giá theo nhóm đầu việc" phu="Nhóm cấp 1 (vd CĐBR) — cột chia theo trạng thái" cao={280}>
+              <BarChart data={theoNhom} margin={{ top: 16, right: 10, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF1F6" />
+                <XAxis dataKey="ten" tick={{ fontSize: 11 }} interval={0} tickFormatter={(v) => rutGon(v, 14)} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip {...tooltipStyle} formatter={(v, n, o) => [v, n]}
+                  labelFormatter={(v) => {
+                    const g = theoNhom.find((x) => x.ten === v);
+                    return g ? `${v} — tiến độ trung bình ${g.phan_tram}%` : v;
+                  }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                {THU_TU.map((k, i) => (
+                  <Bar isAnimationActive={false} key={k} dataKey={k} name={NHAN[k]} stackId="g" fill={MAU[k]}
+                    radius={i === THU_TU.length - 1 ? [5, 5, 0, 0] : 0}>
+                    {i === THU_TU.length - 1 && (
+                      <LabelList dataKey="tong" position="top" style={{ fontSize: 11, fontWeight: 700 }} />
+                    )}
+                  </Bar>
+                ))}
+              </BarChart>
+            </Khung>
+          </div>
+          <Khung tieuDe="Phân loại theo mức ưu tiên" phu="Số nhiệm vụ" cao={280}>
+            <PieChart>
+              <Pie isAnimationActive={false} data={uuTien} dataKey="tong" nameKey="label" innerRadius="48%" outerRadius="68%"
+                paddingAngle={2} label={({ value, percent }) => `${value} (${Math.round(percent * 100)}%)`} labelLine={false}>
+                {uuTien.map((x) => <Cell key={x.muc} fill={MAU_UU_TIEN[x.muc]} />)}
+              </Pie>
+              <Tooltip {...tooltipStyle} formatter={(v, n, o) => [`${v} việc · quá hạn ${o?.payload?.qua_han || 0}`, n]} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+            </PieChart>
+          </Khung>
+        </div>
+      )}
+
+      {!!d.tong && (
+        <Khung tieuDe="Phân bố theo khoảng tiến độ" phu="Toàn bộ nhiệm vụ đang theo dõi" cao={250}>
+          <BarChart data={khoang} margin={{ top: 18, right: 10, left: -18, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF1F6" />
+            <XAxis dataKey="ten" tick={{ fontSize: 11.5 }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+            <Tooltip {...tooltipStyle} />
+            <Bar isAnimationActive={false} dataKey="so" name="Số nhiệm vụ" radius={[5, 5, 0, 0]}>
+              {khoang.map((x) => <Cell key={x.ten} fill={MAU_KHOANG[x.ten] || "#0E6CD6"} />)}
+              <LabelList dataKey="so" position="top" style={{ fontSize: 11, fontWeight: 700 }} />
+            </Bar>
+          </BarChart>
+        </Khung>
       )}
 
       <div className="grid lg:grid-cols-2 gap-4">
