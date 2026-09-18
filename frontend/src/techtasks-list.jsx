@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, RED, ThaoTac } from "./ui";
+import { SoLieuCumFT } from "./techtasks-cum";
 
 /*
  * Danh sách công việc mảng kỹ thuật.
@@ -1265,6 +1266,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 <Card><Empty title="Đầu việc này chưa có nhiệm vụ nào."
                   hint={duocGiao ? "Bấm “Thêm nhiệm vụ” ở trên để giao việc đầu tiên." : ""} /></Card>
               )}
+
+              {/* Nhìn sâu hơn nhiệm vụ: số liệu định lượng của đầu việc gom tới
+                  mức chi nhánh, mức cụm rồi tới từng FT. */}
+              <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />
             </div>
           </div>
         </>
