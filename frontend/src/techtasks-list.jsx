@@ -932,6 +932,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [newCat, setNewCat] = useState(null);
 
   const duocGiao = coQuyen("tech_tasks", "create");
+  const duocThemDauViec = coQuyen("tech_tasks", "create");
   const duocSua = coQuyen("tech_tasks", "update");
   const duocXoa = coQuyen("tech_tasks", "delete");
 
@@ -1102,15 +1103,34 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     return { ...g, dauViec: summary.length };
   }, [summary]);
 
-  // Thẻ đầu việc xếp theo thứ tự nhóm, nhóm chưa xếp xuống cuối.
-  const theDauViec = useMemo(() => {
+  // Mỗi nhóm cấp 1 một thẻ, bên trong là các đầu việc của nhóm (nhóm chưa xếp xuống cuối).
+  const theNhom = useMemo(() => {
     const thuTu = nhomDS.map((g) => g.id);
-    const hang = (c) => {
-      const i = thuTu.indexOf(c.group || "");
-      return i < 0 ? 999 : i;
-    };
-    return [...summary].sort((a, b) => hang(a) - hang(b));
+    const theo = new Map();
+    for (const c of summary) {
+      const ma = c.group || "";
+      if (!theo.has(ma)) theo.set(ma, { id: ma, label: c.group_label || "Chưa xếp nhóm", cats: [] });
+      theo.get(ma).cats.push(c);
+    }
+    const ds = [...theo.values()].map((g) => {
+      const t = g.cats.reduce((a, c) => ({
+        total: a.total + c.total, done: a.done + c.done, doing: a.doing + c.doing,
+        overdue: a.overdue + c.overdue, pt: a.pt + c.percent,
+      }), { total: 0, done: 0, doing: 0, overdue: 0, pt: 0 });
+      return { ...g, ...t, percent: g.cats.length ? Math.round(t.pt / g.cats.length * 10) / 10 : 0 };
+    });
+    return ds.sort((a, b) => {
+      const i = thuTu.indexOf(a.id), j = thuTu.indexOf(b.id);
+      return (i < 0 ? 999 : i) - (j < 0 ? 999 : j);
+    });
   }, [summary, nhomDS]);
+
+  /** Xoá nhóm ngay trên thẻ Tổng quan — đầu việc bên trong vẫn giữ. */
+  const xoaNhomTQ = async (g) => {
+    if (!window.confirm(`Xóa nhóm “${g.label}”?\n\n${g.cats.length} đầu việc trong nhóm vẫn còn, chỉ quay về mục “Chưa xếp nhóm”.`)) return;
+    try { await api.del(`/api/admin/tech-tasks/groups/${g.id}`); setErr(""); loadGroups(); loadCategories(); loadSummary(); }
+    catch (e) { setErr(e.message); }
+  };
 
   const moDauViec = (ma) => { setXemDauViec(ma); setFCategory(ma); setMoId(null); setForm(null); };
   const dongDauViec = () => { setXemDauViec(null); setFCategory(""); setMoId(null); };
@@ -1239,8 +1259,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         <>
       {/* Tổng quan: ô số tổng hợp -> lọc nhanh theo trạng thái -> thẻ từng đầu việc */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <OTongHop nhan="Tổng đầu việc" so={tong.dauViec} mau="#0E6CD6" icon={ClipboardList}
-          dong={[["Có nhiệm vụ", tong.dauViecCoViec], ["Đã xong hết", tong.dauViecXong]]} />
+        <OTongHop nhan="Nhóm / đầu việc" so={`${theNhom.length}/${tong.dauViec}`} mau="#0E6CD6" icon={ClipboardList}
+          dong={[["Đầu việc có nhiệm vụ", tong.dauViecCoViec], ["Đã xong hết", tong.dauViecXong]]} />
         <OTongHop nhan="Tổng nhiệm vụ" so={tong.viec} mau="#16A34A" icon={ListChecks}
           dong={[["Hoàn thành", tong.xong], ["Tỷ lệ", tong.viec ? `${Math.round(tong.xong / tong.viec * 100)}%` : "—"]]} />
         <OTongHop nhan="Đang thực hiện" so={tong.dangLam} mau="#F2A007" icon={Play}
@@ -1261,54 +1281,64 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         )}
       </div>
 
-      {/* Một lưới chung cho mọi đầu việc; tên nhóm là nhãn nhỏ trên thẻ — xếp theo
-          nhóm nhưng không tách mỗi nhóm một hàng riêng, nhìn đỡ dài. */}
+      {/* Mỗi thẻ là một nhóm cấp 1; bên trong liệt kê đầu việc, bấm vào đầu việc
+          mới xuống danh sách nhiệm vụ của nó. */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {theDauViec.map((c) => {
-          const tt = trangThaiDauViec(c);
-          const on = fCategory === c.category;
+        {theNhom.map((g) => {
+          const tt = trangThaiDauViec(g);
           return (
-            <div key={c.category} className="card" role="button" tabIndex={0}
-              onClick={() => moDauViec(c.category)}
-              onKeyDown={(e) => { if (e.key === "Enter") moDauViec(c.category); }}
-              style={{ padding: 0, overflow: "hidden", cursor: "pointer",
-                       border: on ? `1.5px solid ${RED}` : undefined }}>
+            <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ height: 4, background: tt.mau }} />
               <div style={{ padding: 12 }}>
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                   <span className="tag" style={{ background: `${tt.mau}14`, color: tt.mau, fontWeight: 700 }}>{tt.nhan}</span>
                   <span style={{ flex: 1 }} />
-                  <ThaoTac
-                    truoc={duocGiao ? (
-                      <button type="button" className="tt-btn" title={`Giao việc trong “${c.label}”`}
-                        onClick={() => { setMoId(null); moForm(blankTask(categories, c.category)); }}><Plus size={16} /></button>
-                    ) : null}
-                    onView={() => moDauViec(c.category)} xemTitle="Mở đầu việc"
-                    onEdit={duocSua ? () => setQlDauViec({ id: c.category, label: c.label, hint: "" }) : null}
-                    suaTitle="Sửa đầu việc trong Cơ cấu"
-                    onDelete={duocXoa ? () => xoaDauViec({ id: c.category, label: c.label }) : null} />
+                  {g.id && (
+                    <ThaoTac
+                      truoc={duocThemDauViec ? (
+                        <button type="button" className="tt-btn" title={`Thêm đầu việc vào “${g.label}”`}
+                          onClick={() => setQlDauViec(true)}><Plus size={16} /></button>
+                      ) : null}
+                      onEdit={duocSua ? () => setQlDauViec(true) : null} suaTitle="Sửa nhóm trong Cơ cấu"
+                      onDelete={duocXoa ? () => xoaNhomTQ(g) : null} xoaTitle="Xóa nhóm (đầu việc vẫn giữ)" />
+                  )}
                 </div>
-                <p className="muted" style={{ fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", marginTop: 8 }}>
-                  {c.group_label || "Chưa xếp nhóm"}
-                </p>
-                <p style={{ fontWeight: 700, fontSize: 14.5, marginTop: 2 }}>{c.label}</p>
+
+                <p style={{ fontWeight: 800, fontSize: 15.5, marginTop: 8 }}>{g.label}</p>
                 <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                  {c.start_at || c.due_at
-                    ? `${c.start_at ? fmtDay(c.start_at) : "—"} → ${c.due_at ? fmtDay(c.due_at) : "—"}`
-                    : "Chưa đặt mốc thời gian"}
+                  {g.cats.length} đầu việc · {g.total} nhiệm vụ
+                  {!!g.overdue && <span style={{ color: RED, fontWeight: 700 }}> · {g.overdue} quá hạn</span>}
                 </p>
-                <div className="flex items-center gap-2" style={{ marginTop: 8, flexWrap: "wrap", fontSize: 12.5 }}>
-                  <span className="flex items-center gap-1"><User size={13} />{c.owner || <span className="muted">chưa có chủ trì</span>}</span>
-                  <span className="tag tag-grey">{c.total} nhiệm vụ</span>
-                  {!!c.doing && <span className="tag tag-amber">{c.doing} đang làm</span>}
-                  {!!c.overdue && <span className="tag tag-red">{c.overdue} quá hạn</span>}
+
+                <div style={{ marginTop: 10, borderTop: "1px solid #EFECED" }}>
+                  {g.cats.map((c) => (
+                    <button key={c.category} type="button" onClick={() => moDauViec(c.category)}
+                      title={`Mở đầu việc “${c.label}”`}
+                      style={{ width: "100%", textAlign: "left", background: "none", border: "none",
+                               borderBottom: "1px solid #F4F1F2", padding: "8px 0", cursor: "pointer", color: "inherit" }}>
+                      <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                        <b style={{ fontSize: 13.5, flex: 1 }}>{c.label}</b>
+                        <span style={{ fontSize: 12, fontWeight: 700 }}>{c.done}/{c.total}</span>
+                        {!!c.overdue && <span className="tag tag-red" style={{ fontSize: 11 }}>{c.overdue} quá hạn</span>}
+                      </div>
+                      <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
+                        <span className="muted flex items-center gap-1" style={{ fontSize: 11.5, minWidth: 120 }}>
+                          <User size={12} />{c.owner || "chưa có chủ trì"}
+                        </span>
+                        <span style={{ flex: 1 }}><TienDoNho percent={c.percent} rong="100%" anSo /></span>
+                        <span className="muted" style={{ fontSize: 11.5, minWidth: 34, textAlign: "right" }}>{c.percent}%</span>
+                      </div>
+                    </button>
+                  ))}
+                  {!g.cats.length && <p className="muted" style={{ fontSize: 12.5, padding: "8px 0" }}>Nhóm này chưa có đầu việc.</p>}
                 </div>
+
                 <div style={{ marginTop: 10 }}>
                   <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
-                    <span className="muted">Hoàn thành <b style={{ color: "#1C1A1B" }}>{c.done}/{c.total}</b> nhiệm vụ</span>
-                    <b>{c.percent}%</b>
+                    <span className="muted">Cả nhóm: hoàn thành <b style={{ color: "#1C1A1B" }}>{g.done}/{g.total}</b></span>
+                    <b>{g.percent}%</b>
                   </div>
-                  <TienDoNho percent={c.percent} rong="100%" anSo />
+                  <TienDoNho percent={g.percent} rong="100%" anSo />
                 </div>
               </div>
             </div>
