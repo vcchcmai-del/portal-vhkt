@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Download, ExternalLink, FileText, Link2, Paperclip, Pencil, Plus, RefreshCw, Trash2, Upload, User, Users, X,
+  AlertTriangle, ClipboardList, Download, ExternalLink, FileText, Link2, ListChecks, Paperclip, Pencil,
+  Play, Plus, RefreshCw, Trash2, Upload, User, Users, X,
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, RED, ThaoTac } from "./ui";
@@ -42,15 +43,15 @@ const UU_TIEN_MAU = { cao: "#C8102E", trung_binh: "#0E6CD6", thap: "#16A34A" };
 const PHAM_VI = { ca_nhan: "Cá nhân được giao", nhieu_don_vi: "Có đơn vị khác cùng làm" };
 
 /** Thanh tiến độ nhỏ trong bảng và khung chi tiết. */
-export function TienDoNho({ percent, rong = 90 }) {
+export function TienDoNho({ percent, rong = 90, anSo = false }) {
   const p = Math.max(0, Math.min(percent || 0, 100));
   const mau = p >= 100 ? "#16A34A" : p >= 50 ? "#0E6CD6" : p > 0 ? "#F2A007" : "#C9D6E8";
   return (
-    <span className="flex items-center gap-2" style={{ whiteSpace: "nowrap" }}>
+    <span className="flex items-center gap-2" style={{ whiteSpace: "nowrap", width: rong === "100%" ? "100%" : undefined }}>
       <span style={{ width: rong, height: 7, background: "#EAF1FB", borderRadius: 99, overflow: "hidden", display: "inline-block" }}>
         <span style={{ display: "block", width: `${p}%`, height: "100%", background: mau, borderRadius: 99 }} />
       </span>
-      <b style={{ fontSize: 12 }}>{p}%</b>
+      {!anSo && <b style={{ fontSize: 12 }}>{p}%</b>}
     </span>
   );
 }
@@ -60,6 +61,41 @@ export function TheUuTien({ muc }) {
     <span style={{ fontSize: 11.5, fontWeight: 700, color: UU_TIEN_MAU[muc] || UU_TIEN_MAU.trung_binh }}>
       ● {UU_TIEN[muc] || UU_TIEN.trung_binh}
     </span>
+  );
+}
+
+/** Trạng thái tổng hợp của một đầu việc, suy từ các nhiệm vụ bên trong. */
+function trangThaiDauViec(c) {
+  if (!c.total) return { nhan: "Chưa có nhiệm vụ", mau: "#8B5CF6" };
+  if (c.done === c.total) return { nhan: "Hoàn thành", mau: "#16A34A" };
+  if (c.overdue) return { nhan: "Có việc quá hạn", mau: "#C8102E" };
+  if (c.doing) return { nhan: "Đang thực hiện", mau: "#0E6CD6" };
+  return { nhan: "Chưa bắt đầu", mau: "#F2A007" };
+}
+
+/** Ô số tổng hợp ở đầu Tổng quan. */
+function OTongHop({ nhan, so, mau, icon: I, dong }) {
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div style={{ height: 4, background: mau }} />
+      <div style={{ padding: 12 }}>
+        <div className="flex items-center gap-2">
+          <span style={{ width: 34, height: 34, borderRadius: 10, background: `${mau}16`, color: mau,
+                         display: "inline-flex", alignItems: "center", justifyContent: "center" }}><I size={18} /></span>
+          <div>
+            <p style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, color: mau }}>{so}</p>
+            <p className="muted" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".06em" }}>{nhan}</p>
+          </div>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          {dong.map(([k, v]) => (
+            <p key={k} className="muted" style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+              <span>{k}</span><b style={{ color: "#1C1A1B" }}>{v}</b>
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1030,6 +1066,27 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     });
   }, [rows, search, fNguoi, fVaiTro]);
 
+  // Gom số liệu cho Tổng quan: ô tổng hợp + nhóm -> đầu việc (từ /tech-tasks/summary).
+  const tong = useMemo(() => {
+    const g = summary.reduce((a, c) => ({
+      viec: a.viec + c.total, xong: a.xong + c.done, dangLam: a.dangLam + c.doing,
+      chuaBatDau: a.chuaBatDau + c.todo, quaHan: a.quaHan + c.overdue,
+      dauViecCoViec: a.dauViecCoViec + (c.total ? 1 : 0),
+      dauViecXong: a.dauViecXong + (c.total && c.done === c.total ? 1 : 0),
+    }), { viec: 0, xong: 0, dangLam: 0, chuaBatDau: 0, quaHan: 0, dauViecCoViec: 0, dauViecXong: 0 });
+    return { ...g, dauViec: summary.length };
+  }, [summary]);
+
+  // Thẻ đầu việc xếp theo thứ tự nhóm, nhóm chưa xếp xuống cuối.
+  const theDauViec = useMemo(() => {
+    const thuTu = nhomDS.map((g) => g.id);
+    const hang = (c) => {
+      const i = thuTu.indexOf(c.group || "");
+      return i < 0 ? 999 : i;
+    };
+    return [...summary].sort((a, b) => hang(a) - hang(b));
+  }, [summary, nhomDS]);
+
   const dangMo = rows.find((x) => x.id === moId);
   const suaViec = (x) => {
     setMoId(null);
@@ -1060,12 +1117,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               <Pencil size={14} />Cơ cấu đầu việc
             </button>
           )}
-          {(duocSua || duocXoa) && (
-            <button className={`btn btn-sm ${cheDoSua ? "btn-red" : ""}`}
-              onClick={() => { setCheDoSua((v) => !v); setQlDauViec(false); }}>
-              <Pencil size={14} />{cheDoSua ? "Xong chỉnh sửa" : "Sửa nhanh trên thẻ"}
-            </button>
-          )}
+
           {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
           {duocGiao && <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, fCategory)); }}><Plus size={14} />Giao việc mới</button>}
         </div>
@@ -1076,98 +1128,79 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         onDong={() => setQlDauViec(false)}
         onDoi={() => { loadCategories(); loadSummary(); loadGroups(); }} />}
 
-      {/* Tổng quan: nhóm đầu việc cấp 1 (vd CĐBR) -> các đầu việc bên trong */}
-      {nhomDS.map((g) => {
-        const gap = dongNhom.includes(g.id);
-        const trong = g.categories.map((c) => ({
-          ...c, s: summary.find((x) => x.category === c.id) || { total: 0, overdue: 0, done: 0 },
-        }));
-        const tong = trong.reduce((a, c) => ({
-          total: a.total + c.s.total, done: a.done + c.s.done, overdue: a.overdue + c.s.overdue,
-        }), { total: 0, done: 0, overdue: 0 });
-        return (
-          <div key={g.id || "chua-nhom"} className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <div className="flex items-center gap-2"
-              style={{ padding: "10px 14px", background: "#FCFBFB", borderBottom: gap ? "none" : "1px solid #EFECED", flexWrap: "wrap" }}>
-              <button type="button" className="flex items-center gap-1" onClick={() => setDongNhom((ds) => (ds.includes(g.id) ? ds.filter((x) => x !== g.id) : [...ds, g.id]))}
-                style={{ border: "none", background: "none", cursor: "pointer", padding: 0, fontWeight: 700, fontSize: 13.5, color: "inherit" }}>
-                {gap ? "▸" : "▾"} {g.label}
-              </button>
-              <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
-              <span className="tag tag-grey">{tong.total} việc</span>
-              {!!tong.done && <span className="tag tag-green">{tong.done} xong</span>}
-              {!!tong.overdue && <span className="tag tag-red">{tong.overdue} quá hạn</span>}
-              <span style={{ flex: 1 }} />
-              {cheDoSua && g.id && duocSua && (
-                <button className="btn btn-sm" onClick={() => doiTenNhom(g)}><Pencil size={12} />Đổi tên nhóm</button>
-              )}
-              {cheDoSua && g.id && duocXoa && (
-                <button className="btn btn-sm" onClick={() => xoaNhom(g)}><Trash2 size={12} />Xóa nhóm</button>
-              )}
-            </div>
-            {!gap && (
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3" style={{ padding: 12 }}>
-                {trong.map((c) => {
-                  const on = fCategory === c.id;
-                  return (
-                    <div key={c.id} className="card" role="button" tabIndex={0}
-                      style={{ textAlign: "left", cursor: "pointer", padding: 12, border: on ? `1.5px solid ${RED}` : undefined }}
-                      onClick={() => setFCategory(on ? "" : c.id)}
-                      onKeyDown={(e) => { if (e.key === "Enter") setFCategory(on ? "" : c.id); }}>
-                      <div className="flex items-center" style={{ gap: 4 }}>
-                        <p className="muted" style={{ fontSize: 11.5, lineHeight: 1.3, minHeight: 30, flex: 1 }}>{c.label}</p>
-                        {cheDoSua && duocSua && (
-                          <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Sửa đầu việc “${c.label}”`}
-                            onClick={(e) => { e.stopPropagation(); setQlDauViec({ id: c.id, label: c.label, hint: c.hint || "" }); }}><Pencil size={12} /></button>
-                        )}
-                        {cheDoSua && duocXoa && (
-                          <button type="button" className="btn btn-sm" style={{ padding: "3px 6px" }} title={`Xóa đầu việc “${c.label}”`}
-                            onClick={(e) => { e.stopPropagation(); xoaDauViec(c); }}><Trash2 size={12} /></button>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 22, fontWeight: 800, color: RED }}>{c.s.total}</span>
-                        {!!c.s.done && <span className="tag tag-green">{c.s.done} xong</span>}
-                        {!!c.s.overdue && <span className="tag tag-red">{c.s.overdue} quá hạn</span>}
-                      </div>
-                      {cheDoSua && duocSua && (
-                        <select className="inp" style={{ marginTop: 8, fontSize: 12 }} value={g.id}
-                          onClick={(e) => e.stopPropagation()} onChange={(e) => xepNhom(c.id, e.target.value)}>
-                          <option value="">— Chưa xếp nhóm —</option>
-                          {nhomDS.filter((x) => x.id).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-                        </select>
-                      )}
-                    </div>
-                  );
-                })}
-                {cheDoSua && duocGiao && (
-                  <button type="button" className="card" onClick={() => setQlDauViec(true)}
-                    style={{ padding: 12, cursor: "pointer", border: "1.5px dashed #E3C3C8", color: RED, fontWeight: 700,
-                             display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <Plus size={15} />Thêm đầu việc
-                  </button>
-                )}
+      {/* Tổng quan: ô số tổng hợp -> lọc nhanh theo trạng thái -> thẻ từng đầu việc */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <OTongHop nhan="Tổng đầu việc" so={tong.dauViec} mau="#0E6CD6" icon={ClipboardList}
+          dong={[["Có nhiệm vụ", tong.dauViecCoViec], ["Đã xong hết", tong.dauViecXong]]} />
+        <OTongHop nhan="Tổng nhiệm vụ" so={tong.viec} mau="#16A34A" icon={ListChecks}
+          dong={[["Hoàn thành", tong.xong], ["Tỷ lệ", tong.viec ? `${Math.round(tong.xong / tong.viec * 100)}%` : "—"]]} />
+        <OTongHop nhan="Đang thực hiện" so={tong.dangLam} mau="#F2A007" icon={Play}
+          dong={[["Chưa bắt đầu", tong.chuaBatDau], ["Đang mở", tong.viec - tong.xong]]} />
+        <OTongHop nhan="Nhiệm vụ quá hạn" so={tong.quaHan} mau={tong.quaHan ? RED : "#16A34A"} icon={AlertTriangle}
+          dong={[["Trên tổng", tong.viec], ["Tỷ lệ", tong.viec ? `${Math.round(tong.quaHan / tong.viec * 100)}%` : "—"]]} />
+      </div>
+
+      <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "10px 12px" }}>
+        <span className="muted" style={{ fontSize: 12 }}>Lọc nhanh:</span>
+        {[["", "Tất cả", tong.viec], ["todo", "Chưa bắt đầu", tong.chuaBatDau], ["doing", "Đang thực hiện", tong.dangLam],
+          ["done", "Hoàn thành", tong.xong], ["overdue", "Quá hạn", tong.quaHan]].map(([ma, nhan, n]) => (
+          <button key={ma || "all"} className={`btn btn-sm ${fStatus === ma ? "btn-red" : ""}`}
+            onClick={() => setFStatus(ma)}>{nhan} · {n}</button>
+        ))}
+        {fCategory && (
+          <button className="btn btn-sm" onClick={() => setFCategory("")}><X size={13} />Bỏ lọc đầu việc</button>
+        )}
+      </div>
+
+      {/* Một lưới chung cho mọi đầu việc; tên nhóm là nhãn nhỏ trên thẻ — xếp theo
+          nhóm nhưng không tách mỗi nhóm một hàng riêng, nhìn đỡ dài. */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {theDauViec.map((c) => {
+          const tt = trangThaiDauViec(c);
+          const on = fCategory === c.category;
+          return (
+            <div key={c.category} className="card" style={{ padding: 0, overflow: "hidden",
+              border: on ? `1.5px solid ${RED}` : undefined }}>
+              <div style={{ height: 4, background: tt.mau }} />
+              <div style={{ padding: 12 }}>
+                <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                  <span className="tag" style={{ background: `${tt.mau}14`, color: tt.mau, fontWeight: 700 }}>{tt.nhan}</span>
+                  <span style={{ flex: 1 }} />
+                  <ThaoTac
+                    truoc={duocGiao ? (
+                      <button type="button" className="tt-btn" title={`Giao việc trong “${c.label}”`}
+                        onClick={() => { setMoId(null); moForm(blankTask(categories, c.category)); }}><Plus size={16} /></button>
+                    ) : null}
+                    onView={() => setFCategory(on ? "" : c.category)} xemTitle="Xem nhiệm vụ của đầu việc này"
+                    onEdit={duocSua ? () => setQlDauViec({ id: c.category, label: c.label, hint: "" }) : null}
+                    suaTitle="Sửa đầu việc trong Cơ cấu"
+                    onDelete={duocXoa ? () => xoaDauViec({ id: c.category, label: c.label }) : null} />
+                </div>
+                <p className="muted" style={{ fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", marginTop: 8 }}>
+                  {c.group_label || "Chưa xếp nhóm"}
+                </p>
+                <p style={{ fontWeight: 700, fontSize: 14.5, marginTop: 2 }}>{c.label}</p>
+                <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                  {c.start_at || c.due_at
+                    ? `${c.start_at ? fmtDay(c.start_at) : "—"} → ${c.due_at ? fmtDay(c.due_at) : "—"}`
+                    : "Chưa đặt mốc thời gian"}
+                </p>
+                <div className="flex items-center gap-2" style={{ marginTop: 8, flexWrap: "wrap", fontSize: 12.5 }}>
+                  <span className="flex items-center gap-1"><User size={13} />{c.owner || <span className="muted">chưa có chủ trì</span>}</span>
+                  <span className="tag tag-grey">{c.total} nhiệm vụ</span>
+                  {!!c.overdue && <span className="tag tag-red">{c.overdue} quá hạn</span>}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
+                    <span className="muted">Tiến độ</span><b>{c.percent}%</b>
+                  </div>
+                  <TienDoNho percent={c.percent} rong="100%" anSo />
+                </div>
               </div>
-            )}
-          </div>
-        );
-      })}
-      {cheDoSua && duocGiao && (
-        <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
-          {nhomMoi === null ? (
-            <button className="btn btn-sm" onClick={() => setNhomMoi("")}><Plus size={14} />Thêm nhóm đầu việc cấp 1</button>
-          ) : (
-            <>
-              <input className="inp" style={{ maxWidth: 300 }} autoFocus placeholder="Tên nhóm, vd: CĐBR"
-                value={nhomMoi} onChange={(e) => setNhomMoi(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themNhom(); } if (e.key === "Escape") setNhomMoi(null); }} />
-              <button className="btn btn-red btn-sm" onClick={themNhom}>Thêm</button>
-              <button className="btn btn-sm" onClick={() => setNhomMoi(null)}>Hủy</button>
-            </>
-          )}
-          <span className="muted" style={{ fontSize: 12 }}>Nhóm cấp 1 gom nhiều đầu việc cùng mảng; mỗi thẻ đầu việc có ô chọn nhóm.</span>
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
 
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <input className="inp" style={{ maxWidth: 280 }} placeholder="🔎 Tìm theo nội dung / người làm / phối hợp…" value={search} onChange={(e) => setSearch(e.target.value)} />

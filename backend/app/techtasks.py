@@ -666,23 +666,34 @@ def admin_list_tasks(category: Optional[str] = None, status: Optional[str] = Non
 
 @admin_router.get("/tech-tasks/summary")
 def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
-    """Đếm số việc theo từng đầu việc x trạng thái, cho khối thống kê đầu trang."""
+    """Mỗi đầu việc một dòng: số việc theo trạng thái, tiến độ trung bình, mốc
+    thời gian sớm/muộn nhất và người chủ trì — đủ để Tổng quan vẽ thẻ đầu việc."""
     rows = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None)).all()
-    by_category = defaultdict(lambda: {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0})
     today = models.today()
+    trong = defaultdict(lambda: {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0,
+                                 "_pt": 0.0, "start_at": None, "due_at": None})
     for r in rows:
-        bucket = by_category[r.category]
-        bucket["total"] += 1
-        status = r.status
-        if status != "done" and r.due_at and r.due_at < today:
-            status = "overdue"
-        bucket[status] = bucket.get(status, 0) + 1
+        b = trong[r.category]
+        b["total"] += 1
+        b[_trang_thai(r, today)] += 1
+        b["_pt"] += _phan_tram(r)
+        if r.start_at and (b["start_at"] is None or r.start_at < b["start_at"]):
+            b["start_at"] = r.start_at
+        if r.due_at and (b["due_at"] is None or r.due_at > b["due_at"]):
+            b["due_at"] = r.due_at
     ensure_seeded(db)
-    return [
-        {"category": c.code, "label": c.label,
-         **by_category.get(c.code, {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0})}
-        for c in categories(db)
-    ]
+    nhom = nhom_cua_dau_viec(db)
+    ra = []
+    for c in categories(db):
+        b = dict(trong.get(c.code, {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0,
+                                    "_pt": 0.0, "start_at": None, "due_at": None}))
+        tong = b["total"]
+        pt = b.pop("_pt")
+        b["percent"] = round(pt / tong, 1) if tong else 0.0
+        g = nhom.get(c.code) or {"code": "", "label": ""}
+        ra.append({"category": c.code, "label": c.label, "owner": c.owner or "",
+                   "group": g["code"], "group_label": g["label"], **b})
+    return ra
 
 
 @admin_router.post("/tech-tasks")
