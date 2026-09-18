@@ -13,12 +13,13 @@ import { Card, Empty, Field, RED, ThaoTac } from "./ui";
  * từng dòng hoặc nhập cả tệp Excel (cùng khuôn với tab Tiến độ).
  */
 
-const pct = (kh, th) => (kh > 0 ? `${Math.round(Math.min(th / kh, 1) * 1000) / 10}%` : "—");
+const pct = (kh, th) => (kh > 0 ? `${Math.round((th / kh) * 1000) / 10}%` : "—");
 const so = (n) => Number(n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 1 });
 
 function ThanhNho({ kh, th }) {
-  const r = kh > 0 ? Math.min(th / kh, 1) : 0;
-  const mau = r >= 1 ? "#16A34A" : r >= 0.5 ? "#0E6CD6" : r > 0 ? "#F2A007" : "#C9D6E8";
+  const that = kh > 0 ? th / kh : 0;        // tỷ lệ thật, có thể vượt 100%
+  const r = Math.min(that, 1);              // thanh chỉ vẽ tối đa hết chiều dài
+  const mau = that > 1 ? "#0B8A4B" : that >= 1 ? "#16A34A" : that >= 0.5 ? "#0E6CD6" : that > 0 ? "#F2A007" : "#C9D6E8";
   return (
     <span style={{ display: "inline-block", width: 70, height: 7, background: "#EAF1FB", borderRadius: 99, overflow: "hidden" }}>
       <span style={{ display: "block", width: `${r * 100}%`, height: "100%", background: mau }} />

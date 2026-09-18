@@ -45,14 +45,15 @@ const PHAM_VI = { ca_nhan: "Cá nhân được giao", nhieu_don_vi: "Có đơn v
 
 /** Thanh tiến độ nhỏ trong bảng và khung chi tiết. */
 export function TienDoNho({ percent, rong = 90, anSo = false }) {
-  const p = Math.max(0, Math.min(percent || 0, 100));
-  const mau = p >= 100 ? "#16A34A" : p >= 50 ? "#0E6CD6" : p > 0 ? "#F2A007" : "#C9D6E8";
+  const that = Math.max(0, percent || 0);   // số thật, có thể vượt 100% khi làm quá kế hoạch
+  const p = Math.min(that, 100);            // thanh chỉ vẽ tối đa hết chiều dài
+  const mau = that > 100 ? "#0B8A4B" : p >= 100 ? "#16A34A" : p >= 50 ? "#0E6CD6" : p > 0 ? "#F2A007" : "#C9D6E8";
   return (
     <span className="flex items-center gap-2" style={{ whiteSpace: "nowrap", width: rong === "100%" ? "100%" : undefined }}>
       <span style={{ width: rong, height: 7, background: "#EAF1FB", borderRadius: 99, overflow: "hidden", display: "inline-block" }}>
         <span style={{ display: "block", width: `${p}%`, height: "100%", background: mau, borderRadius: 99 }} />
       </span>
-      {!anSo && <b style={{ fontSize: 12 }}>{p}%</b>}
+      {!anSo && <b style={{ fontSize: 12, color: that > 100 ? "#0B8A4B" : undefined }}>{Math.round(that * 10) / 10}%</b>}
     </span>
   );
 }
@@ -336,7 +337,8 @@ function TheNhiemVu({ task, onMo, onSua, onXoa, dangMo }) {
         <span className="flex items-center gap-1"><User size={13} />{task.assignee || <span className="muted">chưa gán</span>}</span>
         <span style={{ flex: 1 }} />
         <span onClick={(e) => e.stopPropagation()}>
-          <ThaoTac onEdit={onSua} suaTitle="Sửa nhiệm vụ" onDelete={onXoa} xoaTitle="Xóa (vào Thùng rác)" />
+          <ThaoTac onView={onMo} xemTitle={dangMo ? "Đóng chi tiết" : "Xem chi tiết"}
+            onEdit={onSua} suaTitle="Sửa nhiệm vụ" onDelete={onXoa} xoaTitle="Xóa (vào Thùng rác)" />
         </span>
       </div>
       <div style={{ marginTop: 8, height: 6, background: "#EEF1F6", borderRadius: 99, overflow: "hidden" }}>
@@ -428,7 +430,7 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
         <div>
           {dong(<span className="flex items-center gap-1"><User size={13} />Phụ trách (làm)</span>, task.assignee && <b>{task.assignee}</b>)}
           {dong(<span className="flex items-center gap-1"><Users size={13} />Phối hợp</span>, task.coordinators?.length ? task.coordinators.join(", ") : "")}
-          {dong("Người báo cáo", task.reporter || (task.assignee ? `${task.assignee} (phụ trách)` : ""))}
+
           {dong("Hạng mục tiến độ", task.progress_item ? (
             <span>
               <button type="button" className="btn btn-sm" style={{ border: "none", padding: 0, fontWeight: 700, color: "#0E6CD6" }}
@@ -471,7 +473,7 @@ function ChiTietViec({ task, onDong, onSua, onXoa, onDoi, onMoTienDo, duocSua, d
             )}
             {task.scope !== "nhieu_don_vi" && !Number(task.volume_plan) && (
               <Field label="Tiến độ (%)">
-                <input className="inp" type="number" min="0" max="100" value={bc.percent}
+                <input className="inp" type="number" min="0" value={bc.percent}
                   onChange={(e) => setBc({ ...bc, percent: e.target.value })} />
               </Field>
             )}
@@ -1008,7 +1010,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       if (form.start_at && form.due_at && form.start_at > form.due_at) throw new Error("Ngày bắt đầu sau ngày kết thúc.");
       const payload = {
         category: form.category, title: form.title, description: form.description || "",
-        assignee: form.assignee || "", coordinators: form.coordinators || [], reporter: form.reporter || "",
+        assignee: form.assignee || "", coordinators: form.coordinators || [],
+        reporter: "",                       // người phụ trách chính báo cáo luôn
         target: form.target || "", start_at: form.start_at || null, due_at: form.due_at || null,
         status: form.status, priority: form.priority || "trung_binh",
         volume_unit: form.volume_unit || "",
@@ -1119,7 +1122,14 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const theNhom = useMemo(() => {
     const thuTu = nhomDS.map((g) => g.id);
     const theo = new Map();
-    for (const c of summary) {
+    // Lọc theo nhân viên thì thẻ chỉ giữ đầu việc người đó đứng chủ trì, hoặc
+    // đang có nhiệm vụ gắn tên họ — xem “việc của ai” thì không nên thấy cả phòng.
+    const ten = chuanTen(fNguoi);
+    const dvCoViec = new Set(filteredRows.map((r) => r.category));
+    const nguon = ten
+      ? summary.filter((c) => chuanTen(c.owner) === ten || dvCoViec.has(c.category))
+      : summary;
+    for (const c of nguon) {
       const ma = c.group || "";
       if (!theo.has(ma)) theo.set(ma, { id: ma, label: c.group_label || "Chưa xếp nhóm", cats: [] });
       theo.get(ma).cats.push(c);
@@ -1135,7 +1145,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       const i = thuTu.indexOf(a.id), j = thuTu.indexOf(b.id);
       return (i < 0 ? 999 : i) - (j < 0 ? 999 : j);
     });
-  }, [summary, nhomDS]);
+  }, [summary, nhomDS, fNguoi, filteredRows]);
 
   /** Xoá nhóm ngay trên thẻ Tổng quan — đầu việc bên trong vẫn giữ. */
   const xoaNhomTQ = async (g) => {
@@ -1162,6 +1172,140 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     <Field label={label}>
       <input className="inp" type={kind} value={form?.[key] || ""} onChange={(e) => setForm({ ...form, [key]: e.target.value })} {...extra} />
     </Field>
+  );
+
+  /* Khung giao việc / xem chi tiết một nhiệm vụ — dùng chung cho màn danh
+     sách và màn chi tiết đầu việc, để bấm vào đâu thì khung mở ngay ở đó. */
+  const khungViec = (
+    <>
+      {form && (
+        <Card title={form.id ? "Cập nhật công việc" : "Giao việc mới"}>
+          <div className="grid md:grid-cols-2 gap-3">
+            <Field label="Đầu việc">
+              {newCat === null ? (
+                <div className="flex gap-2">
+                  <select className="inp" value={form.category} onChange={(e) => {
+                    const chuTri = categories.find((c) => c.id === e.target.value)?.owner || "";
+                    const cuTri = categories.find((c) => c.id === form.category)?.owner || "";
+                    // Đổi đầu việc: điền chủ trì mới nếu ô đang trống hoặc đang là chủ trì của đầu việc cũ.
+                    const giuNguoi = form.assignee && form.assignee !== cuTri;
+                    setForm({ ...form, category: e.target.value, progress_item: "",
+                              assignee: giuNguoi ? form.assignee : chuTri });
+                  }}>
+                    {!form.category && <option value="">— Chọn đầu việc —</option>}
+                    {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                  {duocGiao && <button type="button" className="btn btn-sm" title="Thêm đầu việc mới" onClick={() => setNewCat("")}><Plus size={14} /></button>}
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input className="inp" autoFocus placeholder="Tên đầu việc mới, vd: 11. An toàn thông tin"
+                    value={newCat} onChange={(e) => setNewCat(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(); } }} />
+                  <button type="button" className="btn btn-red btn-sm" onClick={themDauViec}>Thêm</button>
+                  <button type="button" className="btn btn-sm" onClick={() => setNewCat(null)}>Hủy</button>
+                </div>
+              )}
+            </Field>
+            <Field label="Trạng thái">
+              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                {Object.entries(STATUS_LABELS).filter(([k]) => k !== "overdue").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+          </div>
+          {catHint && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 6, background: "#FAF9F9", padding: "8px 10px", borderRadius: 8 }}>
+              Gợi ý phạm vi: {catHint}
+            </p>
+          )}
+          <div style={{ marginTop: 12 }}>{field("Nội dung công việc", "title")}</div>
+          <Field label="Mô tả chi tiết"><textarea className="inp" rows="2" value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+
+          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Nhân sự</p>
+          <div className="grid md:grid-cols-2 gap-3">
+            <Field label="Phụ trách chính (người làm, cũng là người báo cáo)">
+              <ChonNguoi value={form.assignee} assignees={assignees} trong="— Chưa gán —"
+                onChange={(v) => setForm({ ...form, assignee: v })} />
+            </Field>
+            <Field label="Phối hợp">
+              <NhieuNguoi value={form.coordinators || []} listId="ds-phoi-hop" assignees={assignees}
+                onChange={(v) => setForm({ ...form, coordinators: v })} />
+            </Field>
+          </div>
+          <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+            Người được gắn tên ở đây (đúng họ tên tài khoản đăng nhập) tự cập nhật tiến độ và đính kèm cho việc này, và thấy việc ở mục “Việc của tôi”.
+          </p>
+
+          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Kế hoạch & tiến độ</p>
+          <div className="grid md:grid-cols-4 gap-3">
+            {field("Ngày bắt đầu", "start_at", "date")}
+            {field("Ngày kết thúc", "due_at", "date")}
+            <Field label="Mức ưu tiên">
+              <select className="inp" value={form.priority || "trung_binh"} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                {Object.entries(UU_TIEN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+            {field("Đơn vị tính khối lượng", "volume_unit", "text", { placeholder: "trạm, tủ, WO…" })}
+          </div>
+          <div className="grid md:grid-cols-4 gap-3">
+            <Field label="Phạm vi thực hiện">
+              <select className="inp" value={form.scope || "ca_nhan"} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
+                {Object.entries(PHAM_VI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+            {form.scope !== "nhieu_don_vi" && field("Khối lượng giao", "volume_plan", "number")}
+            {form.scope !== "nhieu_don_vi" && field("Khối lượng đã làm", "volume_done", "number")}
+            {form.scope !== "nhieu_don_vi" && (
+              <Field label={Number(form.volume_plan) > 0 ? "Tiến độ (tự tính theo khối lượng)" : "Tiến độ tự nhập (%)"}>
+                <input className="inp" type="number" min="0" value={Number(form.volume_plan) > 0
+                  ? Math.round((Number(form.volume_done) || 0) / Number(form.volume_plan) * 1000) / 10
+                  : (form.percent ?? "")}
+                  disabled={Number(form.volume_plan) > 0}
+                  onChange={(e) => setForm({ ...form, percent: e.target.value })} />
+              </Field>
+            )}
+          </div>
+          {form.scope === "nhieu_don_vi" && (
+            <div style={{ marginTop: 4 }}>
+              <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+                Chia khối lượng cho từng đơn vị; tiến độ của nhiệm vụ là tổng khối lượng đã làm trên tổng giao.
+              </p>
+              <BangDonVi units={form.units || []} onChange={(u) => setForm({ ...form, units: u })}
+                donViTinh={form.volume_unit} assignees={assignees} />
+            </div>
+          )}
+
+          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Mục tiêu & liên kết</p>
+          <div className="grid md:grid-cols-2 gap-3">
+            {field("Mục tiêu / chỉ tiêu", "target")}
+            <Field label="Hạng mục tiến độ liên kết (tab Tiến độ)">
+              <select className="inp" value={form.progress_item || ""} onChange={(e) => setForm({ ...form, progress_item: e.target.value })}
+                disabled={!hangMucCuaDauViec.length}>
+                <option value="">{hangMucCuaDauViec.length ? "— Không liên kết —" : "Đầu việc này chưa có hạng mục định lượng"}</option>
+                {hangMucCuaDauViec.map((it) => <option key={it.id} value={it.id}>{it.label}</option>)}
+              </select>
+            </Field>
+            {field("Link công cụ liên quan (nếu có)", "link_url", "url", { placeholder: "https://…" })}
+          </div>
+          <Field label="Ghi chú tiến độ"><textarea className="inp" rows="2" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+
+          <p className="eyebrow-grey flex items-center gap-1" style={{ margin: "12px 0 6px" }}><Paperclip size={13} />Đính kèm</p>
+          <KhungDinhKem taskId={form.id} items={form.id ? (rows.find((x) => x.id === form.id)?.attachments || []) : []}
+            duocThem duocXoa={() => duocSua} onDoi={load} choGui={choGui} setChoGui={setChoGui} />
+
+          <div className="flex gap-2" style={{ marginTop: 12 }}>
+            <button className="btn" onClick={() => { setForm(null); setChoGui([]); }}>Hủy</button>
+            <button className="btn btn-red" onClick={save} disabled={dangLuu}>{dangLuu ? "Đang lưu…" : "Lưu"}</button>
+          </div>
+        </Card>
+      )}
+
+      {dangMo && !form && (
+        <ChiTietViec task={dangMo} duocSua={duocSua} duocXoa={duocXoa}
+          onDong={() => setMoId(null)} onSua={() => suaViec(dangMo)} onXoa={() => del(dangMo)}
+          onDoi={taiLai} onMoTienDo={onMoTienDo} />
+      )}
+    </>
   );
 
   return (
@@ -1257,6 +1401,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 ))}
               </div>
               )}
+              {khungViec}
               {!!dauViecDangXem.total && (
                 <div className="grid md:grid-cols-2 gap-3">
                   {filteredRows.map((x) => (
@@ -1289,6 +1434,16 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         <OTongHop nhan="Nhiệm vụ quá hạn" so={tong.quaHan} mau={tong.quaHan ? RED : "#16A34A"} icon={AlertTriangle}
           dong={[["Trên tổng", tong.viec], ["Tỷ lệ", tong.viec ? `${Math.round(tong.quaHan / tong.viec * 100)}%` : "—"]]} />
       </div>
+
+      {!!fNguoi && (
+        <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
+          <b style={{ fontSize: 13 }}>Đang xem công việc của: {fNguoi}</b>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {theNhom.reduce((a, g) => a + g.cats.length, 0)} đầu việc chủ trì hoặc có nhiệm vụ gắn tên
+          </span>
+          <button className="btn btn-sm" onClick={() => setFNguoi("")}>Xem cả phòng</button>
+        </div>
+      )}
 
       {/* Mỗi thẻ là một nhóm cấp 1; bên trong liệt kê đầu việc, bấm vào đầu việc
           mới xuống danh sách nhiệm vụ của nó. */}
@@ -1402,137 +1557,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
       {err && <p style={{ color: RED }}>{err}</p>}
 
-      {form && (
-        <Card title={form.id ? "Cập nhật công việc" : "Giao việc mới"}>
-          <div className="grid md:grid-cols-2 gap-3">
-            <Field label="Đầu việc">
-              {newCat === null ? (
-                <div className="flex gap-2">
-                  <select className="inp" value={form.category} onChange={(e) => {
-                    const chuTri = categories.find((c) => c.id === e.target.value)?.owner || "";
-                    const cuTri = categories.find((c) => c.id === form.category)?.owner || "";
-                    // Đổi đầu việc: điền chủ trì mới nếu ô đang trống hoặc đang là chủ trì của đầu việc cũ.
-                    const giuNguoi = form.assignee && form.assignee !== cuTri;
-                    setForm({ ...form, category: e.target.value, progress_item: "",
-                              assignee: giuNguoi ? form.assignee : chuTri });
-                  }}>
-                    {!form.category && <option value="">— Chọn đầu việc —</option>}
-                    {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-                  </select>
-                  {duocGiao && <button type="button" className="btn btn-sm" title="Thêm đầu việc mới" onClick={() => setNewCat("")}><Plus size={14} /></button>}
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input className="inp" autoFocus placeholder="Tên đầu việc mới, vd: 11. An toàn thông tin"
-                    value={newCat} onChange={(e) => setNewCat(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); themDauViec(); } }} />
-                  <button type="button" className="btn btn-red btn-sm" onClick={themDauViec}>Thêm</button>
-                  <button type="button" className="btn btn-sm" onClick={() => setNewCat(null)}>Hủy</button>
-                </div>
-              )}
-            </Field>
-            <Field label="Trạng thái">
-              <select className="inp" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-                {Object.entries(STATUS_LABELS).filter(([k]) => k !== "overdue").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </Field>
-          </div>
-          {catHint && (
-            <p className="muted" style={{ fontSize: 12, marginTop: 6, background: "#FAF9F9", padding: "8px 10px", borderRadius: 8 }}>
-              Gợi ý phạm vi: {catHint}
-            </p>
-          )}
-          <div style={{ marginTop: 12 }}>{field("Nội dung công việc", "title")}</div>
-          <Field label="Mô tả chi tiết"><textarea className="inp" rows="2" value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-
-          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Nhân sự</p>
-          <div className="grid md:grid-cols-3 gap-3">
-            <Field label="Phụ trách chính (người làm)">
-              <ChonNguoi value={form.assignee} assignees={assignees} trong="— Chưa gán —"
-                onChange={(v) => setForm({ ...form, assignee: v })} />
-            </Field>
-            <Field label="Phối hợp">
-              <NhieuNguoi value={form.coordinators || []} listId="ds-phoi-hop" assignees={assignees}
-                onChange={(v) => setForm({ ...form, coordinators: v })} />
-            </Field>
-            <Field label="Người báo cáo (trống = người phụ trách)">
-              <ChonNguoi value={form.reporter} assignees={assignees} trong="— Như người phụ trách —"
-                onChange={(v) => setForm({ ...form, reporter: v })} />
-            </Field>
-          </div>
-          <p className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
-            Người được gắn tên ở đây (đúng họ tên tài khoản đăng nhập) tự cập nhật tiến độ và đính kèm cho việc này, và thấy việc ở mục “Việc của tôi”.
-          </p>
-
-          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Kế hoạch & tiến độ</p>
-          <div className="grid md:grid-cols-4 gap-3">
-            {field("Ngày bắt đầu", "start_at", "date")}
-            {field("Ngày kết thúc", "due_at", "date")}
-            <Field label="Mức ưu tiên">
-              <select className="inp" value={form.priority || "trung_binh"} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                {Object.entries(UU_TIEN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </Field>
-            {field("Đơn vị tính khối lượng", "volume_unit", "text", { placeholder: "trạm, tủ, WO…" })}
-          </div>
-          <div className="grid md:grid-cols-4 gap-3">
-            <Field label="Phạm vi thực hiện">
-              <select className="inp" value={form.scope || "ca_nhan"} onChange={(e) => setForm({ ...form, scope: e.target.value })}>
-                {Object.entries(PHAM_VI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </Field>
-            {form.scope !== "nhieu_don_vi" && field("Khối lượng giao", "volume_plan", "number")}
-            {form.scope !== "nhieu_don_vi" && field("Khối lượng đã làm", "volume_done", "number")}
-            {form.scope !== "nhieu_don_vi" && (
-              <Field label={Number(form.volume_plan) > 0 ? "Tiến độ (tự tính theo khối lượng)" : "Tiến độ tự nhập (%)"}>
-                <input className="inp" type="number" min="0" max="100" value={Number(form.volume_plan) > 0
-                  ? Math.round(Math.min((Number(form.volume_done) || 0) / Number(form.volume_plan), 1) * 1000) / 10
-                  : (form.percent ?? "")}
-                  disabled={Number(form.volume_plan) > 0}
-                  onChange={(e) => setForm({ ...form, percent: e.target.value })} />
-              </Field>
-            )}
-          </div>
-          {form.scope === "nhieu_don_vi" && (
-            <div style={{ marginTop: 4 }}>
-              <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-                Chia khối lượng cho từng đơn vị; tiến độ của nhiệm vụ là tổng khối lượng đã làm trên tổng giao.
-              </p>
-              <BangDonVi units={form.units || []} onChange={(u) => setForm({ ...form, units: u })}
-                donViTinh={form.volume_unit} assignees={assignees} />
-            </div>
-          )}
-
-          <p className="eyebrow-grey" style={{ margin: "12px 0 6px" }}>Mục tiêu & liên kết</p>
-          <div className="grid md:grid-cols-2 gap-3">
-            {field("Mục tiêu / chỉ tiêu", "target")}
-            <Field label="Hạng mục tiến độ liên kết (tab Tiến độ)">
-              <select className="inp" value={form.progress_item || ""} onChange={(e) => setForm({ ...form, progress_item: e.target.value })}
-                disabled={!hangMucCuaDauViec.length}>
-                <option value="">{hangMucCuaDauViec.length ? "— Không liên kết —" : "Đầu việc này chưa có hạng mục định lượng"}</option>
-                {hangMucCuaDauViec.map((it) => <option key={it.id} value={it.id}>{it.label}</option>)}
-              </select>
-            </Field>
-            {field("Link công cụ liên quan (nếu có)", "link_url", "url", { placeholder: "https://…" })}
-          </div>
-          <Field label="Ghi chú tiến độ"><textarea className="inp" rows="2" value={form.note || ""} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
-
-          <p className="eyebrow-grey flex items-center gap-1" style={{ margin: "12px 0 6px" }}><Paperclip size={13} />Đính kèm</p>
-          <KhungDinhKem taskId={form.id} items={form.id ? (rows.find((x) => x.id === form.id)?.attachments || []) : []}
-            duocThem duocXoa={() => duocSua} onDoi={load} choGui={choGui} setChoGui={setChoGui} />
-
-          <div className="flex gap-2" style={{ marginTop: 12 }}>
-            <button className="btn" onClick={() => { setForm(null); setChoGui([]); }}>Hủy</button>
-            <button className="btn btn-red" onClick={save} disabled={dangLuu}>{dangLuu ? "Đang lưu…" : "Lưu"}</button>
-          </div>
-        </Card>
-      )}
-
-      {dangMo && !form && (
-        <ChiTietViec task={dangMo} duocSua={duocSua} duocXoa={duocXoa}
-          onDong={() => setMoId(null)} onSua={() => suaViec(dangMo)} onXoa={() => del(dangMo)}
-          onDoi={taiLai} onMoTienDo={onMoTienDo} />
-      )}
+      {!dauViecDangXem && khungViec}
 
       {!dauViecDangXem && (
       <Card pad={false}>
@@ -1561,7 +1586,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                   <td style={{ fontSize: 13 }}>
                     {x.assignee ? <b>{x.assignee}</b> : "—"}
                     {!!x.coordinators?.length && <><br /><span className="muted">Phối hợp: {x.coordinators.join(", ")}</span></>}
-                    {x.reporter && <><br /><span className="muted">Báo cáo: {x.reporter}</span></>}
+
                   </td>
                   <td><TheUuTien muc={x.priority} /></td>
                   <td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>

@@ -76,16 +76,21 @@ def _phan_tram(row) -> float:
 
     Ưu tiên tính từ khối lượng (đã làm/được giao) vì đó là số đo thật; việc
     chia cho nhiều đơn vị thì cộng khối lượng các đơn vị. Không khai khối lượng
-    thì lấy percent người phụ trách tự nhập. Việc đã Hoàn thành luôn là 100%."""
-    if (row.status or "") == "done":
-        return 100.0
+    thì lấy percent người phụ trách tự nhập.
+
+    Làm vượt kế hoạch thì trả về đúng số vượt (vd 120%) — cắt ở 100% sẽ giấu
+    mất phần làm thêm. Việc đã Hoàn thành không bao giờ dưới 100%."""
+    xong = (row.status or "") == "done"
     ke_hoach, thuc_hien = row.volume_plan or 0, row.volume_done or 0
     if (row.scope or "ca_nhan") == "nhieu_don_vi" and row.units:
         ke_hoach = sum(u.volume_plan or 0 for u in row.units) or ke_hoach
         thuc_hien = sum(u.volume_done or 0 for u in row.units) or thuc_hien
     if ke_hoach > 0:
-        return round(min(thuc_hien / ke_hoach * 100, 100), 1)
-    return round(min(max(row.percent or 0, 0), 100), 1)
+        pt = max(thuc_hien / ke_hoach * 100, 0)
+        return round(max(pt, 100.0) if xong else pt, 1)
+    if xong:
+        return 100.0
+    return round(max(row.percent or 0, 0), 1)
 
 
 def _khoang(pt: float) -> str:
@@ -99,7 +104,8 @@ def _out_unit(u):
     ke_hoach, thuc_hien = u.volume_plan or 0, u.volume_done or 0
     return {"id": u.id, "unit_name": u.unit_name, "assignee": u.assignee or "",
             "volume_plan": ke_hoach, "volume_done": thuc_hien,
-            "percent": round(min(thuc_hien / ke_hoach * 100, 100), 1) if ke_hoach > 0 else round(u.percent or 0, 1),
+            # Đơn vị làm vượt phần được chia thì để đúng số vượt, đừng cắt ở 100%.
+            "percent": round(thuc_hien / ke_hoach * 100, 1) if ke_hoach > 0 else round(u.percent or 0, 1),
             "note": u.note or "", "order_no": u.order_no or 0}
 
 
@@ -723,7 +729,7 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
         # Không có nhiệm vụ con nhưng có khối lượng theo cụm thì lấy khối lượng
         # làm tiến độ — nếu không thẻ đầu việc mãi đứng ở 0%.
         if not tong and b["kl_plan"]:
-            b["percent"] = round(min(b["kl_done"] / b["kl_plan"], 1) * 100, 1)
+            b["percent"] = round(b["kl_done"] / b["kl_plan"] * 100, 1)
         g = nhom.get(c.code) or {"code": "", "label": ""}
         ra.append({"category": c.code, "label": c.label, "owner": c.owner or "",
                    "group": g["code"], "group_label": g["label"], **b})
