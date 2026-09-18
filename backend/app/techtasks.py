@@ -187,6 +187,31 @@ def _tien_do_moi_nhat(db: Session) -> dict:
     return ra
 
 
+def _khoi_luong_dau_viec(db: Session) -> dict:
+    """{mã đầu việc: {period, plan, done}} — cộng số liệu cụm của kỳ gần nhất.
+
+    Dùng cho những đầu việc định lượng (kế hoạch tháng theo cụm): bản thân đầu
+    việc đã là một nhiệm vụ, không đẻ thêm dòng nhiệm vụ trùng tên nữa, nên tiến
+    độ của nó phải suy từ khối lượng chứ không từ số việc con.
+    """
+    thuoc = item_category(db)
+    rows = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None)).all()
+    ky_moi = {}
+    for r in rows:
+        dv = thuoc.get(r.item)
+        if dv and r.period and r.period > ky_moi.get(dv, ""):
+            ky_moi[dv] = r.period
+    ra = {}
+    for r in rows:
+        dv = thuoc.get(r.item)
+        if not dv or r.period != ky_moi.get(dv):
+            continue
+        b = ra.setdefault(dv, {"period": r.period, "plan": 0.0, "done": 0.0})
+        b["plan"] += r.plan_qty or 0
+        b["done"] += r.done_qty or 0
+    return ra
+
+
 class TechTaskIn(BaseModel):
     category: Optional[str] = None
     title: Optional[str] = None
@@ -683,6 +708,7 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
             b["due_at"] = r.due_at
     ensure_seeded(db)
     nhom = nhom_cua_dau_viec(db)
+    khoi_luong = _khoi_luong_dau_viec(db)
     ra = []
     for c in categories(db):
         b = dict(trong.get(c.code, {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0,
@@ -690,6 +716,14 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
         tong = b["total"]
         pt = b.pop("_pt")
         b["percent"] = round(pt / tong, 1) if tong else 0.0
+        kl = khoi_luong.get(c.code)
+        b["kl_period"] = kl["period"] if kl else ""
+        b["kl_plan"] = round(kl["plan"], 1) if kl else 0
+        b["kl_done"] = round(kl["done"], 1) if kl else 0
+        # Không có nhiệm vụ con nhưng có khối lượng theo cụm thì lấy khối lượng
+        # làm tiến độ — nếu không thẻ đầu việc mãi đứng ở 0%.
+        if not tong and b["kl_plan"]:
+            b["percent"] = round(min(b["kl_done"] / b["kl_plan"], 1) * 100, 1)
         g = nhom.get(c.code) or {"code": "", "label": ""}
         ra.append({"category": c.code, "label": c.label, "owner": c.owner or "",
                    "group": g["code"], "group_label": g["label"], **b})

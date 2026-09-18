@@ -1200,7 +1200,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         </div>
       )}
 
-      {/* Màn hình chi tiết một đầu việc: ô số bên trái, nhiệm vụ dạng thẻ bên phải */}
+      {/* Màn hình chi tiết một đầu việc. Đầu việc định lượng (số liệu theo cụm,
+          chưa chia nhiệm vụ con) thì chính nó đã là một nhiệm vụ — chỉ hiện bảng
+          cụm/FT, không bày thêm ô "Tổng nhiệm vụ" và thẻ nhiệm vụ trùng tên. */}
       {dauViecDangXem && (
         <>
           <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
@@ -1229,7 +1231,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             )}
           </div>
 
-          <div className="grid lg:grid-cols-4 gap-4">
+          <div className={dauViecDangXem.total ? "grid lg:grid-cols-4 gap-4" : "flex flex-col gap-4"}>
+            {!!dauViecDangXem.total && (
             <div className="flex flex-col gap-3">
               <OSoNho nhan="Tổng nhiệm vụ" so={dauViecDangXem.total} mau="#0E6CD6" icon={ListChecks} />
               <OSoNho nhan="Hoàn thành" so={dauViecDangXem.done} mau="#16A34A" icon={CheckCircle2} />
@@ -1243,8 +1246,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 <TienDoNho percent={dauViecDangXem.percent} rong="100%" anSo />
               </div>
             </div>
+            )}
 
-            <div className="lg:col-span-3 flex flex-col gap-3">
+            <div className={`${dauViecDangXem.total ? "lg:col-span-3 " : ""}flex flex-col gap-3`}>
+              {!!dauViecDangXem.total && (
               <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
                 <input className="inp" style={{ maxWidth: 240 }} placeholder="🔎 Tìm nhiệm vụ…" value={search}
                   onChange={(e) => setSearch(e.target.value)} />
@@ -1253,7 +1258,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                     onClick={() => setFStatus(ma)}>{nhan}</button>
                 ))}
               </div>
-              {filteredRows.length ? (
+              )}
+              {!!dauViecDangXem.total && (
                 <div className="grid md:grid-cols-2 gap-3">
                   {filteredRows.map((x) => (
                     <TheNhiemVu key={x.id} task={x} dangMo={moId === x.id}
@@ -1262,9 +1268,6 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                       onXoa={duocXoa ? () => del(x) : null} />
                   ))}
                 </div>
-              ) : (
-                <Card><Empty title="Đầu việc này chưa có nhiệm vụ nào."
-                  hint={duocGiao ? "Bấm “Thêm nhiệm vụ” ở trên để giao việc đầu tiên." : ""} /></Card>
               )}
 
               {/* Nhìn sâu hơn nhiệm vụ: số liệu định lượng của đầu việc gom tới
@@ -1326,7 +1329,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
                 <p style={{ fontWeight: 800, fontSize: 15.5, marginTop: 8 }}>{g.label}</p>
                 <p className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                  {g.cats.length} đầu việc · {g.total} nhiệm vụ
+                  {g.cats.length} đầu việc{!!g.total && ` · ${g.total} nhiệm vụ`}
                   {!!g.overdue && <span style={{ color: RED, fontWeight: 700 }}> · {g.overdue} quá hạn</span>}
                 </p>
 
@@ -1338,7 +1341,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                                borderBottom: "1px solid #F4F1F2", padding: "8px 0", cursor: "pointer", color: "inherit" }}>
                       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                         <b style={{ fontSize: 13.5, flex: 1 }}>{c.label}</b>
-                        <span style={{ fontSize: 12, fontWeight: 700 }}>{c.done}/{c.total}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700 }}
+                          title={c.total ? "Nhiệm vụ hoàn thành / tổng" : `Khối lượng thực hiện / kế hoạch kỳ ${c.kl_period}`}>
+                          {c.total ? `${c.done}/${c.total}` : (c.kl_plan ? `${soGon(c.kl_done)}/${soGon(c.kl_plan)}` : "—")}
+                        </span>
                         {!!c.overdue && <span className="tag tag-red" style={{ fontSize: 11 }}>{c.overdue} quá hạn</span>}
                       </div>
                       <div className="flex items-center gap-2" style={{ marginTop: 4 }}>

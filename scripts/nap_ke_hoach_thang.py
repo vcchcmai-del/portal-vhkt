@@ -54,7 +54,7 @@ NGAY = ("2026-09-01", "2026-09-30")
 def them_dau_viec(nhan, nhom, hint=""):
     c = dau_viec.get(nhan)
     if c:
-        if c["group"] != nhom or (hint and c["hint"] != hint):
+        if c.get("group", nhom) != nhom or (hint and c.get("hint") != hint):
             if THAT:
                 ra(s.put(f"{A}/tech-tasks/categories/{c['id']}", json={"group_code": nhom, "hint": hint or c["hint"]}))
             print(f"  ~ đầu việc “{nhan}” -> nhóm {nhom}")
@@ -118,10 +118,11 @@ print(f"== {B} — {'GHI THẬT' if THAT else 'CHẠY THỬ'}")
 for nhom, bang in (("truyen_dan", D.TRUYEN_DAN), ("cdbr", D.CDBR)):
     print(f"\n-- nhóm {nhom}")
     for nhan, dvt, hcm, ds in bang:
-        ma = them_dau_viec(nhan, nhom)
+        # Bản thân đầu việc đã là một nhiệm vụ định lượng, tiến độ đọc thẳng từ
+        # số liệu cụm — không tạo thêm nhiệm vụ con trùng tên nữa.
+        ma = them_dau_viec(nhan, nhom, hint=f"ĐVT: {dvt} · Kế hoạch tháng 09/2026: {hcm:,}".replace(",", "."))
         hm = them_hang_muc(ma, nhan)
         them_cum(ma, hm, ds)
-        them_nhiem_vu(ma, f"Kế hoạch tháng 09/2026 — {nhan}", hcm, dvt, hm)
 
 print("\n-- nhóm kiem_soat_vhkt")
 for nhan, tong, con in D.KIEM_SOAT:
