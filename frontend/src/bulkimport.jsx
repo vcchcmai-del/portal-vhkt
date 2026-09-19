@@ -28,7 +28,7 @@ const STATUS = {
 // Nhóm dữ liệu tải về được kèm số liệu đang có (máy chủ: du_lieu_hien_co).
 const CO_SO_LIEU_SAN = ["progress"];
 
-export function AdminImport({ fixedKind, boardScope, nhomLabel, period } = {}) {
+export function AdminImport({ fixedKind, boardScope, nhomLabel, period, category } = {}) {
   const [kinds, setKinds] = useState([]);
   const [kind, setKind] = useState(fixedKind || "people");
   const [text, setText] = useState("");
@@ -178,7 +178,7 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel, period } = {}) {
       const headers = {};
       const token = getToken();
       if (token) headers.Authorization = `Bearer ${token}`;
-      const qs = period ? `?period=${encodeURIComponent(period)}` : "";
+      const qs = "?" + new URLSearchParams({ ...(period ? { period } : {}), ...(category ? { category } : {}) });
       const res = await fetch(`${API_BASE}/api/admin/import/data-xlsx/${kind}${qs}`, { headers });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));

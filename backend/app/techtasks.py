@@ -1759,28 +1759,48 @@ def delete_progress_ft(item_id: int, db: Session = Depends(get_db),
     return {"deleted": item_id}
 
 
+def _ten_tep_xuat(category, period, cat_labels) -> str:
+    """Tên tệp nói rõ xuất của đầu việc nào, kỳ nào."""
+    ten = _slug(cat_labels.get(category, category)) if category else "tien-do-ky-thuat"
+    return f"{ten}-{period}" if period else ten
+
+
 @admin_router.get("/progress/export")
-def export_progress_csv(period: Optional[str] = None, db: Session = Depends(get_db),
+def export_progress_csv(period: Optional[str] = None, category: Optional[str] = None,
+                        item: Optional[str] = None, db: Session = Depends(get_db),
                         _=Depends(require_module("tech_tasks", "update"))):
-    """Xuất toàn bộ dòng tiến độ theo Trung tâm (không gồm dòng chi tiết FT)."""
-    q = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None))
+    """Xuất số liệu tiến độ ra CSV, gồm cả dòng cụm lẫn dòng FT bên dưới.
+
+    Không truyền gì thì ra toàn bộ; truyền `category`/`item` thì chỉ ra đúng đầu
+    việc đang mở — xuất từ màn hình một đầu việc không kéo theo các mảng khác.
+    """
+    q = db.query(models.ProgressEntry)
     if period:
         q = q.filter(models.ProgressEntry.period == period)
+    if category:
+        q = q.filter(models.ProgressEntry.category == category)
+    if item:
+        q = q.filter(models.ProgressEntry.item == item)
     rows = q.order_by(models.ProgressEntry.category, models.ProgressEntry.item,
-                       models.ProgressEntry.period, models.ProgressEntry.center).all()
-    header = ["Đầu việc", "Hạng mục", "Kỳ báo cáo", "Trung tâm", "Kế hoạch", "Thực hiện", "Tồn", "Tỷ lệ HT", "Ghi chú"]
+                       models.ProgressEntry.period, models.ProgressEntry.center,
+                       models.ProgressEntry.ft_name.is_(None).desc(),
+                       models.ProgressEntry.ft_name).all()
+    header = ["Đầu việc", "Hạng mục", "Kỳ báo cáo", "Trung tâm", "FT", "Kế hoạch", "Thực hiện",
+              "BKK", "Tồn", "Tỷ lệ HT", "Ghi chú", "Cập nhật", "Người cập nhật"]
     cat_labels, it_labels = category_labels(db), item_labels(db)
     lines = [",".join(header)]
     for r in rows:
-        plan, done = r.plan_qty or 0, r.done_qty or 0
-        ty_le = f"{done / plan * 100:.0f}%" if plan else "-"
+        plan, done, bkk = r.plan_qty or 0, r.done_qty or 0, r.bkk_qty or 0
+        phai_lam = max(plan - bkk, 0)
+        ty_le = f"{done / phai_lam * 100:.0f}%" if phai_lam else "-"
         vals = [
             cat_labels.get(r.category, r.category), it_labels.get(r.item, r.item),
-            r.period, r.center, plan, done, plan - done, ty_le, r.note or "",
+            r.period, r.center, r.ft_name or "", plan, done, bkk, max(phai_lam - done, 0), ty_le,
+            r.note or "", r.updated_at.strftime("%d/%m/%Y") if r.updated_at else "", r.updated_by or "",
         ]
         lines.append(",".join('"' + str(v).replace('"', '""') + '"' for v in vals))
     content = "﻿" + "\n".join(lines) + "\n"
     return PlainTextResponse(
         content, media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="tien-do-ky-thuat-{models.today()}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{_ten_tep_xuat(category, period, cat_labels)}.csv"'},
     )

@@ -412,7 +412,8 @@ def build_template(kind: str, boards=None) -> str:
     return "\ufeff" + "\n".join(lines) + "\n"
 
 
-def du_lieu_hien_co(kind: str, db, period: Optional[str] = None) -> list:
+def du_lieu_hien_co(kind: str, db, period: Optional[str] = None,
+                    category: Optional[str] = None) -> list:
     """Số liệu đang có, xếp đúng theo cột của tệp mẫu — để tải về sửa rồi nhập
     ngược lại thay vì gõ tay từ đầu. Hiện làm cho nhóm "progress"."""
     if kind != "progress":
@@ -424,6 +425,8 @@ def du_lieu_hien_co(kind: str, db, period: Optional[str] = None) -> list:
          .filter(models.ProgressEntry.ft_name.is_(None)))
     if period:
         q = q.filter(models.ProgressEntry.period == period)
+    if category:
+        q = q.filter(models.ProgressEntry.category == category)
     rows = q.order_by(models.ProgressEntry.category, models.ProgressEntry.item,
                       models.ProgressEntry.period, models.ProgressEntry.center).all()
     return [{

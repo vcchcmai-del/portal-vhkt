@@ -146,10 +146,11 @@ export function SoLieuCumFT({ category, label }) {
 
   const xuatCsv = async () => {
     try {
-      const { blob, filename } = await api.blob(`/api/admin/progress/export?period=${encodeURIComponent(period)}`);
+      const p = new URLSearchParams({ period, category, ...(item ? { item } : {}) });
+      const { blob, filename } = await api.blob(`/api/admin/progress/export?${p}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = filename || `tien-do-${period}.csv`;
+      a.href = url; a.download = filename || `so-lieu-${period}.csv`;
       document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     } catch (e) { setErr(e.message); }
   };
@@ -200,9 +201,10 @@ export function SoLieuCumFT({ category, label }) {
             <div className="card" style={{ padding: 12, marginBottom: 12 }}>
               <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
                 Tệp nhập theo khuôn “Tiến độ hạng mục”: đầu việc, hạng mục, kỳ, trung tâm, kế hoạch, thực hiện, BKK.
+                Nút “Tải số liệu đang có” chỉ lấy số liệu của đầu việc này, kỳ {period}.
                 Dòng trùng (đầu việc, hạng mục, kỳ, trung tâm) được ghi đè.
               </p>
-              <AdminImport fixedKind="progress" period={period} />
+              <AdminImport fixedKind="progress" period={period} category={category} />
               <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => { setNhap(false); taiCum(); }}>Đóng</button>
             </div>
           )}
