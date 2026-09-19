@@ -2251,14 +2251,20 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
 
 @admin_router.get("/progress/export")
 def export_progress_csv(period: Optional[str] = None, category: Optional[str] = None,
-                        item: Optional[str] = None, db: Session = Depends(get_db),
+                        item: Optional[str] = None, kem_ft: bool = False,
+                        db: Session = Depends(get_db),
                         _=Depends(require_module("tech_tasks", "update"))):
-    """Xuất số liệu tiến độ ra CSV, gồm cả dòng cụm lẫn dòng FT bên dưới.
+    """Xuất số liệu tiến độ ra CSV ở mức trung tâm.
 
     Không truyền gì thì ra toàn bộ; truyền `category`/`item` thì chỉ ra đúng đầu
     việc đang mở — xuất từ màn hình một đầu việc không kéo theo các mảng khác.
+
+    Chi tiết theo FT không thành một cột riêng: `kem_ft=true` thì mỗi FT xuống
+    một dòng ngay dưới cụm của nó, tên FT ghi luôn ở ô Trung tâm.
     """
     q = db.query(models.ProgressEntry)
+    if not kem_ft:
+        q = q.filter(models.ProgressEntry.ft_name.is_(None))
     if period:
         q = q.filter(models.ProgressEntry.period == period)
     if category:
@@ -2269,7 +2275,7 @@ def export_progress_csv(period: Optional[str] = None, category: Optional[str] = 
                        models.ProgressEntry.period, models.ProgressEntry.center,
                        models.ProgressEntry.ft_name.is_(None).desc(),
                        models.ProgressEntry.ft_name).all()
-    header = ["Đầu việc", "Hạng mục", "Kỳ báo cáo", "Trung tâm", "FT", "Kế hoạch", "Thực hiện",
+    header = ["Đầu việc", "Hạng mục", "Kỳ báo cáo", "Trung tâm", "Kế hoạch", "Thực hiện",
               "BKK", "Tồn", "Tỷ lệ HT", "Ghi chú", "Cập nhật", "Người cập nhật"]
     cat_labels, it_labels = category_labels(db), item_labels(db)
     lines = [",".join(header)]
@@ -2279,7 +2285,8 @@ def export_progress_csv(period: Optional[str] = None, category: Optional[str] = 
         ty_le = f"{done / phai_lam * 100:.0f}%" if phai_lam else "-"
         vals = [
             cat_labels.get(r.category, r.category), it_labels.get(r.item, r.item),
-            r.period, r.center, r.ft_name or "", plan, done, bkk, max(phai_lam - done, 0), ty_le,
+            r.period, f"{r.center} — {r.ft_name}" if r.ft_name else r.center,
+            plan, done, bkk, max(phai_lam - done, 0), ty_le,
             r.note or "", r.updated_at.strftime("%d/%m/%Y") if r.updated_at else "", r.updated_by or "",
         ]
         lines.append(",".join('"' + str(v).replace('"', '""') + '"' for v in vals))
