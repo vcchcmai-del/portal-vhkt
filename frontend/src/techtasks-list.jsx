@@ -871,6 +871,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [dangLuu, setDangLuu] = useState(false);
   const [err, setErr] = useState("");
   const [fCategory, setFCategory] = useState(locDauViec || "");
+  const [fNhom, setFNhom] = useState("");          // bấm ô nhóm ở Tổng quan để xem riêng nhóm đó
   const [fStatus, setFStatus] = useState("");
   const [cuaToi, setCuaToi] = useState(false);
   const [search, setSearch] = useState("");
@@ -1033,10 +1034,15 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     return [...dem.values()].sort((a, b) => a.name.localeCompare(b.name, "vi"));
   }, [rows]);
 
+  // Đầu việc nào thuộc nhóm nào — để lọc nhanh khi bấm một ô nhóm.
+  const nhomCuaDauViec = useMemo(
+    () => Object.fromEntries(summary.map((c) => [c.category, c.group || ""])), [summary]);
+
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     const nguoi = chuanTen(fNguoi);
     return rows.filter((x) => {
+      if (fNhom && nhomCuaDauViec[x.category] !== fNhom) return false;
       if (nguoi) {
         const vai = vaiTroCua(x, nguoi);
         if (!vai.length || (fVaiTro && !vai.includes(fVaiTro))) return false;
@@ -1044,7 +1050,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       return !term || [x.title, x.assignee, x.reporter, ...(x.coordinators || []), x.target, x.description, x.note]
         .filter(Boolean).join(" ").toLowerCase().includes(term);
     });
-  }, [rows, search, fNguoi, fVaiTro]);
+  }, [rows, search, fNguoi, fVaiTro, fNhom, nhomCuaDauViec]);
 
   // Gom số liệu cho Tổng quan: ô tổng hợp + nhóm -> đầu việc (từ /tech-tasks/summary).
   const tong = useMemo(() => {
@@ -1400,8 +1406,14 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {theNhom.map((g) => {
           const mau = g.percent >= 100 ? "#16A34A" : g.percent >= 50 ? "#0E6CD6" : g.percent > 0 ? "#F2A007" : "#8A8284";
+          const dangChon = fNhom === g.id;
           return (
-            <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div key={g.id || "chua"} className="card" role="button" tabIndex={0}
+              title={dangChon ? "Bấm lại để xem tất cả nhóm" : `Xem đầu việc của nhóm “${g.label}”`}
+              onClick={() => setFNhom(dangChon ? "" : g.id)}
+              onKeyDown={(e) => { if (e.key === "Enter") setFNhom(dangChon ? "" : g.id); }}
+              style={{ padding: 0, overflow: "hidden", cursor: "pointer",
+                       boxShadow: dangChon ? `0 0 0 2px ${mau} inset` : undefined }}>
               <div style={{ height: 4, background: mau }} />
               <div style={{ padding: "10px 12px" }}>
                 <p style={{ fontWeight: 700, fontSize: 13, minHeight: 34 }}>{g.label}</p>
@@ -1422,6 +1434,18 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         })}
       </div>
 
+      {!!fNhom && (
+        <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
+          <b style={{ fontSize: 13 }}>
+            Đang xem nhóm: {theNhom.find((g) => g.id === fNhom)?.label || fNhom}
+          </b>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {theNhom.find((g) => g.id === fNhom)?.cats.length || 0} đầu việc · {filteredRows.length} nhiệm vụ
+          </span>
+          <button className="btn btn-sm" onClick={() => setFNhom("")}>Xem tất cả nhóm</button>
+        </div>
+      )}
+
       {!!fNguoi && (
         <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
           <b style={{ fontSize: 13 }}>Đang xem công việc của: {fNguoi}</b>
@@ -1435,7 +1459,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       {/* Mỗi thẻ là một nhóm cấp 1; bên trong liệt kê đầu việc, bấm vào đầu việc
           mới xuống danh sách nhiệm vụ của nó. */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {theNhom.map((g) => {
+        {(fNhom ? theNhom.filter((g) => g.id === fNhom) : theNhom).map((g) => {
           const tt = trangThaiDauViec(g);
           return (
             <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden" }}>
@@ -1533,8 +1557,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         )}
         <button className={`btn btn-sm ${cuaToi ? "btn-red" : ""}`} onClick={() => { setCuaToi((v) => !v); setFNguoi(""); }}
           title="Việc tôi phụ trách, phối hợp hoặc báo cáo"><User size={14} />Việc của tôi</button>
-        {(fNguoi || fCategory || fStatus || cuaToi || search) && (
-          <button className="btn btn-sm" onClick={() => { setFNguoi(""); setFVaiTro(""); setFCategory(""); setFStatus(""); setCuaToi(false); setSearch(""); }}>
+        {(fNguoi || fCategory || fStatus || cuaToi || search || fNhom) && (
+          <button className="btn btn-sm" onClick={() => { setFNguoi(""); setFVaiTro(""); setFCategory(""); setFStatus(""); setCuaToi(false); setSearch(""); setFNhom(""); }}>
             <X size={13} />Bỏ lọc
           </button>
         )}
