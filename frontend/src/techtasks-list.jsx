@@ -1064,15 +1064,23 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     }
   };
 
-  /** Xuất đúng phần đang xem: một đầu việc, một nhóm hay một người. */
+  /** Xuất đúng phần đang xem. Trong một đầu việc theo cụm thì xuất chính bảng
+   *  số liệu đang nhìn (cụm/FT), không phải danh sách nhiệm vụ. */
   const exportCsv = async () => {
     try {
       const p = new URLSearchParams();
-      if (xemDauViec) p.set("category", xemDauViec);
-      else if (fNhom) p.set("group", fNhom);
-      if (fNguoi) p.set("assignee", fNguoi);
+      let duong = "/api/admin/tech-tasks/export";
+      if (xemDauViec && coCum) {
+        duong = "/api/admin/progress/export";
+        p.set("category", xemDauViec);
+      } else if (xemDauViec) {
+        p.set("category", xemDauViec);
+      } else if (fNhom) {
+        p.set("group", fNhom);
+      }
+      if (fNguoi && duong.endsWith("tech-tasks/export")) p.set("assignee", fNguoi);
       const q = p.toString();
-      const { blob, filename } = await api.blob(`/api/admin/tech-tasks/export${q ? `?${q}` : ""}`);
+      const { blob, filename } = await api.blob(`${duong}${q ? `?${q}` : ""}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = filename || "cong-viec-ky-thuat.csv"; a.click();
