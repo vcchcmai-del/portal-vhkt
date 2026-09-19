@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Plus, RefreshCw, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, ExternalLink, Plus, RefreshCw, Sheet, Upload } from "lucide-react";
 import { api, coQuyen, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Field, RED, ThaoTac } from "./ui";
@@ -38,6 +38,11 @@ export function SoLieuCumFT({ category, label }) {
   const [formCum, setFormCum] = useState(null);
   const [formFt, setFormFt] = useState(null);
   const [nhap, setNhap] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState("");     // link Google Sheet của đầu việc
+  const [sheetLuc, setSheetLuc] = useState(null);   // lần đồng bộ gần nhất
+  const [moSheet, setMoSheet] = useState(false);
+  const [xemTruoc, setXemTruoc] = useState(null);   // kết quả đọc thử từ sheet
+  const [dangDoc, setDangDoc] = useState(false);
   const [err, setErr] = useState("");
   const { danhSach: dsTrungTam, tenTrungTam } = useCenters();
   const duocThem = coQuyen("tech_tasks", "create");
@@ -51,6 +56,11 @@ export function SoLieuCumFT({ category, label }) {
         setHangMuc(ds);
         setItem((cu) => (ds.some((i) => i.id === cu) ? cu : ds[0]?.id || ""));
       }).catch((e) => setErr(e.message));
+    api.get("/api/admin/tech-tasks/categories").then((ds) => {
+      const c = (Array.isArray(ds) ? ds : []).find((x) => x.id === category);
+      setSheetUrl(c?.sheet_url || "");
+      setSheetLuc(c?.sheet_synced_at || null);
+    }).catch(() => {});
     api.get("/api/admin/progress/periods").then((x) => {
       const ds = Array.isArray(x) ? x : [];
       setPeriods(ds);
@@ -155,6 +165,25 @@ export function SoLieuCumFT({ category, label }) {
     } catch (e) { setErr(e.message); }
   };
 
+  /** Đọc thử Google Sheet: chưa ghi gì, chỉ bày ra để đối chiếu số cũ/số mới. */
+  const docSheet = async (ghi = false) => {
+    setDangDoc(true);
+    try {
+      const kq = await api.post(`/api/admin/tech-tasks/categories/${category}/dong-bo-sheet`,
+                                { sheet_url: sheetUrl, period, item, ghi });
+      setXemTruoc(kq); setErr("");
+      if (ghi) { setSheetLuc(new Date().toISOString()); taiCum(); }
+    } catch (e) { setErr(e.message); setXemTruoc(null); }
+    finally { setDangDoc(false); }
+  };
+
+  const luuLinkSheet = async () => {
+    try {
+      await api.put(`/api/admin/tech-tasks/categories/${category}`, { sheet_url: sheetUrl });
+      setErr("");
+    } catch (e) { setErr(e.message); }
+  };
+
   const xoaFt = async (f) => {
     if (!window.confirm(`Xóa dòng FT “${f.ft_name}”?`)) return;
     try { await api.del(`/api/admin/progress/ft/${f.id}`); taiFt(); } catch (e) { setErr(e.message); }
@@ -177,6 +206,11 @@ export function SoLieuCumFT({ category, label }) {
           <button className="btn btn-sm" onClick={() => { taiCum(); if (moFt) taiFt(); }}><RefreshCw size={13} />Tải lại</button>
           <button className="btn btn-sm" onClick={xuatCsv}><Download size={13} />Xuất CSV</button>
           {duocThem && <button className="btn btn-sm" onClick={() => setNhap((v) => !v)}><Upload size={13} />Nhập Excel</button>}
+          {duocSua && (
+            <button className={`btn btn-sm ${sheetUrl ? "" : ""}`} onClick={() => setMoSheet((v) => !v)}>
+              <Sheet size={13} />Google Sheet{sheetUrl ? " ✓" : ""}
+            </button>
+          )}
         </div>
       ) : null}>
       {!hangMuc.length ? (
@@ -194,6 +228,78 @@ export function SoLieuCumFT({ category, label }) {
                 <button key={h.id} className={`btn btn-sm ${item === h.id ? "btn-red" : ""}`}
                   onClick={() => setItem(h.id)}>{h.label}</button>
               ))}
+            </div>
+          )}
+
+          {moSheet && (
+            <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+              <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+                Dán link Google Sheet của đầu việc này để cập nhật số liệu online. Trên Google Sheet chọn
+                <b> Tệp › Chia sẻ › Đăng lên web › CSV</b> rồi dán link vào đây. Cột cần có:
+                <b> trung_tam, ke_hoach, thuc_hien</b>, thêm được <b>bkk, ghi_chu</b> và <b>ky, hang_muc</b>.
+                Máy chủ đọc sheet mỗi lần bạn bấm đồng bộ, không tự ghi đè.
+              </p>
+              <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                <input className="inp" style={{ flex: 1, minWidth: 260 }} value={sheetUrl}
+                  placeholder="https://docs.google.com/spreadsheets/…"
+                  onChange={(e) => setSheetUrl(e.target.value)} />
+                <button className="btn btn-sm" onClick={luuLinkSheet} disabled={!sheetUrl}>Lưu link</button>
+                <button className="btn btn-sm" onClick={() => docSheet(false)} disabled={!sheetUrl || dangDoc}>
+                  <RefreshCw size={13} />{dangDoc ? "Đang đọc…" : "Đọc thử"}
+                </button>
+                {!!sheetUrl && (
+                  <a className="btn btn-sm" href={sheetUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink size={13} />Mở sheet
+                  </a>
+                )}
+              </div>
+              {sheetLuc && !!sheetUrl && (
+                <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  Đồng bộ gần nhất: {new Date(sheetLuc).toLocaleString("vi-VN")}
+                </p>
+              )}
+
+              {xemTruoc && (
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700 }}>
+                    {xemTruoc.da_ghi ? "Đã ghi" : "Đọc thử"}: {xemTruoc.nhan_duoc}/{xemTruoc.tong_dong} dòng nhận được,
+                    {" "}{xemTruoc.thay_doi} dòng khác số đang có · kỳ {xemTruoc.ky}
+                  </p>
+                  {!!xemTruoc.loi?.length && (
+                    <ul style={{ color: RED, fontSize: 12.5, margin: "6px 0 0 16px" }}>
+                      {xemTruoc.loi.slice(0, 8).map((x, i) => <li key={i}>{x}</li>)}
+                    </ul>
+                  )}
+                  <div style={{ overflowX: "auto", marginTop: 8, maxHeight: 260 }}>
+                    <table className="tbl">
+                      <thead><tr><th>Cụm</th><th>Kế hoạch</th><th>Thực hiện</th><th>BKK</th><th>Đang có trên cổng</th></tr></thead>
+                      <tbody>
+                        {xemTruoc.dong.filter((d) => d.doi).slice(0, 50).map((d, i) => (
+                          <tr key={i}>
+                            <td><b>{tenTrungTam(d.center)}</b></td>
+                            <td>{so(d.plan_qty)}</td><td>{so(d.done_qty)}</td><td>{so(d.bkk_qty)}</td>
+                            <td className="muted" style={{ fontSize: 12.5 }}>
+                              {d.cu ? `${so(d.cu.plan_qty)} / ${so(d.cu.done_qty)} / ${so(d.cu.bkk_qty)}` : "chưa có dòng này"}
+                            </td>
+                          </tr>
+                        ))}
+                        {!xemTruoc.dong.some((d) => d.doi) && (
+                          <tr><td colSpan={5} className="muted" style={{ fontSize: 12.5 }}>
+                            Số trên sheet trùng khớp số đang có, không cần ghi lại.
+                          </td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!xemTruoc.da_ghi && !!xemTruoc.thay_doi && (
+                    <button className="btn btn-red btn-sm" style={{ marginTop: 8 }}
+                      onClick={() => docSheet(true)} disabled={dangDoc}>
+                      Ghi {xemTruoc.thay_doi} dòng vào kỳ {xemTruoc.ky}
+                    </button>
+                  )}
+                </div>
+              )}
+              <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => { setMoSheet(false); setXemTruoc(null); }}>Đóng</button>
             </div>
           )}
 

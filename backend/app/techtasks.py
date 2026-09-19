@@ -13,7 +13,7 @@ from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from . import models
+from . import models, sheets
 from .auditlog import log_action
 from .auth import current_user
 from .database import get_db
@@ -376,6 +376,7 @@ class CategoryIn(BaseModel):
     group_code: Optional[str] = None
     order_no: Optional[int] = None
     active: Optional[bool] = None
+    sheet_url: Optional[str] = None
 
 
 class GroupIn(BaseModel):
@@ -390,7 +391,8 @@ def list_categories(db: Session = Depends(get_db), _=Depends(require_module("tec
     ensure_seeded(db)
     ten_nhom = {g.code: g.label for g in db.query(models.TechGroup).all()}
     return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
-             "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, "")}
+             "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, ""),
+             "sheet_url": c.sheet_url or "", "sheet_synced_at": c.sheet_synced_at}
             for c in categories(db)]
 
 
@@ -439,6 +441,8 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.order_no = data.order_no
     if data.active is not None:
         row.active = data.active
+    if data.sheet_url is not None:
+        row.sheet_url = data.sheet_url.strip() or None
     db.commit()
     log_action(db, user, "update", "tech_tasks", row.id, f"Đầu việc: {row.label}", request=request)
     return {"id": row.code, "label": row.label, "hint": row.hint or ""}
@@ -1763,6 +1767,116 @@ def _ten_tep_xuat(category, period, cat_labels) -> str:
     """Tên tệp nói rõ xuất của đầu việc nào, kỳ nào."""
     ten = _slug(cat_labels.get(category, category)) if category else "tien-do-ky-thuat"
     return f"{ten}-{period}" if period else ten
+
+
+class SheetIn(BaseModel):
+    sheet_url: Optional[str] = None
+    period: Optional[str] = None
+    item: Optional[str] = None
+    ghi: bool = False            # False = chỉ xem trước, True = ghi thật
+
+
+def _ma_trung_tam(db: Session) -> dict:
+    """Nhận diện trung tâm từ mã, tên đầy đủ hay tên rút gọn người ta hay gõ."""
+    ra = {}
+    for c in db.query(models.InfraCenterCode).all():
+        ten = (c.name or "").replace("Trung tâm", "").strip(" -")
+        for k in (c.code, c.name, ten):
+            if k:
+                ra[_slug(k)] = c.code
+    return ra
+
+
+@admin_router.post("/tech-tasks/categories/{code}/dong-bo-sheet")
+def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
+                  user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Đọc Google Sheet của đầu việc rồi ghi vào số liệu cụm của kỳ đang chọn.
+
+    Sheet để công khai dạng CSV (Tệp > Chia sẻ > Đăng lên web > CSV), cột giống
+    tệp nhập Excel: trung_tam, ke_hoach, thuc_hien, bkk, ghi_chu — thêm được cột
+    ky và hang_muc nếu một sheet chứa nhiều kỳ / nhiều hạng mục.
+
+    Mặc định chỉ XEM TRƯỚC: trả về từng dòng đọc được kèm số cũ trên cổng để
+    đối chiếu; muốn ghi thì gọi lại với ghi=true.
+    """
+    cat = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
+    if not cat:
+        raise HTTPException(404, "Không tìm thấy đầu việc.")
+    url = (data.sheet_url or cat.sheet_url or "").strip()
+    if not url:
+        raise HTTPException(400, "Đầu việc này chưa nối Google Sheet.")
+
+    hang_muc = progress_items(db, code)
+    if not hang_muc:
+        raise HTTPException(400, "Đầu việc này chưa theo dõi theo cụm nên chưa nhận số liệu từ sheet.")
+    mac_dinh_item = (data.item or "").strip() or hang_muc[0].code
+    ten_item = {_slug(i.label): i.code for i in hang_muc}
+    ten_item.update({i.code: i.code for i in hang_muc})
+    ky_mac_dinh = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+
+    try:
+        header, rows = sheets.read_rows(sheets.fetch_csv(url))
+    except sheets.SheetError as e:
+        raise HTTPException(400, str(e))
+    thieu = [c for c in ("trung_tam", "ke_hoach") if c not in header]
+    if thieu:
+        raise HTTPException(400, "Sheet thiếu cột: " + ", ".join(thieu)
+                            + ". Cột cần có: trung_tam, ke_hoach, thuc_hien, bkk, ghi_chu.")
+
+    ma_tt = _ma_trung_tam(db)
+    dang_co = {(r.item, r.period, r.center): r for r in
+               db.query(models.ProgressEntry).filter(models.ProgressEntry.category == code,
+                                                     models.ProgressEntry.ft_name.is_(None)).all()}
+
+    def so(v, mac_dinh=0.0):
+        v = str(v or "").strip().replace(".", "").replace(",", ".")
+        try:
+            return float(v) if v else mac_dinh
+        except ValueError:
+            return None
+
+    doc, loi = [], []
+    for i, r in enumerate(rows, start=2):
+        tt = ma_tt.get(_slug(r.get("trung_tam", "")))
+        if not tt:
+            loi.append(f"Dòng {i}: không nhận ra trung tâm “{r.get('trung_tam', '')}”.")
+            continue
+        item = ten_item.get(_slug(r.get("hang_muc", ""))) or mac_dinh_item
+        ky = (r.get("ky") or "").strip() or ky_mac_dinh
+        kh, th, bkk = so(r.get("ke_hoach")), so(r.get("thuc_hien")), so(r.get("bkk"))
+        if kh is None or th is None or bkk is None:
+            loi.append(f"Dòng {i} ({tt}): kế hoạch/thực hiện/BKK phải là số.")
+            continue
+        cu = dang_co.get((item, ky, tt))
+        doc.append({
+            "center": tt, "item": item, "period": ky,
+            "plan_qty": kh, "done_qty": th, "bkk_qty": bkk, "note": r.get("ghi_chu", ""),
+            "cu": {"plan_qty": cu.plan_qty or 0, "done_qty": cu.done_qty or 0,
+                   "bkk_qty": cu.bkk_qty or 0} if cu else None,
+            "doi": (cu is None or (cu.plan_qty or 0) != kh or (cu.done_qty or 0) != th
+                    or (cu.bkk_qty or 0) != bkk),
+        })
+
+    if data.ghi:
+        for d in doc:
+            upsert_progress_center(db, code, d["item"], d["period"], d["center"],
+                                   d["plan_qty"], d["done_qty"], d["note"], d["bkk_qty"], _ten(user))
+        cat.sheet_url = url
+        cat.sheet_synced_at = models.now()
+        db.commit()
+        log_action(db, user, "update", "tech_tasks", cat.id,
+                   f"Đồng bộ Google Sheet: {cat.label}", detail=f"{len(doc)} dòng", request=request)
+
+    return {
+        "da_ghi": data.ghi,
+        "ky": ky_mac_dinh,
+        "tong_dong": len(rows),
+        "nhan_duoc": len(doc),
+        "thay_doi": sum(1 for d in doc if d["doi"]),
+        "loi": loi,
+        "dong": doc[:200],
+        "sheet_url": url,
+    }
 
 
 @admin_router.get("/progress/export")

@@ -678,6 +678,10 @@ class TechCategory(Base):
     owner = Column(String(160))             # nhân sự chủ trì đầu việc (mặc định cho việc giao mới)
     order_no = Column(Integer, default=0)
     active = Column(Boolean, default=True)
+    # Google Sheet của riêng đầu việc này: người làm cập nhật số liệu online,
+    # cổng thông tin đọc về theo khuôn cột giống tệp nhập Excel.
+    sheet_url = Column(String(1000))
+    sheet_synced_at = Column(DateTime, nullable=True)
 
 
 class TechProgressItem(Base):

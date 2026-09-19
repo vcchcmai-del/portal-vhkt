@@ -923,6 +923,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [err, setErr] = useState("");
   const [fCategory, setFCategory] = useState(locDauViec || "");
   const [fNhom, setFNhom] = useState("");          // bấm ô nhóm ở Tổng quan để xem riêng nhóm đó
+  const [tabCon, setTabCon] = useState("viec");   // trong một đầu việc: "viec" | "cum"
+  const [coCum, setCoCum] = useState(false);      // đầu việc đang xem có theo dõi theo cụm không
   const [fStatus, setFStatus] = useState("");
   const [cuaToi, setCuaToi] = useState(false);
   const [search, setSearch] = useState("");
@@ -1161,7 +1163,23 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const dongDauViec = () => { setXemDauViec(null); setFCategory(""); setMoId(null); };
   const dauViecDangXem = xemDauViec ? summary.find((c) => c.category === xemDauViec) : null;
 
+  // Mở một đầu việc thì hỏi xem nó có số liệu theo cụm không, để biết có cần
+  // tách tab hay không; mặc định đứng ở tab còn lại nếu tab kia trống.
+  useEffect(() => {
+    if (!xemDauViec) return;
+    setTabCon("viec");
+    api.get(`/api/admin/progress/items?category=${encodeURIComponent(xemDauViec)}`)
+      .then((x) => setCoCum(Array.isArray(x) && x.length > 0))
+      .catch(() => setCoCum(false));
+  }, [xemDauViec]);
+
   const dangMo = rows.find((x) => x.id === moId);
+  // Chỉ tách tab khi đầu việc có cả hai phần; thiếu phần nào thì phần còn lại
+  // hiện thẳng, không bắt người dùng bấm thêm một nhịp.
+  const tachTab = !!dauViecDangXem && dauViecDangXem.total > 0 && coCum;
+  const hienViec = !tachTab || tabCon === "viec";
+  const hienCum = !tachTab || tabCon === "cum";
+
   const suaViec = (x) => {
     setMoId(null);
     moForm({
@@ -1382,11 +1400,22 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             )}
           </div>
 
-          {/* Mọi đầu việc bày như nhau: nhiệm vụ ở trên, số liệu cụm/FT ở dưới
-              (đầu việc giao cho cá nhân thì phần cụm/FT tự ẩn). */}
+          {/* Đầu việc có cả nhiệm vụ lẫn số liệu cụm thì tách hai tab cho đỡ rối;
+              chỉ có một phần thì hiện thẳng phần đó. */}
+          {(dauViecDangXem.total > 0 && coCum) && (
+            <div className="card flex gap-2" style={{ padding: 8, flexWrap: "wrap" }}>
+              <button className={`btn btn-sm ${tabCon === "viec" ? "btn-red" : ""}`} onClick={() => setTabCon("viec")}>
+                Nhiệm vụ · {dauViecDangXem.total}
+              </button>
+              <button className={`btn btn-sm ${tabCon === "cum" ? "btn-red" : ""}`} onClick={() => setTabCon("cum")}>
+                Số liệu theo cụm / FT
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3">
-              {!!dauViecDangXem.total && (
+              {!!dauViecDangXem.total && hienViec && (
               <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
                 <input className="inp" style={{ maxWidth: 240 }} placeholder="🔎 Tìm nhiệm vụ…" value={search}
                   onChange={(e) => setSearch(e.target.value)} />
@@ -1394,7 +1423,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               </div>
               )}
               {khungViec}
-              {!!dauViecDangXem.total && (
+              {!!dauViecDangXem.total && hienViec && (
                 <Card pad={false}>
                   <div style={{ overflowX: "auto" }}>
                     <table className="tbl">
@@ -1445,7 +1474,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
               {/* Nhìn sâu hơn nhiệm vụ: số liệu định lượng của đầu việc gom tới
                   mức chi nhánh, mức cụm rồi tới từng FT. */}
-              <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />
+              {hienCum && <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />}
             </div>
           </div>
         </>
