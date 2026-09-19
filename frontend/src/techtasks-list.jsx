@@ -4,7 +4,7 @@ import {
   Paperclip, Pencil, Plus, RefreshCw, Trash2, Upload, User, Users, X,
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
-import { Card, Empty, Field, RED, ThaoTac } from "./ui";
+import { Card, Empty, Field, norm, RED, ThaoTac } from "./ui";
 import { SoLieuCumFT } from "./techtasks-cum";
 
 /*
@@ -103,19 +103,70 @@ async function taiDinhKem(a) {
 /* ---------------------------------------------------------------- chọn người */
 
 /** Ô chọn người từ danh bạ nhân viên + tài khoản (không gõ tay để tránh sai tên). */
+/**
+ * Ô chọn người: gõ vài chữ trong tên hoặc chức danh là ra ngay, không phải cuộn
+ * hết danh bạ. Gõ không dấu vẫn tìm được. Tên lạ (không còn trong danh bạ) vẫn
+ * giữ nguyên để lưu lại không mất dữ liệu.
+ */
 function ChonNguoi({ value, onChange, assignees, style, trong = "— Chưa đặt —" }) {
-  const co = (assignees || []).some((a) => a.name === value);
+  const [go, setGo] = useState("");
+  const [mo, setMo] = useState(false);
+  const [chon, setChon] = useState(0);
+  const boc = useRef(null);
+
+  useEffect(() => {
+    if (!mo) return;
+    const ngoai = (e) => { if (boc.current && !boc.current.contains(e.target)) { setMo(false); setGo(""); } };
+    document.addEventListener("mousedown", ngoai);
+    return () => document.removeEventListener("mousedown", ngoai);
+  }, [mo]);
+
+  const ds = useMemo(() => {
+    const t = norm(go.trim());
+    const tatCa = assignees || [];
+    if (!t) return tatCa;
+    return tatCa.filter((a) => norm(`${a.name} ${a.role || ""}`).includes(t));
+  }, [assignees, go]);
+
+  const dat = (ten) => { onChange(ten); setMo(false); setGo(""); };
+  const phim = (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setChon((i) => Math.min(i + 1, ds.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setChon((i) => Math.max(i - 1, 0)); }
+    else if (e.key === "Enter") { e.preventDefault(); dat(ds[chon] ? ds[chon].name : go.trim()); }
+    else if (e.key === "Escape") { setMo(false); setGo(""); }
+  };
+
   return (
-    <select className="inp" style={style} value={value || ""} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{trong}</option>
-      {/* Tên cũ không còn trong danh bạ vẫn giữ để không mất dữ liệu khi lưu lại */}
-      {!!value && !co && <option value={value}>{value} (không còn trong danh bạ)</option>}
-      {(assignees || []).map((a) => (
-        <option key={a.name} value={a.name}>
-          {a.name}{a.role ? ` — ${a.role}` : ""}
-        </option>
-      ))}
-    </select>
+    <div ref={boc} style={{ position: "relative", ...style }}>
+      <div className="flex items-center gap-1">
+        <input className="inp" value={mo ? go : (value || "")} placeholder={trong}
+          onFocus={() => { setMo(true); setGo(""); setChon(0); }}
+          onChange={(e) => { setGo(e.target.value); setMo(true); setChon(0); }}
+          onKeyDown={phim} />
+        {!!value && (
+          <button type="button" className="tt-btn" title="Bỏ chọn người này"
+            onClick={() => { onChange(""); setGo(""); }}><X size={14} /></button>
+        )}
+      </div>
+      {mo && (
+        <div className="card" style={{ position: "absolute", zIndex: 40, top: "calc(100% + 2px)", left: 0, right: 0,
+                                       maxHeight: 260, overflowY: "auto", padding: 4 }}>
+          {ds.slice(0, 60).map((a, i) => (
+            <button key={a.name} type="button" onMouseEnter={() => setChon(i)} onClick={() => dat(a.name)}
+              style={{ display: "block", width: "100%", textAlign: "left", border: "none", cursor: "pointer",
+                       padding: "6px 8px", borderRadius: 6, fontSize: 13,
+                       background: i === chon ? "#FBF4F5" : "transparent", color: "inherit" }}>
+              <b>{a.name}</b>{a.role ? <span className="muted"> — {a.role}</span> : null}
+            </button>
+          ))}
+          {!ds.length && (
+            <p className="muted" style={{ fontSize: 12.5, padding: "6px 8px" }}>
+              Không có ai khớp “{go}”{go.trim() ? " — nhấn Enter để giữ nguyên tên này." : ""}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
