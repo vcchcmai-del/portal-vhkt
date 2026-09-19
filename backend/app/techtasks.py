@@ -220,6 +220,10 @@ def _cap_nhat_dau_viec(db: Session) -> dict:
     thuoc = item_category(db)
     for r in db.query(models.ProgressEntry).all():
         ghi(thuoc.get(r.item), r.updated_at, r.updated_by)
+    for r in db.query(models.DuAnRow).all():
+        ghi(r.category, r.updated_at, r.updated_by)
+    for r in db.query(models.HoanCongRow).all():
+        ghi(r.category, r.updated_at, r.updated_by)
     return ra
 
 
@@ -246,7 +250,36 @@ def _khoi_luong_dau_viec(db: Session) -> dict:
         b["plan"] += r.plan_qty or 0
         b["done"] += r.done_qty or 0
         b["bkk"] += r.bkk_qty or 0
+
+    # Dự án: khối lượng là số điểm triển khai, xong là điểm đã ký biên bản xác
+    # nhận hoàn thành — bước cuối cùng của một điểm.
+    _gop_ky_moi_nhat(db, models.DuAnRow, ra,
+                     lambda r: (r.tong_trien_khai or 0, r.ky_bb_xn or 0, 0.0))
+    # Hoàn công: khối lượng là số MCT, xong là MCT đã bàn giao tài sản, phần hủy
+    # không thi công/vướng tính như bất khả kháng.
+    _gop_ky_moi_nhat(db, models.HoanCongRow, ra,
+                     lambda r: (r.sl_mct or 0,
+                                (r.sl_mct or 0) if r.trang_thai == "ban_giao_ts" else 0.0,
+                                (r.sl_mct or 0) if r.trang_thai == "huy_vuong" else 0.0))
     return ra
+
+
+def _gop_ky_moi_nhat(db: Session, model, ra: dict, lay):
+    """Cộng số liệu của kỳ gần nhất từ một bảng riêng vào chung ô khối lượng."""
+    rows = db.query(model).all()
+    ky_moi = {}
+    for r in rows:
+        if r.period and r.period > ky_moi.get(r.category, ""):
+            ky_moi[r.category] = r.period
+    for r in rows:
+        if r.period != ky_moi.get(r.category):
+            continue
+        plan, done, bkk = lay(r)
+        b = ra.setdefault(r.category, {"period": r.period, "plan": 0.0, "done": 0.0, "bkk": 0.0})
+        b["period"] = r.period
+        b["plan"] += plan
+        b["done"] += done
+        b["bkk"] += bkk
 
 
 class TechTaskIn(BaseModel):

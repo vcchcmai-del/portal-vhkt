@@ -34,6 +34,8 @@ const effectiveStatus = (task) => (isOverdue(task) ? "overdue" : task.status);
 const fmtDay = (v) => (v ? new Date(v).toLocaleDateString("vi-VN") : "—");
 const pct = (rate) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 const soGon = (n) => (n == null ? "—" : Number(n).toLocaleString("vi-VN", { maximumFractionDigits: 1 }));
+/** "90,9%" — phần trăm viết theo lối Việt, dùng chung cho mọi chỗ hiển thị. */
+const phanTram = (n) => `${Number(n || 0).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
 const IM_LANG = 7;   // ngần này ngày không ai chạm vào thì coi là bỏ quên
 
 /** "2 ngày trước · Lê Hoàng Ân" — để biết số liệu còn tươi hay đã cũ. */
@@ -63,7 +65,7 @@ export function TienDoNho({ percent, rong = 90, anSo = false }) {
       <span style={{ width: rong, height: 7, background: "#EAF1FB", borderRadius: 99, overflow: "hidden", display: "inline-block" }}>
         <span style={{ display: "block", width: `${p}%`, height: "100%", background: mau, borderRadius: 99 }} />
       </span>
-      {!anSo && <b style={{ fontSize: 12, color: that > 100 ? "#0B8A4B" : undefined }}>{Math.round(that * 10) / 10}%</b>}
+      {!anSo && <b style={{ fontSize: 12, color: that > 100 ? "#0B8A4B" : undefined }}>{phanTram(Math.round(that * 10) / 10)}</b>}
     </span>
   );
 }
@@ -1593,7 +1595,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               <div style={{ padding: "10px 12px" }}>
                 <p style={{ fontWeight: 700, fontSize: 13, minHeight: 34 }}>{g.label}</p>
                 <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
-                  <b style={{ fontSize: 22, color: mau, lineHeight: 1.1 }}>{g.percent}%</b>
+                  <b style={{ fontSize: 22, color: mau, lineHeight: 1.1 }}>{phanTram(g.percent)}</b>
                   <span className="muted" style={{ fontSize: 11.5, textAlign: "right", flex: 1 }}>
                     {g.kh ? <>{soGon(g.th)}/{soGon(g.kh - g.bkk)}</> : <>{g.done}/{g.total} nhiệm vụ</>}
                   </span>
@@ -1684,7 +1686,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                           )}
                         </span>
                         <span style={{ flex: 1 }}><TienDoNho percent={c.percent} rong="100%" anSo /></span>
-                        <span className="muted" style={{ fontSize: 11.5, minWidth: 34, textAlign: "right" }}>{c.percent}%</span>
+                        <span className="muted" style={{ fontSize: 11.5, minWidth: 34, textAlign: "right" }}>{phanTram(c.percent)}</span>
                       </div>
                     </button>
                   ))}
@@ -1694,7 +1696,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 <div style={{ marginTop: 10 }}>
                   <div className="flex items-center" style={{ justifyContent: "space-between", fontSize: 12 }}>
                     <span className="muted">Cả nhóm: hoàn thành <b style={{ color: "#1C1A1B" }}>{g.done}/{g.total}</b></span>
-                    <b>{g.percent}%</b>
+                    <b>{phanTram(g.percent)}</b>
                   </div>
                   <TienDoNho percent={g.percent} rong="100%" anSo />
                 </div>
