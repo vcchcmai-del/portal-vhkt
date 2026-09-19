@@ -1504,9 +1504,15 @@ def update_progress_item(code: str, data: ProgressItemIn, db: Session = Depends(
         raise HTTPException(404, "Không tìm thấy hạng mục.")
     if data.label is not None and data.label.strip():
         row.label = data.label.strip()
-    if data.category is not None and data.category.strip():
+    if data.category is not None and data.category.strip() and data.category != row.category_code:
         if data.category not in category_ids(db):
             raise HTTPException(400, "Đầu việc không hợp lệ.")
+        # Số liệu đã nhập phải đi theo hạng mục sang đầu việc mới, không thì các
+        # dòng cụm/FT thành mồ côi: chúng lọc theo cả đầu việc lẫn hạng mục.
+        (db.query(models.ProgressEntry).filter(models.ProgressEntry.item == row.code)
+         .update({models.ProgressEntry.category: data.category}, synchronize_session=False))
+        (db.query(models.TechTask).filter(models.TechTask.progress_item == row.code)
+         .update({models.TechTask.category: data.category}, synchronize_session=False))
         row.category_code = data.category
     if data.order_no is not None:
         row.order_no = data.order_no
