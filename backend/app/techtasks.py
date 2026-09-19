@@ -372,6 +372,7 @@ def _duoc_bao_cao(user, row) -> bool:
 class CategoryIn(BaseModel):
     label: Optional[str] = None
     kieu: Optional[str] = None
+    hc_don_vi: Optional[str] = None
     hint: Optional[str] = None
     owner: Optional[str] = None
     group_code: Optional[str] = None
@@ -394,7 +395,7 @@ def list_categories(db: Session = Depends(get_db), _=Depends(require_module("tec
     return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
              "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, ""),
              "sheet_url": c.sheet_url or "", "sheet_synced_at": c.sheet_synced_at,
-             "kieu": c.kieu or "cum"}
+             "kieu": c.kieu or "cum", "hc_don_vi": c.hc_don_vi or "ty"}
             for c in categories(db)]
 
 
@@ -447,6 +448,8 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.sheet_url = data.sheet_url.strip() or None
     if data.kieu is not None and data.kieu in ("cum", "hoan_cong"):
         row.kieu = data.kieu
+    if data.hc_don_vi is not None and data.hc_don_vi in ("ty", "trieu"):
+        row.hc_don_vi = data.hc_don_vi
     db.commit()
     log_action(db, user, "update", "tech_tasks", row.id, f"Đầu việc: {row.label}", request=request)
     return {"id": row.code, "label": row.label, "hint": row.hint or ""}
@@ -1966,8 +1969,10 @@ def xem_hoan_cong(code: str, period: Optional[str] = None, db: Session = Depends
             "ke_hoach": {"sl_mct": round(sum(x["sl_mct"] for x in o), 2),
                          "cong_no": round(sum(x["cong_no"] for x in o), 2)},
         })
+    cat = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
     return {
         "category": code, "period": ky, "nhom": nhom_ra,
+        "don_vi": (cat.hc_don_vi if cat else None) or "ty",
         "ky_co_so_lieu": sorted({r.period for r in db.query(models.HoanCongRow)
                                  .filter(models.HoanCongRow.category == code).all()}, reverse=True),
         "tong_ke_hoach": {"sl_mct": round(sum(g["ke_hoach"]["sl_mct"] for g in nhom_ra), 2),

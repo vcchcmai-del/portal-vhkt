@@ -683,6 +683,8 @@ class TechCategory(Base):
     # Cách theo dõi số liệu: "cum" (13 trung tâm, mặc định) hay "hoan_cong"
     # (nhóm MCT và trạng thái hồ sơ).
     kieu = Column(String(20), default="cum")
+    # Đơn vị của cột công nợ trong bảng hoàn công: "ty" hoặc "trieu" đồng.
+    hc_don_vi = Column(String(10), default="ty")
     sheet_url = Column(String(1000))
     sheet_synced_at = Column(DateTime, nullable=True)
 

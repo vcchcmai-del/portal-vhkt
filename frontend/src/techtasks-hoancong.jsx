@@ -13,12 +13,15 @@ import { Card, RED } from "./ui";
  */
 
 const so = (n, le = 0) => (n ? Number(n).toLocaleString("vi-VN", { maximumFractionDigits: le, minimumFractionDigits: le }) : "—");
+const TEN_DON_VI = { ty: "tỷ đồng", trieu: "triệu đồng" };
 
 export function BangHoanCong({ category, label }) {
   const [dl, setDl] = useState(null);
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [sua, setSua] = useState(null);     // {nhom, trang_thai, sl_mct, cong_no, note}
   const [err, setErr] = useState("");
+  const donVi = dl?.don_vi || "ty";
+  const tenDonVi = TEN_DON_VI[donVi] || TEN_DON_VI.ty;
   const duocSua = coQuyen("tech_tasks", "update");
 
   const tai = (ky = period) => api.get(`/api/admin/hoan-cong/${category}?period=${encodeURIComponent(ky)}`)
@@ -35,6 +38,14 @@ export function BangHoanCong({ category, label }) {
     } catch (e) { setErr(e.message); }
   };
 
+  /** Đổi đơn vị chỉ đổi cách đọc con số, không nhân chia lại số đã nhập. */
+  const doiDonVi = async (v) => {
+    try {
+      await api.put(`/api/admin/tech-tasks/categories/${category}`, { hc_don_vi: v });
+      tai();
+    } catch (e) { setErr(e.message); }
+  };
+
   if (!dl) return <Card title={`Hoàn công — ${label}`}><p className="muted">Đang tải…</p></Card>;
 
   const cot = dl.nhom[0]?.trang_thai || [];
@@ -46,6 +57,13 @@ export function BangHoanCong({ category, label }) {
           <input className="inp" style={{ maxWidth: 120 }} value={period} list="ky-hc"
             onChange={(e) => setPeriod(e.target.value)} placeholder="2026-09" />
           <datalist id="ky-hc">{(dl.ky_co_so_lieu || []).map((k) => <option key={k} value={k} />)}</datalist>
+          {duocSua && (
+            <select className="inp" style={{ maxWidth: 150 }} value={donVi}
+              title="Đơn vị của cột Công nợ" onChange={(e) => doiDonVi(e.target.value)}>
+              <option value="ty">Công nợ: tỷ đồng</option>
+              <option value="trieu">Công nợ: triệu đồng</option>
+            </select>
+          )}
           <button className="btn btn-sm" onClick={() => tai()}><RefreshCw size={13} />Tải lại</button>
         </div>
       )}>
@@ -53,7 +71,7 @@ export function BangHoanCong({ category, label }) {
         <div className="flex items-center gap-3" style={{ flexWrap: "wrap", fontSize: 13 }}>
           <b>Tổng kế hoạch:</b>
           <span>MCT <b>{so(dl.tong_ke_hoach.sl_mct)}</b></span>
-          <span>Công nợ <b>{so(dl.tong_ke_hoach.cong_no, 2)}</b></span>
+          <span>Công nợ <b>{so(dl.tong_ke_hoach.cong_no, 2)}</b> <span className="muted">{tenDonVi}</span></span>
           {dl.nhom.map((g) => (
             <span key={g.nhom} className="muted">
               {g.nhan}: {so(g.ke_hoach.sl_mct)} MCT / {so(g.ke_hoach.cong_no, 2)}
@@ -72,12 +90,12 @@ export function BangHoanCong({ category, label }) {
               <input className="inp" type="number" value={sua.sl_mct}
                 onChange={(e) => setSua({ ...sua, sl_mct: e.target.value })} />
             </label>
-            <label style={{ fontSize: 12.5 }}>Công nợ (tỷ)
+            <label style={{ fontSize: 12.5 }}>Công nợ ({tenDonVi})
               <input className="inp" type="number" step="0.01" value={sua.cong_no}
                 onChange={(e) => setSua({ ...sua, cong_no: e.target.value })} />
             </label>
-            <label style={{ fontSize: 12.5, gridColumn: "span 2" }}>Ghi chú
-              <input className="inp" value={sua.note || ""}
+            <label style={{ fontSize: 12.5, gridColumn: "span 2" }}>Ghi chú — vướng mắc, đầu mục cụ thể
+              <textarea className="inp" rows="2" value={sua.note || ""}
                 onChange={(e) => setSua({ ...sua, note: e.target.value })} />
             </label>
           </div>
@@ -95,12 +113,15 @@ export function BangHoanCong({ category, label }) {
               <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Trạng thái hồ sơ</th>
               {dl.nhom.map((g) => <th key={g.nhom} colSpan={2} style={{ textAlign: "center" }}>{g.nhan}</th>)}
               <th colSpan={2} style={{ textAlign: "center" }}>Cộng</th>
+              <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Ghi chú (vướng mắc, đầu mục cụ thể)</th>
             </tr>
             <tr>
               {dl.nhom.map((g) => (
-                <React.Fragment key={g.nhom}><th>SL MCT</th><th>Công nợ</th></React.Fragment>
+                <React.Fragment key={g.nhom}>
+                  <th>SL MCT</th><th title={`Đơn vị: ${tenDonVi}`}>Công nợ ({donVi === "ty" ? "tỷ" : "triệu"})</th>
+                </React.Fragment>
               ))}
-              <th>SL MCT</th><th>Công nợ</th>
+              <th>SL MCT</th><th>Công nợ ({donVi === "ty" ? "tỷ" : "triệu"})</th>
             </tr>
           </thead>
           <tbody>
@@ -129,6 +150,12 @@ export function BangHoanCong({ category, label }) {
                   ))}
                   <td style={{ fontWeight: 700 }}>{so(cong.sl)}</td>
                   <td style={{ fontWeight: 700 }}>{so(cong.cn, 2)}</td>
+                  <td className="muted" style={{ fontSize: 12.5, maxWidth: 320, whiteSpace: "normal" }}>
+                    {o.map((x, i) => (x.note ? (
+                      <div key={i}><b>N{dl.nhom[i].nhom}:</b> {x.note}</div>
+                    ) : null))}
+                    {!o.some((x) => x.note) && "—"}
+                  </td>
                 </tr>
               );
             })}
@@ -142,6 +169,7 @@ export function BangHoanCong({ category, label }) {
               ))}
               <td><b>{so(dl.tong_ke_hoach.sl_mct)}</b></td>
               <td><b>{so(dl.tong_ke_hoach.cong_no, 2)}</b></td>
+              <td />
             </tr>
           </tbody>
         </table>
@@ -149,6 +177,7 @@ export function BangHoanCong({ category, label }) {
       <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
         {duocSua ? "Bấm vào một ô để sửa số MCT và công nợ của nhóm đó." : "Chỉ người có quyền sửa mới nhập được số."}
         {" "}Kế hoạch từng nhóm là tổng các trạng thái nên luôn khớp với các ô bên trên.
+        {" "}Công nợ tính bằng <b>{tenDonVi}</b>.
       </p>
       {err && <p style={{ color: RED, fontSize: 12.5, marginTop: 8 }}>{err}</p>}
     </Card>
