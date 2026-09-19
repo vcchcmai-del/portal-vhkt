@@ -996,12 +996,42 @@ def delete_attachment(aid: int, db: Session = Depends(get_db),
     return {"deleted": aid}
 
 
+def _ten_tep_viec(category, group, assignee, db) -> str:
+    """Tên tệp nói rõ xuất phạm vi nào, khỏi lẫn với tệp xuất cả phòng."""
+    if category:
+        goc = _slug(category_labels(db).get(category, category))
+    elif group:
+        g = db.query(models.TechGroup).filter(models.TechGroup.code == group).first()
+        goc = _slug(g.label if g else group)
+    elif assignee:
+        goc = _slug(assignee)
+    else:
+        goc = "cong-viec-ky-thuat"
+    return f"{goc}-{models.today()}"
+
+
 @admin_router.get("/tech-tasks/export")
-def export_tasks_csv(db: Session = Depends(get_db),
+def export_tasks_csv(category: Optional[str] = None, group: Optional[str] = None,
+                     assignee: Optional[str] = None, db: Session = Depends(get_db),
                      _=Depends(require_module("tech_tasks", "update"))):
-    """Xuất toàn bộ công việc ra tệp CSV để báo cáo."""
-    rows = (db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
-            .order_by(models.TechTask.category, models.TechTask.due_at).all())
+    """Xuất công việc ra CSV.
+
+    Không truyền gì thì ra toàn bộ; truyền `category` (một đầu việc), `group`
+    (một nhóm) hay `assignee` (một người) thì chỉ ra đúng phạm vi đó — xuất từ
+    trong một đầu việc không kéo theo cả phòng.
+    """
+    q = db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None))
+    if category:
+        q = q.filter(models.TechTask.category == category)
+    if group:
+        trong_nhom = [c.code for c in categories(db) if (c.group_code or "") == group]
+        q = q.filter(models.TechTask.category.in_(trong_nhom or ["~khong~"]))
+    rows = q.order_by(models.TechTask.category, models.TechTask.due_at).all()
+    if assignee:
+        ten = _slug(assignee)
+        rows = [r for r in rows
+                if ten in {_slug(r.assignee or ""), _slug(r.reporter or "")}
+                or ten in {_slug(x) for x in _ds_ten(r.coordinators)}]
     header = ["Nhóm đầu việc", "Đầu việc", "Nội dung công việc", "Mô tả", "Phụ trách", "Phối hợp",
               "Người báo cáo", "Mục tiêu/chỉ tiêu", "Mức ưu tiên", "Ngày bắt đầu", "Ngày kết thúc",
               "Trạng thái", "Đơn vị tính", "Khối lượng giao", "Khối lượng đã làm", "Tiến độ %",
@@ -1031,7 +1061,7 @@ def export_tasks_csv(db: Session = Depends(get_db),
     content = "﻿" + "\n".join(lines) + "\n"
     return PlainTextResponse(
         content, media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="cong-viec-ky-thuat-{models.today()}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{_ten_tep_viec(category, group, assignee, db)}.csv"'},
     )
 
 

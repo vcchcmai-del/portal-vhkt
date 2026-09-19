@@ -1064,9 +1064,15 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     }
   };
 
+  /** Xuất đúng phần đang xem: một đầu việc, một nhóm hay một người. */
   const exportCsv = async () => {
     try {
-      const { blob, filename } = await api.blob("/api/admin/tech-tasks/export");
+      const p = new URLSearchParams();
+      if (xemDauViec) p.set("category", xemDauViec);
+      else if (fNhom) p.set("group", fNhom);
+      if (fNguoi) p.set("assignee", fNguoi);
+      const q = p.toString();
+      const { blob, filename } = await api.blob(`/api/admin/tech-tasks/export${q ? `?${q}` : ""}`);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = filename || "cong-viec-ky-thuat.csv"; a.click();
@@ -1346,7 +1352,15 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             </button>
           )}
 
-          {laNguoiQuanLy("tech_tasks") && <button className="btn btn-sm" onClick={exportCsv}><Download size={14} />Xuất CSV</button>}
+          {laNguoiQuanLy("tech_tasks") && (
+            <button className="btn btn-sm" onClick={exportCsv}
+              title={xemDauViec ? `Xuất nhiệm vụ của “${dauViecDangXem?.label || ""}”`
+                : fNhom ? "Xuất công việc của nhóm đang xem"
+                : fNguoi ? `Xuất công việc của ${fNguoi}` : "Xuất toàn bộ công việc kỹ thuật"}>
+              <Download size={14} />
+              {xemDauViec || fNhom || fNguoi ? "Xuất CSV phần này" : "Xuất CSV"}
+            </button>
+          )}
           {duocGiao && <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, fCategory)); }}><Plus size={14} />Giao việc mới</button>}
         </div>
       </div>
