@@ -125,7 +125,7 @@ export function SoLieuCumFT({ category, label }) {
       if (!formFt.ft_name.trim()) throw new Error("Chưa nhập tên FT.");
       const body = { category, item, period, center: moFt, ft_name: formFt.ft_name.trim(),
                      plan_qty: Number(formFt.plan_qty) || 0, done_qty: Number(formFt.done_qty) || 0,
-                     note: formFt.note || "" };
+                     bkk_qty: Number(formFt.bkk_qty) || 0, note: formFt.note || "" };
       if (formFt.id) await api.put(`/api/admin/progress/ft/${formFt.id}`, body);
       else await api.post("/api/admin/progress/ft", body);
       setFormFt(null); setErr(""); taiFt();
@@ -137,9 +137,12 @@ export function SoLieuCumFT({ category, label }) {
     try { await api.del(`/api/admin/progress/ft/${f.id}`); taiFt(); } catch (e) { setErr(e.message); }
   };
 
-  const ftTong = ftRows.reduce((a, f) => ({ kh: a.kh + (f.plan_qty || 0), th: a.th + (f.done_qty || 0) }), { kh: 0, th: 0 });
+  const ftTong = ftRows.reduce((a, f) => ({
+    kh: a.kh + (f.plan_qty || 0), th: a.th + (f.done_qty || 0), bkk: a.bkk + (f.bkk_qty || 0),
+  }), { kh: 0, th: 0, bkk: 0 });
   const cumDangMo = cums.find((c) => c.center === moFt);
-  const lech = cumDangMo && (ftTong.kh !== (cumDangMo.plan_qty || 0) || ftTong.th !== (cumDangMo.done_qty || 0));
+  const lech = cumDangMo && (ftTong.kh !== (cumDangMo.plan_qty || 0) || ftTong.th !== (cumDangMo.done_qty || 0)
+                             || ftTong.bkk !== (cumDangMo.bkk_qty || 0));
 
   return (
     <Card title={hangMuc.length ? `Số liệu theo cụm / FT — ${label}` : "Số liệu theo cụm / FT"}
@@ -173,7 +176,7 @@ export function SoLieuCumFT({ category, label }) {
           {nhap && (
             <div className="card" style={{ padding: 12, marginBottom: 12 }}>
               <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-                Tệp nhập theo khuôn “Tiến độ hạng mục”: đầu việc, hạng mục, kỳ, trung tâm, kế hoạch, thực hiện.
+                Tệp nhập theo khuôn “Tiến độ hạng mục”: đầu việc, hạng mục, kỳ, trung tâm, kế hoạch, thực hiện, BKK.
                 Dòng trùng (đầu việc, hạng mục, kỳ, trung tâm) được ghi đè.
               </p>
               <AdminImport fixedKind="progress" />
@@ -265,15 +268,16 @@ export function SoLieuCumFT({ category, label }) {
                             <b style={{ fontSize: 13 }}>FT trong cụm {tenTrungTam(c.center)}</b>
                             <span className={lech ? "tag tag-amber" : "tag tag-grey"}>
                               Tổng FT {so(ftTong.th)}/{so(ftTong.kh)} — cụm {so(c.done_qty)}/{so(c.plan_qty)}
+                              {!!(ftTong.bkk || c.bkk_qty) && ` · BKK ${so(ftTong.bkk)}/${so(c.bkk_qty)}`}
                             </span>
                             {duocThem && (
-                              <button className="btn btn-sm" onClick={() => setFormFt({ ft_name: "", plan_qty: "", done_qty: "", note: "" })}>
+                              <button className="btn btn-sm" onClick={() => setFormFt({ ft_name: "", plan_qty: "", done_qty: "", bkk_qty: "", note: "" })}>
                                 <Plus size={13} />Thêm FT
                               </button>
                             )}
                           </div>
                           {formFt && (
-                            <div className="grid md:grid-cols-4 gap-3" style={{ marginBottom: 8 }}>
+                            <div className="grid md:grid-cols-5 gap-3" style={{ marginBottom: 8 }}>
                               <Field label="Tên FT">
                                 <input className="inp" autoFocus value={formFt.ft_name}
                                   onChange={(e) => setFormFt({ ...formFt, ft_name: e.target.value })} />
@@ -286,22 +290,36 @@ export function SoLieuCumFT({ category, label }) {
                                 <input className="inp" type="number" value={formFt.done_qty}
                                   onChange={(e) => setFormFt({ ...formFt, done_qty: e.target.value })} />
                               </Field>
-                              <div className="flex items-end gap-2">
+                              <Field label="BKK (bất khả kháng)">
+                                <input className="inp" type="number" value={formFt.bkk_qty ?? ""}
+                                  onChange={(e) => setFormFt({ ...formFt, bkk_qty: e.target.value })} />
+                              </Field>
+                              <Field label="Ghi chú">
+                                <input className="inp" value={formFt.note || ""}
+                                  onChange={(e) => setFormFt({ ...formFt, note: e.target.value })} />
+                              </Field>
+                              <div className="flex items-end gap-2 md:col-span-5">
                                 <button className="btn btn-red btn-sm" onClick={luuFt}>Lưu</button>
                                 <button className="btn btn-sm" onClick={() => setFormFt(null)}>Hủy</button>
                               </div>
                             </div>
                           )}
                           <table className="tbl">
-                            <thead><tr><th>FT</th><th>Kế hoạch</th><th>Thực hiện</th><th>Tồn</th><th>Tỷ lệ</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
+                            <thead>
+                              <tr><th>FT</th><th>Kế hoạch</th><th>Thực hiện</th><th>Tồn</th>
+                                <th title="Bất khả kháng">BKK</th><th>Tỷ lệ</th>
+                                <th style={{ textAlign: "right" }}>Thao tác</th></tr>
+                            </thead>
                             <tbody>
                               {ftRows.map((f) => (
                                 <tr key={f.id}>
                                   <td><b>{f.ft_name}</b>{f.note && <><br /><span className="muted" style={{ fontSize: 12 }}>{f.note}</span></>}</td>
                                   <td>{so(f.plan_qty)}</td>
                                   <td>{so(f.done_qty)}</td>
-                                  <td>{so((f.plan_qty || 0) - (f.done_qty || 0))}</td>
-                                  <td><ThanhNho kh={f.plan_qty} th={f.done_qty} /> {pct(f.plan_qty, f.done_qty)}</td>
+                                  <td>{so(Math.max((f.plan_qty || 0) - (f.bkk_qty || 0) - (f.done_qty || 0), 0))}</td>
+                                  <td>{so(f.bkk_qty)}</td>
+                                  <td><ThanhNho kh={(f.plan_qty || 0) - (f.bkk_qty || 0)} th={f.done_qty} />{" "}
+                                    {pct((f.plan_qty || 0) - (f.bkk_qty || 0), f.done_qty)}</td>
                                   <td style={{ textAlign: "right" }}>
                                     <ThaoTac onEdit={duocSua ? () => setFormFt({ ...f }) : null}
                                       onDelete={duocXoa ? () => xoaFt(f) : null} />
@@ -309,7 +327,7 @@ export function SoLieuCumFT({ category, label }) {
                                 </tr>
                               ))}
                               {!ftRows.length && (
-                                <tr><td colSpan={6} className="muted" style={{ fontSize: 12.5 }}>Cụm này chưa chia số liệu theo FT.</td></tr>
+                                <tr><td colSpan={7} className="muted" style={{ fontSize: 12.5 }}>Cụm này chưa chia số liệu theo FT.</td></tr>
                               )}
                             </tbody>
                           </table>

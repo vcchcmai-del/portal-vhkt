@@ -1656,6 +1656,7 @@ def create_progress_ft(data: ProgressIn, db: Session = Depends(get_db),
                 .first())
     if existing:
         existing.plan_qty, existing.done_qty = data.plan_qty or 0, data.done_qty or 0
+        existing.bkk_qty = data.bkk_qty or 0
         if data.note:
             existing.note = data.note
         row = existing
@@ -1663,7 +1664,7 @@ def create_progress_ft(data: ProgressIn, db: Session = Depends(get_db),
         row = models.ProgressEntry(
             category=data.category, item=data.item, period=data.period.strip(), center=data.center.strip(),
             ft_name=data.ft_name.strip(), plan_qty=data.plan_qty or 0, done_qty=data.done_qty or 0,
-            note=data.note or "",
+            bkk_qty=data.bkk_qty or 0, note=data.note or "",
         )
         db.add(row)
     db.commit(); db.refresh(row)
