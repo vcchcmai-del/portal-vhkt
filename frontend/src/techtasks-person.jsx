@@ -22,6 +22,13 @@ import { Card, Empty, RED, ThaoTac } from "./ui";
 const pct = (r) => (r == null ? "—" : `${Math.round(r * 1000) / 10}%`);
 const so = (n) => (n ? Number(n).toLocaleString("vi-VN", { maximumFractionDigits: 1 }) : "—");
 const MAU_MUC = { do: "#C8102E", vang: "#F2A007", xanh: "#16A34A" };
+
+/** "2 ngày trước · Lê Hoàng Ân" — số liệu còn tươi hay đã cũ. */
+function motaCapNhat(ngay, ai) {
+  if (ngay == null) return "chưa cập nhật";
+  const khi = ngay === 0 ? "hôm nay" : ngay === 1 ? "hôm qua" : `${ngay} ngày trước`;
+  return ai ? `${khi} · ${ai}` : khi;
+}
 const NEN_MUC = { do: "#FDF1F3", vang: "#FFF8E8", xanh: undefined };
 
 function ThanhHoanThanh({ ty_le }) {
@@ -59,6 +66,7 @@ export function TheoNhanVienTab({ onXemViec }) {
   useEffect(() => { load(); }, []);
 
   const nguoi = data?.nguoi || [];
+  const nguong = data?.nguong || { im_lang_ngay: 7 };
   const canhBao = nguoi.filter((p) => p.muc !== "xanh");
   const hien = useMemo(() => {
     const t = tim.trim().toLowerCase();
@@ -83,6 +91,7 @@ export function TheoNhanVienTab({ onXemViec }) {
             Cộng khối lượng của đầu việc người đó chủ trì (số liệu theo cụm) và nhiệm vụ người đó phụ trách chính.
             BKK là phần không làm được do khách quan — trừ khỏi kế hoạch khi tính tỷ lệ và không tính vào tồn.
             Tồn quá hạn là tồn của việc đã quá hạn hoặc của kỳ đã kết thúc.
+            Đầu việc còn tồn mà quá {nguong.im_lang_ngay} ngày không ai cập nhật số liệu thì bị nêu ở cột Ghi chú.
           </p>
         </div>
         <button className="btn btn-sm" onClick={load}><RefreshCw size={14} />Tải lại</button>
@@ -139,7 +148,7 @@ export function TheoNhanVienTab({ onXemViec }) {
                 <th>Kế hoạch</th><th>Thực hiện</th><th>Tỷ lệ hoàn thành</th>
                 <th title="Kế hoạch − BKK − Thực hiện">Tồn</th>
                 <th title="Bất khả kháng — phần không làm được do nguyên nhân khách quan">BKK</th>
-                <th>Tồn quá hạn</th><th>Ghi chú</th>
+                <th>Tồn quá hạn</th><th>Cập nhật gần nhất</th><th>Ghi chú</th>
                 <th style={{ textAlign: "right" }}>Thao tác</th>
               </tr>
             </thead>
@@ -165,6 +174,10 @@ export function TheoNhanVienTab({ onXemViec }) {
                       <td style={{ color: p.ton_qua_han ? MAU_MUC.do : undefined, fontWeight: p.ton_qua_han ? 800 : 400 }}>
                         {so(p.ton_qua_han)}
                       </td>
+                      <td style={{ fontSize: 12.5, whiteSpace: "nowrap",
+                                   color: (p.im_lang_ngay ?? 99) >= (nguong.im_lang_ngay || 7) ? MAU_MUC.do : undefined }}>
+                        {motaCapNhat(p.im_lang_ngay)}
+                      </td>
                       <td style={{ fontSize: 12.5, maxWidth: 240 }}>
                         {p.ghi_chu?.length ? p.ghi_chu.join(" · ") : <span className="muted">—</span>}
                       </td>
@@ -174,14 +187,14 @@ export function TheoNhanVienTab({ onXemViec }) {
                     </tr>
                     {dangMo && (
                       <tr>
-                        <td colSpan={10} style={{ background: "#FCFBFB" }}>
+                        <td colSpan={11} style={{ background: "#FCFBFB" }}>
                           {!!p.chu_tri?.length && (
                             <>
                               <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Đầu việc đứng chủ trì</p>
                               <table className="tbl" style={{ marginBottom: 10 }}>
                                 <thead>
                                   <tr><th>Đầu việc</th><th>Kỳ</th><th>Kế hoạch</th><th>Thực hiện</th>
-                                    <th>Tồn</th><th>BKK</th><th>Tồn quá hạn</th></tr>
+                                    <th>Tồn</th><th>BKK</th><th>Tồn quá hạn</th><th>Cập nhật gần nhất</th></tr>
                                 </thead>
                                 <tbody>
                                   {p.chu_tri.map((d) => (
@@ -193,6 +206,10 @@ export function TheoNhanVienTab({ onXemViec }) {
                                       <td style={{ fontWeight: 600 }}>{so(d.ton)}</td>
                                       <td>{so(d.kl_bkk)}</td>
                                       <td style={{ color: d.ton_qua_han ? MAU_MUC.do : undefined }}>{so(d.ton_qua_han)}</td>
+                                      <td style={{ fontSize: 12.5,
+                                                   color: (d.im_lang_ngay ?? 99) >= (nguong.im_lang_ngay || 7) ? MAU_MUC.do : undefined }}>
+                                        {motaCapNhat(d.im_lang_ngay, d.updated_by)}
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>

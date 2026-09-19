@@ -1530,6 +1530,31 @@ def import_template_xlsx(kind: str, boards: Optional[str] = None, nhom: Optional
     )
 
 
+@router.get("/import/data-xlsx/{kind}")
+def import_data_xlsx(kind: str, period: Optional[str] = None, db: Session = Depends(get_db),
+                     user: models.User = Depends(current_user)):
+    """Tải tệp Excel ĐÚNG KHUÔN NHẬP nhưng đã điền sẵn số liệu đang có — sửa
+    trên đó rồi nhập ngược lại, khỏi phải gõ lại từ đầu."""
+    if kind not in bi.KINDS:
+        raise HTTPException(404, "Không có nhóm dữ liệu này.")
+    check_import_kind_permission(user, kind, "view")
+    rows = bi.du_lieu_hien_co(kind, db, period=period)
+    if not rows:
+        raise HTTPException(400, "Nhóm dữ liệu này chưa hỗ trợ tải kèm số liệu, "
+                                 "hoặc kỳ đang chọn chưa có số liệu nào.")
+    try:
+        content = bi.build_template_xlsx(kind, rows=rows)
+    except ImportError:
+        raise HTTPException(500, "Máy chủ chưa cài thư viện tạo tệp Excel (openpyxl).")
+    from fastapi.responses import Response
+    ten_tep = f"so-lieu-{kind}" + (f"-{period}" if period else "")
+    return Response(
+        content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{ten_tep}.xlsx"'},
+    )
+
+
 @router.get("/import/template/{kind}")
 def import_template(kind: str, boards: Optional[str] = None, nhom: Optional[str] = None,
                     user: models.User = Depends(current_user)):

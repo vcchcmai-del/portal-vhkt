@@ -562,6 +562,7 @@ class TechTask(Base):
     # Lúc chuyển sang Hoàn thành — cho biểu đồ "hoàn thành theo tuần". Việc xong
     # trước khi có cột này thì để trống, báo cáo dùng tạm updated_at.
     done_at = Column(DateTime, nullable=True)
+    updated_by = Column(String(160))        # người cập nhật tiến độ lần gần nhất
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
     # Thùng rác: xoá là xoá mềm, quản trị viên khôi phục được (xem trash.py).
@@ -710,5 +711,7 @@ class ProgressEntry(Base):
     # còn tồn thì không tính phần này.
     bkk_qty = Column(Float, default=0)
     note = Column(Text)
+    # Ai chốt con số này lần gần nhất — để biết số liệu còn tươi hay đã cũ.
+    updated_by = Column(String(160))
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)

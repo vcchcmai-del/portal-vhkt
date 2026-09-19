@@ -174,6 +174,8 @@ def _out(row, labels: Optional[dict] = None, it_labels: Optional[dict] = None,
         # tiến độ và đính kèm, kể cả khi tài khoản chỉ có quyền xem.
         "cua_toi": bool(user and (user.full_name or "").strip().casefold() in nguoi),
         "created_at": row.created_at, "updated_at": row.updated_at,
+        "updated_by": row.updated_by or "",
+        "im_lang_ngay": (models.today() - row.updated_at.date()).days if row.updated_at else None,
     }
 
 
@@ -194,6 +196,30 @@ def _tien_do_moi_nhat(db: Session) -> dict:
         b["done"] += r.done_qty or 0
     for b in ra.values():
         b["rate"] = (b["done"] / b["plan"]) if b["plan"] else None
+    return ra
+
+
+# Quá ngần này ngày không ai chạm vào số liệu thì coi là bỏ quên.
+IM_LANG_NGAY = 7
+
+
+def _cap_nhat_dau_viec(db: Session) -> dict:
+    """{mã đầu việc: {"luc": thời điểm, "ai": tên}} — lần gần nhất có người chốt
+    số liệu của đầu việc đó, tính cả nhiệm vụ lẫn dòng cụm/FT."""
+    ra = {}
+
+    def ghi(ma, luc, ai):
+        if not ma or not luc:
+            return
+        cu = ra.get(ma)
+        if cu is None or luc > cu["luc"]:
+            ra[ma] = {"luc": luc, "ai": (ai or "").strip()}
+
+    for r in db.query(models.TechTask).filter(models.TechTask.deleted_at.is_(None)).all():
+        ghi(r.category, r.updated_at, r.updated_by)
+    thuoc = item_category(db)
+    for r in db.query(models.ProgressEntry).all():
+        ghi(thuoc.get(r.item), r.updated_at, r.updated_by)
     return ra
 
 
@@ -327,6 +353,11 @@ def _ghi_don_vi(db: Session, row, ds) -> None:
             volume_plan=float(u.get("volume_plan") or 0), volume_done=float(u.get("volume_done") or 0),
             volume_bkk=float(u.get("volume_bkk") or 0),
             percent=float(u.get("percent") or 0), note=(u.get("note") or "").strip(), order_no=i))
+
+
+def _ten(user) -> str:
+    """Tên người dùng để ghi vào ô "cập nhật gần nhất"."""
+    return ((getattr(user, "full_name", "") or getattr(user, "username", "") or "")).strip()
 
 
 def _duoc_sua(user) -> bool:
@@ -722,6 +753,7 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
     ensure_seeded(db)
     nhom = nhom_cua_dau_viec(db)
     khoi_luong = _khoi_luong_dau_viec(db)
+    cap_nhat = _cap_nhat_dau_viec(db)
     ra = []
     for c in categories(db):
         b = dict(trong.get(c.code, {"total": 0, "todo": 0, "doing": 0, "done": 0, "overdue": 0,
@@ -741,8 +773,13 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
         if not tong and phai_lam:
             b["percent"] = round(b["kl_done"] / phai_lam * 100, 1)
         g = nhom.get(c.code) or {"code": "", "label": ""}
+        cn = cap_nhat.get(c.code)
         ra.append({"category": c.code, "label": c.label, "owner": c.owner or "",
-                   "group": g["code"], "group_label": g["label"], **b})
+                   "group": g["code"], "group_label": g["label"],
+                   "updated_at": cn["luc"] if cn else None,
+                   "updated_by": cn["ai"] if cn else "",
+                   "im_lang_ngay": (models.today() - cn["luc"].date()).days if cn else None,
+                   **b})
     return ra
 
 
@@ -844,6 +881,7 @@ def report_task(item_id: int, data: BaoCaoIn, db: Session = Depends(get_db),
         row.volume_done = data.volume_done
     if data.volume_bkk is not None:
         row.volume_bkk = data.volume_bkk
+    row.updated_by = (user.full_name or user.username or "").strip()
     if data.units is not None:
         _ghi_don_vi(db, row, data.units)
     db.commit(); db.refresh(row)
@@ -1143,11 +1181,16 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
     # theo dõi bằng khối lượng (số liệu cụm) chứ không chia thành nhiệm vụ con —
     # không gom vào đây thì mở tab Theo nhân viên sẽ không thấy ai chủ trì.
     khoi_luong = _khoi_luong_dau_viec(db)
+    cap_nhat = _cap_nhat_dau_viec(db)
     for c in categories(db):
         p = _nguoi(c.owner)
         if p is not None:
             kl = khoi_luong.get(c.code) or {}
+            cn = cap_nhat.get(c.code)
             p["chu_tri"].append({"category": c.code, "label": c.label,
+                                 "updated_at": cn["luc"] if cn else None,
+                                 "updated_by": cn["ai"] if cn else "",
+                                 "im_lang_ngay": (today - cn["luc"].date()).days if cn else None,
                                  "kl_period": kl.get("period", ""),
                                  "kl_plan": round(kl.get("plan", 0), 1),
                                  "kl_done": round(kl.get("done", 0), 1),
@@ -1210,7 +1253,15 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
                 _cong(theo_dv[d["category"]], d["kl_plan"], d["kl_done"], d["kl_bkk"], qua_han)
 
         phai_lam = max(m["ke_hoach"] - m["bkk"], 0)
+        # Đầu việc đang còn tồn mà lâu rồi không ai chạm vào số liệu.
+        bo_quen = [d for d in chu_tri
+                   if d["ton"] and (d["im_lang_ngay"] is None or d["im_lang_ngay"] >= IM_LANG_NGAY)]
+        im_lang = [d["im_lang_ngay"] for d in chu_tri if d["im_lang_ngay"] is not None]
         ghi_chu = []
+        if bo_quen:
+            lau = max((d["im_lang_ngay"] or 0) for d in bo_quen)
+            ghi_chu.append(f"{len(bo_quen)} đầu việc {lau} ngày chưa cập nhật"
+                           if lau else f"{len(bo_quen)} đầu việc chưa cập nhật lần nào")
         if m["viec_qua_han"]:
             ghi_chu.append(f"{m['viec_qua_han']} việc quá hạn")
         if m["viec_chua_kl"]:
@@ -1223,7 +1274,9 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
             **{k: round(v, 1) for k, v in m.items()},
             "dau_viec": len(chu_tri), "chu_tri": chu_tri,
             "ty_le": (m["thuc_hien"] / phai_lam) if phai_lam else None,
-            "muc": "do" if m["ton_qua_han"] else ("vang" if m["ton"] else "xanh"),
+            "im_lang_ngay": max(im_lang) if im_lang else None,
+            "bo_quen": len(bo_quen),
+            "muc": "do" if (m["ton_qua_han"] or bo_quen) else ("vang" if m["ton"] else "xanh"),
             "ghi_chu": ghi_chu,
             "canh_bao": ghi_chu,
             "theo_dau_viec": sorted(
@@ -1242,7 +1295,7 @@ def tasks_by_person(db: Session = Depends(get_db), user=Depends(require_module("
         "nguoi": ra,
         "toan_phong": toan_phong,
         "chua_giao": chua_giao if toan_phong else None,
-        "nguong": {"ton_nhieu": TON_NHIEU, "sap_han_ngay": SAP_HAN_NGAY},
+        "nguong": {"ton_nhieu": TON_NHIEU, "sap_han_ngay": SAP_HAN_NGAY, "im_lang_ngay": IM_LANG_NGAY},
     }
 
 
@@ -1389,7 +1442,8 @@ def _out_progress(row, cat_labels: Optional[dict] = None, it_labels: Optional[di
         "plan_qty": plan, "done_qty": done, "bkk_qty": bkk,
         "remaining": max(phai_lam - done, 0),
         "rate": (done / phai_lam) if phai_lam else None,
-        "note": row.note, "created_at": row.created_at, "updated_at": row.updated_at,
+        "note": row.note, "updated_by": row.updated_by or "",
+        "created_at": row.created_at, "updated_at": row.updated_at,
     }
 
 
@@ -1423,7 +1477,7 @@ def _get_progress(db, item_id):
 
 def upsert_progress_center(db: Session, category: str, item: str, period: str, center: str,
                             plan_qty: float, done_qty: float, note: str = "",
-                            bkk_qty: float = 0) -> models.ProgressEntry:
+                            bkk_qty: float = 0, nguoi: str = "") -> models.ProgressEntry:
     """Ghi dòng tổng theo Trung tâm — trùng (đầu việc, hạng mục, kỳ, trung tâm)
     thì cập nhật đè, không tạo dòng mới. Dùng chung cho form thủ công và nhập
     Excel hàng loạt (bulkimport.py)."""
@@ -1436,10 +1490,12 @@ def upsert_progress_center(db: Session, category: str, item: str, period: str, c
         row.plan_qty, row.done_qty, row.bkk_qty = plan_qty, done_qty, bkk_qty or 0
         if note:
             row.note = note
+        if nguoi:
+            row.updated_by = nguoi
     else:
         row = models.ProgressEntry(category=category, item=item, period=period, center=center,
                                     ft_name=None, plan_qty=plan_qty, done_qty=done_qty,
-                                    bkk_qty=bkk_qty or 0, note=note or "")
+                                    bkk_qty=bkk_qty or 0, note=note or "", updated_by=nguoi or None)
         db.add(row)
     db.flush()
     return row
@@ -1605,7 +1661,8 @@ def create_progress_center(data: ProgressIn, db: Session = Depends(get_db),
         raise HTTPException(400, "Chưa nhập trung tâm.")
     _validate_progress(data, db)
     row = upsert_progress_center(db, data.category, data.item, data.period.strip(), data.center.strip(),
-                                  data.plan_qty or 0, data.done_qty or 0, data.note or "", data.bkk_qty or 0)
+                                  data.plan_qty or 0, data.done_qty or 0, data.note or "", data.bkk_qty or 0,
+                                  _ten(user))
     db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, f"{row.item}/{row.center}/{row.period}", request=request)
     return _out_progress(row, category_labels(db), item_labels(db))
@@ -1619,6 +1676,7 @@ def update_progress_center(item_id: int, data: ProgressIn, db: Session = Depends
     vals = data.model_dump(exclude_unset=True)
     vals.pop("ft_name", None)   # dòng trung tâm luôn giữ ft_name rỗng
     _apply(row, vals)
+    row.updated_by = _ten(user)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "tech_tasks", row.id, f"{row.item}/{row.center}/{row.period}", request=request)
     return _out_progress(row, category_labels(db), item_labels(db))
@@ -1665,12 +1723,13 @@ def create_progress_ft(data: ProgressIn, db: Session = Depends(get_db),
         existing.bkk_qty = data.bkk_qty or 0
         if data.note:
             existing.note = data.note
+        existing.updated_by = _ten(user)
         row = existing
     else:
         row = models.ProgressEntry(
             category=data.category, item=data.item, period=data.period.strip(), center=data.center.strip(),
             ft_name=data.ft_name.strip(), plan_qty=data.plan_qty or 0, done_qty=data.done_qty or 0,
-            bkk_qty=data.bkk_qty or 0, note=data.note or "",
+            bkk_qty=data.bkk_qty or 0, note=data.note or "", updated_by=_ten(user),
         )
         db.add(row)
     db.commit(); db.refresh(row)
@@ -1684,6 +1743,7 @@ def update_progress_ft(item_id: int, data: ProgressIn, db: Session = Depends(get
     _validate_progress(data, db)
     row = _get_progress(db, item_id)
     _apply(row, data.model_dump(exclude_unset=True))
+    row.updated_by = _ten(user)
     db.commit(); db.refresh(row)
     log_action(db, user, "update", "tech_tasks", row.id, f"{row.item}/{row.center}/{row.ft_name}", request=request)
     return _out_progress(row, category_labels(db), item_labels(db))

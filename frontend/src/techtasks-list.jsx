@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, ClipboardList, Download, ExternalLink, FileText, Link2,
-  ListChecks, Paperclip, Pencil, Play, Plus, RefreshCw, Trash2, Upload, User, Users, X,
+  AlertTriangle, ArrowLeft, Download, ExternalLink, FileText, Link2,
+  Paperclip, Pencil, Plus, RefreshCw, Trash2, Upload, User, Users, X,
 } from "lucide-react";
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, RED, ThaoTac } from "./ui";
@@ -32,6 +32,14 @@ const effectiveStatus = (task) => (isOverdue(task) ? "overdue" : task.status);
 const fmtDay = (v) => (v ? new Date(v).toLocaleDateString("vi-VN") : "—");
 const pct = (rate) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 const soGon = (n) => (n == null ? "—" : Number(n).toLocaleString("vi-VN", { maximumFractionDigits: 1 }));
+const IM_LANG = 7;   // ngần này ngày không ai chạm vào thì coi là bỏ quên
+
+/** "2 ngày trước · Lê Hoàng Ân" — để biết số liệu còn tươi hay đã cũ. */
+function motaCapNhat(luc, ai, ngay) {
+  if (!luc) return "chưa cập nhật lần nào";
+  const khi = ngay === 0 ? "hôm nay" : ngay === 1 ? "hôm qua" : `${ngay} ngày trước`;
+  return ai ? `${khi} · ${ai}` : khi;
+}
 const coLinkThat = (u) => /^https?:\/\/\S+$/i.test((u || "").trim());
 
 function StatusTag({ task }) {
@@ -73,31 +81,6 @@ function trangThaiDauViec(c) {
   return { nhan: "Đang theo dõi", mau: "#0E6CD6" };
 }
 
-/** Ô số tổng hợp ở đầu Tổng quan. */
-function OTongHop({ nhan, so, mau, icon: I, dong }) {
-  return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      <div style={{ height: 4, background: mau }} />
-      <div style={{ padding: 12 }}>
-        <div className="flex items-center gap-2">
-          <span style={{ width: 34, height: 34, borderRadius: 10, background: `${mau}16`, color: mau,
-                         display: "inline-flex", alignItems: "center", justifyContent: "center" }}><I size={18} /></span>
-          <div>
-            <p style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.1, color: mau }}>{so}</p>
-            <p className="muted" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".06em" }}>{nhan}</p>
-          </div>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          {dong.map(([k, v]) => (
-            <p key={k} className="muted" style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
-              <span>{k}</span><b style={{ color: "#1C1A1B" }}>{v}</b>
-            </p>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const blankTask = (categories, fCategory) => ({
   category: fCategory || categories?.[0]?.id || "", title: "", description: "",
@@ -308,45 +291,6 @@ export function BangDonVi({ units, onChange, donViTinh, chiSuaKhoiLuong = false,
   );
 }
 
-/** Một nhiệm vụ trong màn hình chi tiết đầu việc — thẻ gọn, viền đỏ khi quá hạn. */
-function TheNhiemVu({ task, onMo, onSua, onXoa, dangMo }) {
-  const st = effectiveStatus(task);
-  const quaHan = st === "overdue";
-  const mau = { done: "#16A34A", doing: "#0E6CD6", todo: "#F2A007", overdue: "#C8102E" }[st] || "#0E6CD6";
-  return (
-    <div className="card" role="button" tabIndex={0} onClick={onMo}
-      onKeyDown={(e) => { if (e.key === "Enter") onMo(); }}
-      style={{ padding: 12, cursor: "pointer", borderColor: quaHan ? "#E8C4CB" : undefined,
-               boxShadow: dangMo ? "0 0 0 1.5px #C8102E inset" : undefined }}>
-      <div className="flex items-start gap-2">
-        <b style={{ fontSize: 13.5, flex: 1 }}>{task.title}</b>
-        {quaHan && <AlertTriangle size={15} color="#C8102E" />}
-      </div>
-      <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap", fontSize: 11.5 }}>
-        <span className="mono muted">NV{String(task.id).padStart(4, "0")}</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ color: quaHan ? "#C8102E" : "#807A7C", fontWeight: quaHan ? 700 : 400 }}>
-          {task.due_at ? fmtDay(task.due_at) : "chưa đặt hạn"}
-        </span>
-      </div>
-      <div className="flex items-center gap-2" style={{ marginTop: 6, flexWrap: "wrap" }}>
-        <StatusTag task={task} />
-        <TheUuTien muc={task.priority} />
-      </div>
-      <div className="flex items-center gap-2" style={{ marginTop: 8, fontSize: 12.5 }}>
-        <span className="flex items-center gap-1"><User size={13} />{task.assignee || <span className="muted">chưa gán</span>}</span>
-        <span style={{ flex: 1 }} />
-        <span onClick={(e) => e.stopPropagation()}>
-          <ThaoTac onView={onMo} xemTitle={dangMo ? "Đóng chi tiết" : "Xem chi tiết"}
-            onEdit={onSua} suaTitle="Sửa nhiệm vụ" onDelete={onXoa} xoaTitle="Xóa (vào Thùng rác)" />
-        </span>
-      </div>
-      <div style={{ marginTop: 8, height: 6, background: "#EEF1F6", borderRadius: 99, overflow: "hidden" }}>
-        <div style={{ width: `${Math.min(task.percent || 0, 100)}%`, height: "100%", background: mau }} />
-      </div>
-    </div>
-  );
-}
 
 /* ---------------------------------------------------------------- chi tiết */
 
@@ -1133,8 +1077,15 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       const t = g.cats.reduce((a, c) => ({
         total: a.total + c.total, done: a.done + c.done, doing: a.doing + c.doing,
         overdue: a.overdue + c.overdue, pt: a.pt + c.percent,
-      }), { total: 0, done: 0, doing: 0, overdue: 0, pt: 0 });
-      return { ...g, ...t, percent: g.cats.length ? Math.round(t.pt / g.cats.length * 10) / 10 : 0 };
+        kh: a.kh + (c.kl_plan || 0), th: a.th + (c.kl_done || 0), bkk: a.bkk + (c.kl_bkk || 0),
+        imLang: Math.max(a.imLang, c.im_lang_ngay ?? 0),
+      }), { total: 0, done: 0, doing: 0, overdue: 0, pt: 0, kh: 0, th: 0, bkk: 0, imLang: 0 });
+      const phaiLam = Math.max(t.kh - t.bkk, 0);
+      // Nhóm có khối lượng thì tỷ lệ là thực hiện/kế hoạch; nhóm thuần nhiệm vụ
+      // thì lấy trung bình tiến độ các đầu việc.
+      const percent = phaiLam ? Math.round(t.th / phaiLam * 1000) / 10
+        : (g.cats.length ? Math.round(t.pt / g.cats.length * 10) / 10 : 0);
+      return { ...g, ...t, ton: Math.max(phaiLam - t.th, 0), percent };
     });
     return ds.sort((a, b) => {
       const i = thuTu.indexOf(a.id), j = thuTu.indexOf(b.id);
@@ -1357,6 +1308,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                   ? ` · ${dauViecDangXem.start_at ? fmtDay(dauViecDangXem.start_at) : "—"} → ${dauViecDangXem.due_at ? fmtDay(dauViecDangXem.due_at) : "—"}`
                   : " · chưa đặt mốc thời gian"}
               </p>
+              <p style={{ fontSize: 12, marginTop: 2,
+                          color: (dauViecDangXem.im_lang_ngay ?? 99) >= IM_LANG ? RED : "#807A7C" }}>
+                Cập nhật gần nhất: {motaCapNhat(dauViecDangXem.updated_at, dauViecDangXem.updated_by, dauViecDangXem.im_lang_ngay)}
+              </p>
             </div>
             {duocSua && (
               <button className="btn btn-sm" onClick={() => setQlDauViec({ id: dauViecDangXem.category, label: dauViecDangXem.label, hint: "", nhom: dauViecDangXem.group })}>
@@ -1378,22 +1333,57 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
               <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
                 <input className="inp" style={{ maxWidth: 240 }} placeholder="🔎 Tìm nhiệm vụ…" value={search}
                   onChange={(e) => setSearch(e.target.value)} />
-                {[["", "Tất cả"], ["todo", "Chưa bắt đầu"], ["doing", "Đang thực hiện"], ["done", "Hoàn thành"], ["overdue", "Quá hạn"]].map(([ma, nhan]) => (
-                  <button key={ma || "all"} className={`btn btn-sm ${fStatus === ma ? "btn-red" : ""}`}
-                    onClick={() => setFStatus(ma)}>{nhan}</button>
-                ))}
+                <span className="muted" style={{ fontSize: 12 }}>{filteredRows.length} nhiệm vụ</span>
               </div>
               )}
               {khungViec}
               {!!dauViecDangXem.total && (
-                <div className="grid md:grid-cols-2 gap-3">
-                  {filteredRows.map((x) => (
-                    <TheNhiemVu key={x.id} task={x} dangMo={moId === x.id}
-                      onMo={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}
-                      onSua={duocSua ? () => suaViec(x) : null}
-                      onXoa={duocXoa ? () => del(x) : null} />
-                  ))}
-                </div>
+                <Card pad={false}>
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="tbl">
+                      <thead>
+                        <tr>
+                          <th>Nhiệm vụ</th><th>Phụ trách</th><th>Kế hoạch</th><th>Thực hiện</th>
+                          <th>Tỷ lệ</th><th title="Kế hoạch − BKK − Thực hiện">Tồn</th>
+                          <th title="Bất khả kháng">BKK</th><th>Cập nhật gần nhất</th><th>Ghi chú</th>
+                          <th style={{ textAlign: "right" }}>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.map((x) => {
+                          const kh = Number(x.volume_plan) || 0, th = Number(x.volume_done) || 0;
+                          const bkk = Number(x.volume_bkk) || 0;
+                          const cu = (x.im_lang_ngay ?? null);
+                          return (
+                            <tr key={x.id} style={{ cursor: "pointer", background: x.id === moId ? "#FBF4F5" : undefined }}
+                              onClick={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}>
+                              <td><b>{x.title}</b><br />
+                                <span className="mono muted" style={{ fontSize: 11.5 }}>NV{String(x.id).padStart(4, "0")}</span>
+                                {x.due_at && <span className="muted" style={{ fontSize: 11.5 }}> · hạn {fmtDay(x.due_at)}</span>}
+                              </td>
+                              <td>{x.assignee || <span className="muted">chưa gán</span>}</td>
+                              <td>{kh ? soGon(kh) : <span className="muted">—</span>}{x.volume_unit ? ` ${x.volume_unit}` : ""}</td>
+                              <td style={{ color: "#16A34A", fontWeight: 600 }}>{th ? soGon(th) : "—"}</td>
+                              <td><TienDoNho percent={x.percent} rong={70} /></td>
+                              <td style={{ fontWeight: 600 }}>{kh ? soGon(Math.max(kh - bkk - th, 0)) : "—"}</td>
+                              <td>{bkk ? soGon(bkk) : <span className="muted">—</span>}</td>
+                              <td style={{ fontSize: 12.5, color: cu !== null && cu >= IM_LANG ? RED : undefined }}>
+                                {motaCapNhat(x.updated_at, x.updated_by, cu)}
+                              </td>
+                              <td className="muted" style={{ fontSize: 12.5, maxWidth: 220 }}>{x.note || "—"}</td>
+                              <td style={{ textAlign: "right" }}>
+                                <ThaoTac onView={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}
+                                  xemTitle="Xem chi tiết" onEdit={duocSua ? () => suaViec(x) : null}
+                                  suaTitle="Sửa nhiệm vụ" onDelete={duocXoa ? () => del(x) : null}
+                                  xoaTitle="Xóa (vào Thùng rác)" />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
               )}
 
               {/* Nhìn sâu hơn nhiệm vụ: số liệu định lượng của đầu việc gom tới
@@ -1406,16 +1396,30 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
       {!dauViecDangXem && (
         <>
-      {/* Tổng quan: ô số tổng hợp -> lọc nhanh theo trạng thái -> thẻ từng đầu việc */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <OTongHop nhan="Nhóm / đầu việc" so={`${theNhom.length}/${tong.dauViec}`} mau="#0E6CD6" icon={ClipboardList}
-          dong={[["Đầu việc có nhiệm vụ", tong.dauViecCoViec], ["Đã xong hết", tong.dauViecXong]]} />
-        <OTongHop nhan="Tổng nhiệm vụ" so={tong.viec} mau="#16A34A" icon={ListChecks}
-          dong={[["Hoàn thành", tong.xong], ["Tỷ lệ", tong.viec ? `${Math.round(tong.xong / tong.viec * 100)}%` : "—"]]} />
-        <OTongHop nhan="Đang thực hiện" so={tong.dangLam} mau="#F2A007" icon={Play}
-          dong={[["Chưa bắt đầu", tong.chuaBatDau], ["Đang mở", tong.viec - tong.xong]]} />
-        <OTongHop nhan="Nhiệm vụ quá hạn" so={tong.quaHan} mau={tong.quaHan ? RED : "#16A34A"} icon={AlertTriangle}
-          dong={[["Trên tổng", tong.viec], ["Tỷ lệ", tong.viec ? `${Math.round(tong.quaHan / tong.viec * 100)}%` : "—"]]} />
+      {/* Tổng quan: mỗi nhóm việc một ô, đọc thẳng ra tỷ lệ hoàn thành của nhóm. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        {theNhom.map((g) => {
+          const mau = g.percent >= 100 ? "#16A34A" : g.percent >= 50 ? "#0E6CD6" : g.percent > 0 ? "#F2A007" : "#8A8284";
+          return (
+            <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ height: 4, background: mau }} />
+              <div style={{ padding: "10px 12px" }}>
+                <p style={{ fontWeight: 700, fontSize: 13, minHeight: 34 }}>{g.label}</p>
+                <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
+                  <b style={{ fontSize: 22, color: mau, lineHeight: 1.1 }}>{g.percent}%</b>
+                  <span className="muted" style={{ fontSize: 11.5, textAlign: "right", flex: 1 }}>
+                    {g.kh ? <>{soGon(g.th)}/{soGon(g.kh - g.bkk)}</> : <>{g.done}/{g.total} nhiệm vụ</>}
+                  </span>
+                </div>
+                <TienDoNho percent={g.percent} rong="100%" anSo />
+                <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                  {g.cats.length} đầu việc
+                  {!!g.overdue && <span style={{ color: RED, fontWeight: 700 }}> · {g.overdue} quá hạn</span>}
+                </p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {!!fNguoi && (
@@ -1473,6 +1477,12 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                       <div className="flex items-center gap-2" style={{ marginTop: 4 }}>
                         <span className="muted flex items-center gap-1" style={{ fontSize: 11.5, minWidth: 120 }}>
                           <User size={12} />{c.owner || "chưa có chủ trì"}
+                          {(c.im_lang_ngay ?? 99) >= IM_LANG && (
+                            <span style={{ color: RED, fontWeight: 700 }}
+                              title={`Cập nhật gần nhất: ${motaCapNhat(c.updated_at, c.updated_by, c.im_lang_ngay)}`}>
+                              · {c.im_lang_ngay == null ? "chưa cập nhật" : `${c.im_lang_ngay}n`}
+                            </span>
+                          )}
                         </span>
                         <span style={{ flex: 1 }}><TienDoNho percent={c.percent} rong="100%" anSo /></span>
                         <span className="muted" style={{ fontSize: 11.5, minWidth: 34, textAlign: "right" }}>{c.percent}%</span>
@@ -1546,7 +1556,12 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       <Card pad={false}>
         <div style={{ overflowX: "auto" }}>
           <table className="tbl">
-            <thead><tr><th>Đầu việc</th><th>Nội dung</th><th>Nhân sự</th><th>Ưu tiên</th><th>Thời gian</th><th>Khối lượng</th><th>Tiến độ</th><th>Trạng thái</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
+            <thead>
+              <tr><th>Đầu việc</th><th>Nhiệm vụ</th><th>Phụ trách</th><th>Kế hoạch</th><th>Thực hiện</th>
+                <th>Tỷ lệ</th><th title="Kế hoạch − BKK − Thực hiện">Tồn</th>
+                <th title="Bất khả kháng">BKK</th><th>Cập nhật gần nhất</th>
+                <th style={{ textAlign: "right" }}>Thao tác</th></tr>
+            </thead>
             <tbody>
               {filteredRows.map((x) => (
                 <tr key={x.id} onClick={() => { setForm(null); setMoId(x.id === moId ? null : x.id); }}
@@ -1564,25 +1579,33 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                       )}
                       {x.cua_toi && <span className="tag tag-amber" style={{ fontSize: 11 }}>Việc của tôi</span>}
                     </div>
+                    <div className="muted" style={{ fontSize: 11.5 }}>
+                      NV{String(x.id).padStart(4, "0")}
+                      {x.due_at && <> · hạn {fmtDay(x.due_at)}</>}
+                    </div>
                     {x.note && <span className="muted" style={{ fontSize: 12.5 }}>{x.note}</span>}
                   </td>
                   <td style={{ fontSize: 13 }}>
-                    {x.assignee ? <b>{x.assignee}</b> : "—"}
+                    {x.assignee ? <b>{x.assignee}</b> : <span className="muted">chưa gán</span>}
                     {!!x.coordinators?.length && <><br /><span className="muted">Phối hợp: {x.coordinators.join(", ")}</span></>}
-
                   </td>
-                  <td><TheUuTien muc={x.priority} /></td>
-                  <td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
-                    {x.start_at ? fmtDay(x.start_at) : "—"}<br />
-                    <span className="muted">đến {fmtDay(x.due_at)}</span>
-                  </td>
-                  <td style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>
+                  <td style={{ whiteSpace: "nowrap" }}>
                     {x.scope === "nhieu_don_vi"
                       ? <span className="muted">{x.units?.length || 0} đơn vị</span>
-                      : (x.volume_plan ? `${soGon(x.volume_done)}/${soGon(x.volume_plan)}${x.volume_unit ? ` ${x.volume_unit}` : ""}` : "—")}
+                      : (x.volume_plan ? `${soGon(x.volume_plan)}${x.volume_unit ? ` ${x.volume_unit}` : ""}` : <span className="muted">—</span>)}
                   </td>
+                  <td style={{ color: "#16A34A", fontWeight: 600 }}>{x.volume_done ? soGon(x.volume_done) : "—"}</td>
                   <td><TienDoNho percent={x.percent} rong={70} /></td>
-                  <td><StatusTag task={x} /></td>
+                  <td style={{ fontWeight: 600 }}>
+                    {x.volume_plan
+                      ? soGon(Math.max((x.volume_plan || 0) - (x.volume_bkk || 0) - (x.volume_done || 0), 0))
+                      : "—"}
+                  </td>
+                  <td>{x.volume_bkk ? soGon(x.volume_bkk) : <span className="muted">—</span>}</td>
+                  <td style={{ fontSize: 12.5, whiteSpace: "nowrap",
+                               color: (x.im_lang_ngay ?? 0) >= IM_LANG ? RED : undefined }}>
+                    {motaCapNhat(x.updated_at, x.updated_by, x.im_lang_ngay)}
+                  </td>
                   <td style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                     <ThaoTac onView={() => { setForm(null); setMoId(x.id); }} xemTitle="Xem chi tiết, đính kèm, báo cáo"
                       onEdit={duocSua ? () => suaViec(x) : null} suaTitle="Sửa công việc"

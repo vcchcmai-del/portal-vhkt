@@ -21,6 +21,7 @@ Nguyên tắc thiết kế:
 import datetime as dt
 import io
 import json
+from typing import Optional
 
 from .sheets import _clean, _key, _parse_date, _to_number
 from .operations import _next_code
@@ -411,7 +412,33 @@ def build_template(kind: str, boards=None) -> str:
     return "\ufeff" + "\n".join(lines) + "\n"
 
 
-def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
+def du_lieu_hien_co(kind: str, db, period: Optional[str] = None) -> list:
+    """Số liệu đang có, xếp đúng theo cột của tệp mẫu — để tải về sửa rồi nhập
+    ngược lại thay vì gõ tay từ đầu. Hiện làm cho nhóm "progress"."""
+    if kind != "progress":
+        return []
+    from . import models
+    cat_labels = tt.category_labels(db)
+    item_labels = tt.item_labels(db)
+    q = (db.query(models.ProgressEntry)
+         .filter(models.ProgressEntry.ft_name.is_(None)))
+    if period:
+        q = q.filter(models.ProgressEntry.period == period)
+    rows = q.order_by(models.ProgressEntry.category, models.ProgressEntry.item,
+                      models.ProgressEntry.period, models.ProgressEntry.center).all()
+    return [{
+        "dau_viec": cat_labels.get(r.category, r.category),
+        "hang_muc": item_labels.get(r.item, r.item),
+        "ky": r.period,
+        "trung_tam": r.center,
+        "ke_hoach": r.plan_qty or 0,
+        "thuc_hien": r.done_qty or 0,
+        "bkk": r.bkk_qty or 0,
+        "ghi_chu": r.note or "",
+    } for r in rows]
+
+
+def build_template_xlsx(kind: str, boards=None, nhom=None, rows=None) -> bytes:
     """
     Sinh tệp mẫu Excel có hướng dẫn ngay trong tệp:
       - Trang 1 "Du lieu": dòng tiêu đề đúng chuẩn, một dòng ví dụ, cột đã canh rộng,
@@ -448,8 +475,13 @@ def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
         cell.font = chu_trang
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        ws.cell(row=2, column=i, value=example).font = chu_vi_du
-        ws.column_dimensions[get_column_letter(i)].width = max(len(name), len(example), 14) + 4
+        # Có số liệu sẵn thì đổ thẳng vào, không thì để một dòng ví dụ in nghiêng.
+        if rows:
+            for r, item in enumerate(rows, start=2):
+                ws.cell(row=r, column=i, value=item.get(name, ""))
+        else:
+            ws.cell(row=2, column=i, value=example).font = chu_vi_du
+        ws.column_dimensions[get_column_letter(i)].width = max(len(name), len(str(example)), 14) + 4
 
         # Cột có sẵn danh sách lựa chọn thì gắn ô thả xuống thật trong Excel,
         # tránh người nhập gõ sai chính tả giá trị.
@@ -472,7 +504,8 @@ def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
     hd.column_dimensions["C"].width = 14
     hd.column_dimensions["D"].width = 30
 
-    hd["A1"] = f"TỆP MẪU: {spec['label']}" + (f" — {nhom}" if nhom else "")
+    hd["A1"] = (f"SỐ LIỆU ĐANG CÓ: {spec['label']}" if rows else f"TỆP MẪU: {spec['label']}") \
+        + (f" — {nhom}" if nhom else "")
     hd["A1"].font = Font(bold=True, size=14, color="C8102E")
     hd["A2"] = spec["note"]
     hd["A2"].alignment = Alignment(wrap_text=True)
@@ -492,7 +525,9 @@ def build_template_xlsx(kind: str, boards=None, nhom=None) -> bytes:
     r = len(cols) + 7
     hd.cell(row=r, column=1, value="CÁCH DÙNG").font = Font(bold=True, size=12, color="C8102E")
     for i, line in enumerate([
-        "1. Điền dữ liệu vào trang 'Du lieu', bắt đầu từ dòng 2. Xoá dòng ví dụ trước khi nhập thật.",
+        ("1. Sửa thẳng số liệu sẵn có trong trang 'Du lieu', thêm dòng mới ở dưới cùng nếu cần."
+         if rows else
+         "1. Điền dữ liệu vào trang 'Du lieu', bắt đầu từ dòng 2. Xoá dòng ví dụ trước khi nhập thật."),
         "2. KHÔNG đổi tên, không xoá và không đảo thứ tự các cột ở dòng 1.",
         "3. Cột tô đỏ là bắt buộc, không được để trống.",
         "4. Lưu tệp rồi vào Quản trị > Nhập dữ liệu hàng loạt, chọn tệp này.",

@@ -25,7 +25,10 @@ const STATUS = {
   loi: { label: "Lỗi", cls: "tag-red" },
 };
 
-export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
+// Nhóm dữ liệu tải về được kèm số liệu đang có (máy chủ: du_lieu_hien_co).
+const CO_SO_LIEU_SAN = ["progress"];
+
+export function AdminImport({ fixedKind, boardScope, nhomLabel, period } = {}) {
   const [kinds, setKinds] = useState([]);
   const [kind, setKind] = useState(fixedKind || "people");
   const [text, setText] = useState("");
@@ -164,6 +167,29 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
       const dat = res.headers.get("content-disposition") || "";
       const khop = dat.match(/filename="?([^"]+)"?/);
       a.href = url; a.download = khop ? khop[1] : `mau-${kind}.${dinhDang}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
+  };
+
+  /** Tải về chính số liệu đang có, xếp đúng khuôn nhập: sửa trên tệp rồi nạp
+   *  ngược lại, không phải gõ tay từ đầu. */
+  const taiSoLieuDangCo = async () => {
+    try {
+      const headers = {};
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const qs = period ? `?period=${encodeURIComponent(period)}` : "";
+      const res = await fetch(`${API_BASE}/api/admin/import/data-xlsx/${kind}${qs}`, { headers });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || "Không tải được số liệu.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dat = res.headers.get("content-disposition") || "";
+      const khop = dat.match(/filename="?([^"]+)"?/);
+      a.href = url; a.download = khop ? khop[1] : `so-lieu-${kind}.xlsx`; a.click();
       URL.revokeObjectURL(url);
     } catch (e) { setErr(e.message); }
   };
@@ -317,6 +343,12 @@ export function AdminImport({ fixedKind, boardScope, nhomLabel } = {}) {
               <button className="btn btn-sm" onClick={() => downloadTemplate("csv")}>
                 <Download size={14} /> Tải tệp mẫu CSV
               </button>
+              {CO_SO_LIEU_SAN.includes(kind) && (
+                <button className="btn btn-sm" onClick={taiSoLieuDangCo}
+                  title="Tệp Excel cùng khuôn nhập nhưng đã điền sẵn số liệu hiện có">
+                  <FileSpreadsheet size={14} /> Tải số liệu đang có
+                </button>
+              )}
             </div>
             <p className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
               Tệp Excel có sẵn dòng tiêu đề đúng chuẩn, một dòng ví dụ, cột bắt buộc tô đỏ,

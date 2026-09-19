@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Plus, RefreshCw, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, coQuyen, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Field, RED, ThaoTac } from "./ui";
@@ -132,6 +132,28 @@ export function SoLieuCumFT({ category, label }) {
     } catch (e) { setErr(e.message); }
   };
 
+  /** Dòng cụm = tổng các dòng FT, dùng khi hai mức lệch nhau. */
+  const dongBoTuFt = async () => {
+    if (!cumDangMo) return;
+    if (!window.confirm(`Ghi Kế hoạch ${so(ftTong.kh)} / Thực hiện ${so(ftTong.th)} / BKK ${so(ftTong.bkk)}`
+                        + ` (tổng theo FT) vào dòng cụm ${tenTrungTam(moFt)}?`)) return;
+    try {
+      await api.put(`/api/admin/progress/centers/${cumDangMo.id}`,
+                    { plan_qty: ftTong.kh, done_qty: ftTong.th, bkk_qty: ftTong.bkk });
+      setErr(""); taiCum();
+    } catch (e) { setErr(e.message); }
+  };
+
+  const xuatCsv = async () => {
+    try {
+      const { blob, filename } = await api.blob(`/api/admin/progress/export?period=${encodeURIComponent(period)}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || `tien-do-${period}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
+  };
+
   const xoaFt = async (f) => {
     if (!window.confirm(`Xóa dòng FT “${f.ft_name}”?`)) return;
     try { await api.del(`/api/admin/progress/ft/${f.id}`); taiFt(); } catch (e) { setErr(e.message); }
@@ -152,6 +174,7 @@ export function SoLieuCumFT({ category, label }) {
             onChange={(e) => setPeriod(e.target.value)} placeholder="2026-09" />
           <datalist id="ky-cum">{periods.map((p) => <option key={p} value={p} />)}</datalist>
           <button className="btn btn-sm" onClick={() => { taiCum(); if (moFt) taiFt(); }}><RefreshCw size={13} />Tải lại</button>
+          <button className="btn btn-sm" onClick={xuatCsv}><Download size={13} />Xuất CSV</button>
           {duocThem && <button className="btn btn-sm" onClick={() => setNhap((v) => !v)}><Upload size={13} />Nhập Excel</button>}
         </div>
       ) : null}>
@@ -179,7 +202,7 @@ export function SoLieuCumFT({ category, label }) {
                 Tệp nhập theo khuôn “Tiến độ hạng mục”: đầu việc, hạng mục, kỳ, trung tâm, kế hoạch, thực hiện, BKK.
                 Dòng trùng (đầu việc, hạng mục, kỳ, trung tâm) được ghi đè.
               </p>
-              <AdminImport fixedKind="progress" />
+              <AdminImport fixedKind="progress" period={period} />
               <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => { setNhap(false); taiCum(); }}>Đóng</button>
             </div>
           )}
@@ -273,6 +296,11 @@ export function SoLieuCumFT({ category, label }) {
                             {duocThem && (
                               <button className="btn btn-sm" onClick={() => setFormFt({ ft_name: "", plan_qty: "", done_qty: "", bkk_qty: "", note: "" })}>
                                 <Plus size={13} />Thêm FT
+                              </button>
+                            )}
+                            {duocSua && lech && !!ftRows.length && (
+                              <button className="btn btn-sm" onClick={dongBoTuFt} title="Ghi tổng các dòng FT vào dòng cụm">
+                                <RefreshCw size={13} />Lấy tổng FT làm số cụm
                               </button>
                             )}
                           </div>
