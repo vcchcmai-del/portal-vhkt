@@ -6,6 +6,7 @@ import {
 import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, norm, RED, ThaoTac } from "./ui";
 import { SoLieuCumFT } from "./techtasks-cum";
+import { BangHoanCong } from "./techtasks-hoancong";
 
 /*
  * Danh sách công việc mảng kỹ thuật.
@@ -925,6 +926,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [fNhom, setFNhom] = useState("");          // bấm ô nhóm ở Tổng quan để xem riêng nhóm đó
   const [tabCon, setTabCon] = useState("viec");   // trong một đầu việc: "viec" | "cum"
   const [coCum, setCoCum] = useState(false);      // đầu việc đang xem có theo dõi theo cụm không
+  const [kieuDV, setKieuDV] = useState("cum");   // "cum" | "hoan_cong"
   const [fStatus, setFStatus] = useState("");
   const [cuaToi, setCuaToi] = useState(false);
   const [search, setSearch] = useState("");
@@ -1182,17 +1184,18 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   useEffect(() => {
     if (!xemDauViec) return;
     setTabCon("viec");
+    setKieuDV(categories.find((c) => c.id === xemDauViec)?.kieu || "cum");
     api.get(`/api/admin/progress/items?category=${encodeURIComponent(xemDauViec)}`)
       .then((x) => setCoCum(Array.isArray(x) && x.length > 0))
       .catch(() => setCoCum(false));
-  }, [xemDauViec]);
+  }, [xemDauViec, categories]);
 
   const dangMo = rows.find((x) => x.id === moId);
   // Chỉ tách tab khi đầu việc có cả hai phần; thiếu phần nào thì phần còn lại
   // hiện thẳng, không bắt người dùng bấm thêm một nhịp.
-  const tachTab = !!dauViecDangXem && dauViecDangXem.total > 0 && coCum;
+  const tachTab = !!dauViecDangXem && dauViecDangXem.total > 0 && (coCum || kieuDV === "hoan_cong");
   const hienViec = !tachTab || tabCon === "viec";
-  const hienCum = !tachTab || tabCon === "cum";
+  const hienCum = (!tachTab || tabCon === "cum") && (coCum || kieuDV === "hoan_cong");
 
   const suaViec = (x) => {
     setMoId(null);
@@ -1424,13 +1427,13 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
           {/* Đầu việc có cả nhiệm vụ lẫn số liệu cụm thì tách hai tab cho đỡ rối;
               chỉ có một phần thì hiện thẳng phần đó. */}
-          {(dauViecDangXem.total > 0 && coCum) && (
+          {tachTab && (
             <div className="card flex gap-2" style={{ padding: 8, flexWrap: "wrap" }}>
               <button className={`btn btn-sm ${tabCon === "viec" ? "btn-red" : ""}`} onClick={() => setTabCon("viec")}>
                 Nhiệm vụ · {dauViecDangXem.total}
               </button>
               <button className={`btn btn-sm ${tabCon === "cum" ? "btn-red" : ""}`} onClick={() => setTabCon("cum")}>
-                Số liệu theo cụm / FT
+                {kieuDV === "hoan_cong" ? "Bảng hoàn công" : "Số liệu theo cụm / FT"}
               </button>
             </div>
           )}
@@ -1496,7 +1499,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
               {/* Nhìn sâu hơn nhiệm vụ: số liệu định lượng của đầu việc gom tới
                   mức chi nhánh, mức cụm rồi tới từng FT. */}
-              {hienCum && <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />}
+              {hienCum && (kieuDV === "hoan_cong"
+                ? <BangHoanCong category={dauViecDangXem.category} label={dauViecDangXem.label} />
+                : <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />)}
             </div>
           </div>
         </>

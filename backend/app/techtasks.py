@@ -371,6 +371,7 @@ def _duoc_bao_cao(user, row) -> bool:
 
 class CategoryIn(BaseModel):
     label: Optional[str] = None
+    kieu: Optional[str] = None
     hint: Optional[str] = None
     owner: Optional[str] = None
     group_code: Optional[str] = None
@@ -392,7 +393,8 @@ def list_categories(db: Session = Depends(get_db), _=Depends(require_module("tec
     ten_nhom = {g.code: g.label for g in db.query(models.TechGroup).all()}
     return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
              "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, ""),
-             "sheet_url": c.sheet_url or "", "sheet_synced_at": c.sheet_synced_at}
+             "sheet_url": c.sheet_url or "", "sheet_synced_at": c.sheet_synced_at,
+             "kieu": c.kieu or "cum"}
             for c in categories(db)]
 
 
@@ -443,6 +445,8 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.active = data.active
     if data.sheet_url is not None:
         row.sheet_url = data.sheet_url.strip() or None
+    if data.kieu is not None and data.kieu in ("cum", "hoan_cong"):
+        row.kieu = data.kieu
     db.commit()
     log_action(db, user, "update", "tech_tasks", row.id, f"Đầu việc: {row.label}", request=request)
     return {"id": row.code, "label": row.label, "hint": row.hint or ""}
@@ -1907,6 +1911,96 @@ def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
         "dong": doc[:200],
         "sheet_url": url,
     }
+
+
+# ---------------------------------------------------------------- HOÀN CÔNG
+
+# Trạng thái hồ sơ của một MCT, theo đúng thứ tự bảng theo dõi của phòng.
+HOAN_CONG_TRANG_THAI = [
+    ("trinh_ky", "Đang trình ký Vcontract"),
+    ("nghiem_thu_sap", "Đang nghiệm thu SAP"),
+    ("da_nghiem_thu_sap", "Đã nghiệm thu SAP"),
+    ("ban_giao_ts", "Đã bàn giao tài sản"),
+    ("doi_soat_4a", "Đang đối soát 4A"),
+    ("huy_vuong", "Hủy không thi công/Vướng"),
+    ("chua_trinh", "Chưa trình Vcontract"),
+]
+HOAN_CONG_NHOM = [1, 2, 3]
+TEN_NHOM_HC = {1: "Đang trình nhóm 1", 2: "Đang thực hiện nhóm 2", 3: "Đang thực hiện nhóm 3"}
+
+
+class HoanCongIn(BaseModel):
+    period: Optional[str] = None
+    nhom: Optional[int] = None
+    trang_thai: Optional[str] = None
+    sl_mct: Optional[float] = None
+    cong_no: Optional[float] = None
+    note: Optional[str] = None
+
+
+@admin_router.get("/hoan-cong/{code}")
+def xem_hoan_cong(code: str, period: Optional[str] = None, db: Session = Depends(get_db),
+                  _=Depends(require_module("tech_tasks", "view"))):
+    """Bảng hoàn công của một đầu việc: từng nhóm MCT với các trạng thái hồ sơ.
+
+    Kế hoạch của mỗi nhóm là TỔNG các trạng thái, không nhập tay, để bảng không
+    bao giờ tự mâu thuẫn với chính nó.
+    """
+    ky = (period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    rows = (db.query(models.HoanCongRow)
+            .filter(models.HoanCongRow.category == code, models.HoanCongRow.period == ky).all())
+    co = {(r.nhom, r.trang_thai): r for r in rows}
+    nhom_ra = []
+    for n in HOAN_CONG_NHOM:
+        o = []
+        for ma, nhan in HOAN_CONG_TRANG_THAI:
+            r = co.get((n, ma))
+            o.append({"trang_thai": ma, "nhan": nhan,
+                      "sl_mct": (r.sl_mct or 0) if r else 0,
+                      "cong_no": (r.cong_no or 0) if r else 0,
+                      "note": (r.note or "") if r else "",
+                      "updated_by": (r.updated_by or "") if r else "",
+                      "updated_at": r.updated_at if r else None})
+        nhom_ra.append({
+            "nhom": n, "nhan": TEN_NHOM_HC[n], "trang_thai": o,
+            "ke_hoach": {"sl_mct": round(sum(x["sl_mct"] for x in o), 2),
+                         "cong_no": round(sum(x["cong_no"] for x in o), 2)},
+        })
+    return {
+        "category": code, "period": ky, "nhom": nhom_ra,
+        "ky_co_so_lieu": sorted({r.period for r in db.query(models.HoanCongRow)
+                                 .filter(models.HoanCongRow.category == code).all()}, reverse=True),
+        "tong_ke_hoach": {"sl_mct": round(sum(g["ke_hoach"]["sl_mct"] for g in nhom_ra), 2),
+                          "cong_no": round(sum(g["ke_hoach"]["cong_no"] for g in nhom_ra), 2)},
+    }
+
+
+@admin_router.put("/hoan-cong/{code}")
+def ghi_hoan_cong(code: str, data: HoanCongIn, db: Session = Depends(get_db),
+                  user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Ghi một ô của bảng hoàn công (một nhóm, một trạng thái)."""
+    if data.nhom not in HOAN_CONG_NHOM:
+        raise HTTPException(400, "Nhóm MCT phải là 1, 2 hoặc 3.")
+    if data.trang_thai not in {m for m, _ in HOAN_CONG_TRANG_THAI}:
+        raise HTTPException(400, "Trạng thái hồ sơ không hợp lệ.")
+    ky = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    row = (db.query(models.HoanCongRow)
+           .filter(models.HoanCongRow.category == code, models.HoanCongRow.period == ky,
+                   models.HoanCongRow.nhom == data.nhom,
+                   models.HoanCongRow.trang_thai == data.trang_thai).first())
+    if not row:
+        row = models.HoanCongRow(category=code, period=ky, nhom=data.nhom, trang_thai=data.trang_thai)
+        db.add(row)
+    row.sl_mct = data.sl_mct or 0
+    row.cong_no = data.cong_no or 0
+    if data.note is not None:
+        row.note = data.note.strip()
+    row.updated_by = _ten(user)
+    db.commit(); db.refresh(row)
+    log_action(db, user, "update", "tech_tasks", row.id,
+               f"Hoàn công {code} nhóm {row.nhom}/{row.trang_thai}", request=request)
+    return {"id": row.id, "nhom": row.nhom, "trang_thai": row.trang_thai,
+            "sl_mct": row.sl_mct, "cong_no": row.cong_no, "note": row.note or ""}
 
 
 @admin_router.get("/progress/export")

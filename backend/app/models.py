@@ -680,6 +680,9 @@ class TechCategory(Base):
     active = Column(Boolean, default=True)
     # Google Sheet của riêng đầu việc này: người làm cập nhật số liệu online,
     # cổng thông tin đọc về theo khuôn cột giống tệp nhập Excel.
+    # Cách theo dõi số liệu: "cum" (13 trung tâm, mặc định) hay "hoan_cong"
+    # (nhóm MCT và trạng thái hồ sơ).
+    kieu = Column(String(20), default="cum")
     sheet_url = Column(String(1000))
     sheet_synced_at = Column(DateTime, nullable=True)
 
@@ -694,6 +697,29 @@ class TechProgressItem(Base):
     category_code = Column(String(40), nullable=False, index=True)      # khoá về TechCategory.code
     order_no = Column(Integer, default=0)
     active = Column(Boolean, default=True)
+
+
+class HoanCongRow(Base):
+    """Một ô trong bảng hoàn công: nhóm MCT nào, đang ở trạng thái hồ sơ nào,
+    bao nhiêu MCT và bao nhiêu công nợ.
+
+    Hoàn công không chia theo trung tâm như các đầu việc khác mà chia theo nhóm
+    MCT (1/2/3) và trạng thái hồ sơ (đang trình ký Vcontract, đang nghiệm thu
+    SAP, đã bàn giao tài sản...), mỗi ô hai con số: số lượng MCT và công nợ.
+    """
+    __tablename__ = "hoan_cong_rows"
+
+    id = Column(Integer, primary_key=True)
+    category = Column(String(40), nullable=False, index=True)   # đầu việc hoàn công
+    period = Column(String(20), nullable=False, index=True)     # kỳ báo cáo, vd 2026-09
+    nhom = Column(Integer, nullable=False, index=True)          # 1 | 2 | 3
+    trang_thai = Column(String(40), nullable=False, index=True)
+    sl_mct = Column(Float, default=0)       # số lượng MCT
+    cong_no = Column(Float, default=0)      # công nợ (tỷ đồng)
+    note = Column(Text)
+    updated_by = Column(String(160))
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
 
 
 class ProgressEntry(Base):
