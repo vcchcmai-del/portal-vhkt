@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Download, RefreshCw, Upload } from "lucide-react";
 import { api, coQuyen } from "./api";
 import { Card, RED } from "./ui";
 
@@ -19,6 +19,8 @@ export function BangHoanCong({ category, label }) {
   const [dl, setDl] = useState(null);
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [sua, setSua] = useState(null);     // {nhom, trang_thai, sl_mct, cong_no, note}
+  const [loat, setLoat] = useState(null);  // sửa cả hàng hoặc cả cột: {kieu, khoa, o:[...]}
+  const [nhap, setNhap] = useState(null);  // {noi_dung, kq}
   const [err, setErr] = useState("");
   const donVi = dl?.don_vi || "ty";
   const tenDonVi = TEN_DON_VI[donVi] || TEN_DON_VI.ty;
@@ -35,6 +37,53 @@ export function BangHoanCong({ category, label }) {
         sl_mct: Number(sua.sl_mct) || 0, cong_no: Number(sua.cong_no) || 0, note: sua.note || "",
       });
       setSua(null); tai();
+    } catch (e) { setErr(e.message); }
+  };
+
+  /** Mở khung sửa cả một hàng (một trạng thái, ba nhóm) hoặc cả một cột
+   *  (một nhóm, mọi trạng thái) — nhập một lượt thay vì bấm từng ô. */
+  const moLoat = (kieu, khoa) => {
+    const o = kieu === "hang"
+      ? dl.nhom.map((g) => {
+          const x = g.trang_thai.find((t) => t.trang_thai === khoa) || {};
+          return { nhom: g.nhom, trang_thai: khoa, nhan: g.nhan,
+                   sl_mct: x.sl_mct ?? "", cong_no: x.cong_no ?? "", note: x.note || "" };
+        })
+      : (dl.nhom.find((g) => g.nhom === khoa)?.trang_thai || []).map((t) => ({
+          nhom: khoa, trang_thai: t.trang_thai, nhan: t.nhan,
+          sl_mct: t.sl_mct ?? "", cong_no: t.cong_no ?? "", note: t.note || "" }));
+    setSua(null); setNhap(null); setLoat({ kieu, khoa, o });
+  };
+
+  const luuLoat = async () => {
+    try {
+      await api.put(`/api/admin/hoan-cong/${category}/nhieu`, {
+        period,
+        o: loat.o.map((x) => ({ nhom: x.nhom, trang_thai: x.trang_thai,
+                                sl_mct: Number(x.sl_mct) || 0, cong_no: Number(x.cong_no) || 0,
+                                note: x.note || "" })),
+      });
+      setLoat(null); tai();
+    } catch (e) { setErr(e.message); }
+  };
+
+  const xuatCsv = async () => {
+    try {
+      const { blob, filename } = await api.blob(
+        `/api/admin/hoan-cong/${category}/export?period=${encodeURIComponent(period)}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename || `hoan-cong-${period}.csv`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
+  };
+
+  const docNhap = async (ghi = false) => {
+    try {
+      const kq = await api.post(`/api/admin/hoan-cong/${category}/import`,
+                                { period, noi_dung: nhap.noi_dung, ghi });
+      setNhap({ ...nhap, kq }); setErr("");
+      if (ghi) tai();
     } catch (e) { setErr(e.message); }
   };
 
@@ -65,6 +114,12 @@ export function BangHoanCong({ category, label }) {
             </select>
           )}
           <button className="btn btn-sm" onClick={() => tai()}><RefreshCw size={13} />Tải lại</button>
+          <button className="btn btn-sm" onClick={xuatCsv}><Download size={13} />Xuất CSV</button>
+          {duocSua && (
+            <button className="btn btn-sm" onClick={() => { setNhap(nhap ? null : { noi_dung: "", kq: null }); setLoat(null); }}>
+              <Upload size={13} />Nhập CSV
+            </button>
+          )}
         </div>
       )}>
       <div className="card" style={{ padding: 10, marginBottom: 10, background: "#FCFBFB" }}>
@@ -79,6 +134,71 @@ export function BangHoanCong({ category, label }) {
           ))}
         </div>
       </div>
+
+      {nhap && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+            Dán nội dung CSV đúng khuôn tệp xuất — cột <b>nhom, trang_thai, sl_mct, cong_no</b>,
+            thêm được <b>ghi_chu</b>. Bấm <b>Xuất CSV</b> để lấy tệp mẫu có sẵn số hiện tại.
+          </p>
+          <textarea className="inp" rows="4" value={nhap.noi_dung}
+            placeholder={"nhom,trang_thai,sl_mct,cong_no,ghi_chu\n1,Đang trình ký Vcontract,86,1.47,"}
+            onChange={(e) => setNhap({ ...nhap, noi_dung: e.target.value })} />
+          <div className="flex items-center gap-2" style={{ marginTop: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-sm" onClick={() => docNhap(false)} disabled={!nhap.noi_dung.trim()}>Đọc thử</button>
+            {!!nhap.kq?.nhan_duoc && !nhap.kq?.da_ghi && (
+              <button className="btn btn-red btn-sm" onClick={() => docNhap(true)}>
+                Ghi {nhap.kq.nhan_duoc} ô vào kỳ {nhap.kq.ky}
+              </button>
+            )}
+            <button className="btn btn-sm" onClick={() => setNhap(null)}>Đóng</button>
+          </div>
+          {nhap.kq && (
+            <p style={{ fontSize: 12.5, marginTop: 8 }}>
+              {nhap.kq.da_ghi ? "Đã ghi" : "Đọc thử"}: {nhap.kq.nhan_duoc}/{nhap.kq.tong_dong} dòng nhận được.
+              {!!nhap.kq.loi?.length && (
+                <span style={{ color: RED }}> {nhap.kq.loi.slice(0, 3).join(" ")}</span>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+
+      {loat && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+            {loat.kieu === "hang"
+              ? `Sửa cả hàng: ${cot.find((c) => c.trang_thai === loat.khoa)?.nhan}`
+              : `Sửa cả cột: ${dl.nhom.find((g) => g.nhom === loat.khoa)?.nhan}`}
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>{loat.kieu === "hang" ? "Nhóm" : "Trạng thái hồ sơ"}</th>
+                <th>SL MCT</th><th>Công nợ ({donVi === "ty" ? "tỷ" : "triệu"})</th><th>Ghi chú</th></tr></thead>
+              <tbody>
+                {loat.o.map((x, i) => (
+                  <tr key={`${x.nhom}-${x.trang_thai}`}>
+                    <td><b>{x.nhan}</b></td>
+                    <td><input className="inp" type="number" value={x.sl_mct}
+                      onChange={(e) => setLoat({ ...loat,
+                        o: loat.o.map((y, j) => (j === i ? { ...y, sl_mct: e.target.value } : y)) })} /></td>
+                    <td><input className="inp" type="number" step="0.01" value={x.cong_no}
+                      onChange={(e) => setLoat({ ...loat,
+                        o: loat.o.map((y, j) => (j === i ? { ...y, cong_no: e.target.value } : y)) })} /></td>
+                    <td><input className="inp" value={x.note}
+                      onChange={(e) => setLoat({ ...loat,
+                        o: loat.o.map((y, j) => (j === i ? { ...y, note: e.target.value } : y)) })} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex gap-2" style={{ marginTop: 8 }}>
+            <button className="btn btn-red btn-sm" onClick={luuLoat}>Lưu {loat.o.length} ô</button>
+            <button className="btn btn-sm" onClick={() => setLoat(null)}>Hủy</button>
+          </div>
+        </div>
+      )}
 
       {sua && (
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
@@ -111,7 +231,15 @@ export function BangHoanCong({ category, label }) {
           <thead>
             <tr>
               <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Trạng thái hồ sơ</th>
-              {dl.nhom.map((g) => <th key={g.nhom} colSpan={2} style={{ textAlign: "center" }}>{g.nhan}</th>)}
+              {dl.nhom.map((g) => (
+                <th key={g.nhom} colSpan={2} style={{ textAlign: "center" }}>
+                  {g.nhan}
+                  {duocSua && (
+                    <button type="button" className="tt-btn" title={`Sửa cả cột “${g.nhan}”`}
+                      style={{ marginLeft: 4 }} onClick={() => moLoat("cot", g.nhom)}>✎</button>
+                  )}
+                </th>
+              ))}
               <th colSpan={2} style={{ textAlign: "center" }}>Cộng</th>
               <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Ghi chú (vướng mắc, đầu mục cụ thể)</th>
             </tr>
@@ -130,7 +258,13 @@ export function BangHoanCong({ category, label }) {
               const cong = o.reduce((a, x) => ({ sl: a.sl + (x.sl_mct || 0), cn: a.cn + (x.cong_no || 0) }), { sl: 0, cn: 0 });
               return (
                 <tr key={c.trang_thai}>
-                  <td><b>{c.nhan}</b></td>
+                  <td>
+                    <b>{c.nhan}</b>
+                    {duocSua && (
+                      <button type="button" className="tt-btn" title={`Sửa cả hàng “${c.nhan}”`}
+                        style={{ marginLeft: 4 }} onClick={() => moLoat("hang", c.trang_thai)}>✎</button>
+                    )}
+                  </td>
                   {dl.nhom.map((g, i) => (
                     <React.Fragment key={g.nhom}>
                       <td style={{ cursor: duocSua ? "pointer" : undefined }}
@@ -175,7 +309,8 @@ export function BangHoanCong({ category, label }) {
         </table>
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-        {duocSua ? "Bấm vào một ô để sửa số MCT và công nợ của nhóm đó." : "Chỉ người có quyền sửa mới nhập được số."}
+        {duocSua ? "Bấm vào một ô để sửa riêng ô đó, hoặc bấm ✎ ở tên hàng / tên nhóm để sửa cả hàng, cả cột."
+          : "Chỉ người có quyền sửa mới nhập được số."}
         {" "}Kế hoạch từng nhóm là tổng các trạng thái nên luôn khớp với các ô bên trên.
         {" "}Công nợ tính bằng <b>{tenDonVi}</b>.
       </p>

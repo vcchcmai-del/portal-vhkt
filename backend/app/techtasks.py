@@ -522,11 +522,59 @@ def _dau_viec_trong(db: Session) -> list:
             for c in categories(db) if c.code not in dung]
 
 
+def _so_lieu_mo_coi(db: Session) -> list:
+    """Số liệu còn đó nhưng đầu việc đã bị xoá — không hiện ở màn hình nào cả.
+
+    Xoá một đầu việc mà chọn "xoá kèm dữ liệu" thì sạch, nhưng xoá nhầm kiểu
+    khác có thể để lại số liệu treo; liệt kê ra để còn gắn lại hoặc dọn.
+    """
+    con = {c.code for c in categories(db)}
+    ra = {}
+    for r in db.query(models.ProgressEntry).all():
+        if r.category in con:
+            continue
+        b = ra.setdefault(r.category, {"category": r.category, "dong": 0, "ke_hoach": 0.0, "ky": set()})
+        b["dong"] += 1
+        b["ke_hoach"] += r.plan_qty or 0
+        b["ky"].add(r.period)
+    for b in ra.values():
+        b["ky"] = sorted(b["ky"], reverse=True)[:3]
+        b["ke_hoach"] = round(b["ke_hoach"], 1)
+    return sorted(ra.values(), key=lambda x: -x["dong"])
+
+
+class GanLaiIn(BaseModel):
+    category_cu: str
+    category_moi: Optional[str] = None     # trống = xoá hẳn số liệu
+
+
+@admin_router.post("/tech-tasks/so-lieu-mo-coi")
+def xu_ly_mo_coi(data: GanLaiIn, db: Session = Depends(get_db),
+                 user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+    """Gắn số liệu mồ côi sang một đầu việc đang có, hoặc xoá hẳn."""
+    q = db.query(models.ProgressEntry).filter(models.ProgressEntry.category == data.category_cu)
+    if data.category_cu in {c.code for c in categories(db)}:
+        raise HTTPException(400, "Đầu việc này vẫn còn, số liệu không mồ côi.")
+    moi = (data.category_moi or "").strip()
+    if moi:
+        if moi not in {c.code for c in categories(db)}:
+            raise HTTPException(400, "Đầu việc nhận không hợp lệ.")
+        n = q.update({models.ProgressEntry.category: moi}, synchronize_session=False)
+        viec = f"gắn {n} dòng sang {moi}"
+    else:
+        n = q.delete(synchronize_session=False)
+        viec = f"xoá hẳn {n} dòng"
+    db.commit()
+    log_action(db, user, "delete", "tech_tasks", None,
+               f"Số liệu mồ côi {data.category_cu}", detail=viec, request=request)
+    return {"so_dong": n, "viec": viec}
+
+
 @admin_router.get("/tech-tasks/categories/trong")
 def liet_ke_dau_viec_trong(db: Session = Depends(get_db),
                            _=Depends(require_module("tech_tasks", "view"))):
-    """Danh sách đầu việc trống, để dọn một lượt thay vì xoá từng cái."""
-    return {"dau_viec": _dau_viec_trong(db)}
+    """Đầu việc trống để dọn một lượt, kèm số liệu đang mồ côi (nếu có)."""
+    return {"dau_viec": _dau_viec_trong(db), "mo_coi": _so_lieu_mo_coi(db)}
 
 
 class XoaNhieuIn(BaseModel):
@@ -1894,7 +1942,27 @@ class SheetIn(BaseModel):
     sheet_url: Optional[str] = None
     period: Optional[str] = None
     item: Optional[str] = None
+    tab: Optional[str] = None    # tên tab trong bảng tính; trống = tab đang trỏ trong link
     ghi: bool = False            # False = chỉ xem trước, True = ghi thật
+
+
+def _so(v):
+    """Đọc số từ ô bảng tính, chấp nhận cả "1.234" (nghìn), "0,11" và "0.11".
+
+    Có cả dấu chấm lẫn dấu phẩy thì chấm là phân cách nghìn; chỉ có một loại
+    dấu thì coi là dấu thập phân — "0.11" nhập từ tệp máy sinh vẫn ra 0,11.
+    """
+    v = str(v or "").strip().replace(" ", "")
+    if not v:
+        return 0.0
+    if "." in v and "," in v:
+        v = v.replace(".", "").replace(",", ".")
+    else:
+        v = v.replace(",", ".")
+    try:
+        return float(v)
+    except ValueError:
+        return None
 
 
 def _ma_trung_tam(db: Session) -> dict:
@@ -1935,8 +2003,10 @@ def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
     ten_item.update({i.code: i.code for i in hang_muc})
     ky_mac_dinh = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
 
+    tab = (data.tab or "").strip()
     try:
-        header, rows = sheets.read_rows(sheets.fetch_csv(url))
+        header, rows = sheets.read_rows(
+            sheets.fetch_csv(sheets.url_tab_theo_ten(url, tab) if tab else url))
     except sheets.SheetError as e:
         raise HTTPException(400, str(e))
     thieu = [c for c in ("trung_tam", "ke_hoach") if c not in header]
@@ -1949,13 +2019,7 @@ def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
                db.query(models.ProgressEntry).filter(models.ProgressEntry.category == code,
                                                      models.ProgressEntry.ft_name.is_(None)).all()}
 
-    def so(v, mac_dinh=0.0):
-        v = str(v or "").strip().replace(".", "").replace(",", ".")
-        try:
-            return float(v) if v else mac_dinh
-        except ValueError:
-            return None
-
+    so = _so
     doc, loi = [], []
     for i, r in enumerate(rows, start=2):
         tt = ma_tt.get(_slug(r.get("trung_tam", "")))
@@ -2118,6 +2182,7 @@ HOAN_CONG_TRANG_THAI = [
     ("da_nghiem_thu_sap", "Đã nghiệm thu SAP"),
     ("ban_giao_ts", "Đã bàn giao tài sản"),
     ("doi_soat_4a", "Đang đối soát 4A"),
+    ("xong_doi_soat_4a", "Hoàn thành đối soát 4A"),
     ("huy_vuong", "Hủy không thi công/Vướng"),
     ("chua_trinh", "Chưa trình Vcontract"),
 ]
@@ -2204,6 +2269,7 @@ def ghi_hoan_cong(code: str, data: HoanCongIn, db: Session = Depends(get_db),
 class SheetNhieuIn(BaseModel):
     sheet_url: Optional[str] = None
     period: Optional[str] = None
+    tabs: Optional[list[str]] = None     # tên tab tự khai; bỏ trống thì tự dò
     ghi: bool = False
 
 
@@ -2219,10 +2285,16 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
     url = (data.sheet_url or "").strip()
     if not url:
         raise HTTPException(400, "Chưa nhập đường dẫn bảng tính.")
-    try:
-        tabs = sheets.liet_ke_tab(url)
-    except sheets.SheetError as e:
-        raise HTTPException(400, str(e))
+    # Tự khai tên tab thì dùng luôn, khỏi phải dò — bảng tính chỉ chia sẻ theo
+    # đường liên kết (không "đăng lên web") thì không đọc được danh sách tab.
+    tu_khai = [t.strip() for t in (data.tabs or []) if t and t.strip()]
+    if tu_khai:
+        tabs = [(t, None) for t in tu_khai]
+    else:
+        try:
+            tabs = sheets.liet_ke_tab(url)
+        except sheets.SheetError as e:
+            raise HTTPException(400, str(e) + " Hoặc tự gõ tên các tab vào ô “Tên tab”.")
 
     theo_ten = {_slug(c.label): c.code for c in categories(db)}
     ma_tt = _ma_trung_tam(db)
@@ -2238,8 +2310,9 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
         if not hang_muc:
             bo_qua.append({"tab": ten_tab, "vi_sao": "đầu việc chưa theo dõi theo cụm"})
             continue
+        duong = sheets.url_tab(url, gid) if gid else sheets.url_tab_theo_ten(url, ten_tab)
         try:
-            header, rows = sheets.read_rows(sheets.fetch_csv(sheets.url_tab(url, gid)))
+            header, rows = sheets.read_rows(sheets.fetch_csv(duong))
         except sheets.SheetError as e:
             bo_qua.append({"tab": ten_tab, "vi_sao": str(e)})
             continue
@@ -2254,13 +2327,7 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
             if not tt:
                 loi.append(f"dòng {i}: không nhận ra trung tâm “{r.get('trung_tam', '')}”")
                 continue
-            def so(v):
-                v = str(v or "").strip().replace(".", "").replace(",", ".")
-                try:
-                    return float(v) if v else 0.0
-                except ValueError:
-                    return None
-            kh, th, bkk = so(r.get("ke_hoach")), so(r.get("thuc_hien")), so(r.get("bkk"))
+            kh, th, bkk = _so(r.get("ke_hoach")), _so(r.get("thuc_hien")), _so(r.get("bkk"))
             if kh is None or th is None or bkk is None:
                 loi.append(f"dòng {i} ({tt}): kế hoạch/thực hiện/BKK phải là số")
                 continue
@@ -2280,6 +2347,134 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
                    detail=f"{len(ket_qua)} đầu việc", request=request)
     return {"da_ghi": data.ghi, "so_tab": len(tabs), "ky": ky_mac_dinh,
             "ket_qua": ket_qua, "bo_qua": bo_qua}
+
+
+class HoanCongNhieuIn(BaseModel):
+    period: Optional[str] = None
+    o: list[dict] = []        # [{nhom, trang_thai, sl_mct, cong_no, note}]
+
+
+@admin_router.put("/hoan-cong/{code}/nhieu")
+def ghi_hoan_cong_nhieu(code: str, data: HoanCongNhieuIn, db: Session = Depends(get_db),
+                        user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Ghi nhiều ô một lần — sửa cả một hàng (một trạng thái, ba nhóm) hoặc cả
+    một cột (một nhóm, mọi trạng thái) mà không phải bấm từng ô."""
+    ky = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    hop_le = {m for m, _ in HOAN_CONG_TRANG_THAI}
+    da_ghi = []
+    for o in data.o:
+        nhom, tt = o.get("nhom"), (o.get("trang_thai") or "").strip()
+        if nhom not in HOAN_CONG_NHOM or tt not in hop_le:
+            raise HTTPException(400, f"Ô không hợp lệ: nhóm {nhom}, trạng thái “{tt}”.")
+        row = (db.query(models.HoanCongRow)
+               .filter(models.HoanCongRow.category == code, models.HoanCongRow.period == ky,
+                       models.HoanCongRow.nhom == nhom, models.HoanCongRow.trang_thai == tt).first())
+        if not row:
+            row = models.HoanCongRow(category=code, period=ky, nhom=nhom, trang_thai=tt)
+            db.add(row)
+        row.sl_mct = float(o.get("sl_mct") or 0)
+        row.cong_no = float(o.get("cong_no") or 0)
+        if o.get("note") is not None:
+            row.note = str(o.get("note")).strip()
+        row.updated_by = _ten(user)
+        da_ghi.append({"nhom": nhom, "trang_thai": tt})
+    db.commit()
+    log_action(db, user, "update", "tech_tasks", None,
+               f"Hoàn công {code}: ghi {len(da_ghi)} ô", request=request)
+    return {"da_ghi": da_ghi, "ky": ky}
+
+
+class HoanCongNhapIn(BaseModel):
+    period: Optional[str] = None
+    noi_dung: str = ""        # nội dung CSV dán vào hoặc đọc từ tệp
+    ghi: bool = False
+
+
+@admin_router.post("/hoan-cong/{code}/import")
+def nhap_hoan_cong(code: str, data: HoanCongNhapIn, db: Session = Depends(get_db),
+                   user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Nhập bảng hoàn công từ CSV đúng khuôn tệp xuất.
+
+    Cột cần có: nhom (1/2/3 hoặc tên nhóm), trang_thai (tên hoặc mã), sl_mct,
+    cong_no; thêm được ghi_chu. Mặc định chỉ xem trước.
+    """
+    ky = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    try:
+        header, rows = sheets.read_rows(data.noi_dung or "")
+    except sheets.SheetError as e:
+        raise HTTPException(400, str(e))
+    thieu = [c for c in ("nhom", "trang_thai") if c not in header]
+    if thieu:
+        raise HTTPException(400, "Thiếu cột: " + ", ".join(thieu)
+                            + ". Cột cần có: nhom, trang_thai, sl_mct, cong_no, ghi_chu.")
+
+    ten_tt = {_slug(n): m for m, n in HOAN_CONG_TRANG_THAI}
+    ten_tt.update({m: m for m, _ in HOAN_CONG_TRANG_THAI})
+    ten_nhom = {_slug(v): k for k, v in TEN_NHOM_HC.items()}
+
+    doc, loi = [], []
+    for i, r in enumerate(rows, start=2):
+        tho = str(r.get("nhom", "")).strip()
+        nhom = int(tho) if tho.isdigit() else ten_nhom.get(_slug(tho))
+        tt = ten_tt.get(_slug(r.get("trang_thai", "")))
+        if nhom not in HOAN_CONG_NHOM or not tt:
+            loi.append(f"Dòng {i}: không nhận ra nhóm “{tho}” hoặc trạng thái “{r.get('trang_thai', '')}”.")
+            continue
+        sl, cn = _so(r.get("sl_mct")), _so(r.get("cong_no"))
+        if sl is None or cn is None:
+            loi.append(f"Dòng {i}: SL MCT và công nợ phải là số.")
+            continue
+        doc.append({"nhom": nhom, "trang_thai": tt, "sl_mct": sl, "cong_no": cn,
+                    "note": r.get("ghi_chu", "")})
+
+    if data.ghi:
+        for o in doc:
+            row = (db.query(models.HoanCongRow)
+                   .filter(models.HoanCongRow.category == code, models.HoanCongRow.period == ky,
+                           models.HoanCongRow.nhom == o["nhom"],
+                           models.HoanCongRow.trang_thai == o["trang_thai"]).first())
+            if not row:
+                row = models.HoanCongRow(category=code, period=ky, nhom=o["nhom"],
+                                         trang_thai=o["trang_thai"])
+                db.add(row)
+            row.sl_mct, row.cong_no = o["sl_mct"], o["cong_no"]
+            if o["note"]:
+                row.note = o["note"]
+            row.updated_by = _ten(user)
+        db.commit()
+        log_action(db, user, "update", "tech_tasks", None,
+                   f"Hoàn công {code}: nhập {len(doc)} ô từ tệp", request=request)
+    return {"da_ghi": data.ghi, "ky": ky, "tong_dong": len(rows), "nhan_duoc": len(doc),
+            "loi": loi, "o": doc[:60]}
+
+
+@admin_router.get("/hoan-cong/{code}/export")
+def export_hoan_cong(code: str, period: Optional[str] = None, db: Session = Depends(get_db),
+                     _=Depends(require_module("tech_tasks", "update"))):
+    """Xuất bảng hoàn công ra CSV, mỗi ô một dòng — nhập ngược lại được."""
+    ky = (period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    cat = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
+    don_vi = (cat.hc_don_vi if cat else None) or "ty"
+    rows = {(r.nhom, r.trang_thai): r for r in db.query(models.HoanCongRow)
+            .filter(models.HoanCongRow.category == code, models.HoanCongRow.period == ky).all()}
+    nhan = dict(HOAN_CONG_TRANG_THAI)
+    lines = [",".join(["Đầu việc", "Kỳ báo cáo", "Nhóm", "Trạng thái hồ sơ", "SL MCT",
+                       f"Công nợ ({'tỷ' if don_vi == 'ty' else 'triệu'})", "Ghi chú",
+                       "Cập nhật", "Người cập nhật"])]
+    for n in HOAN_CONG_NHOM:
+        for ma, ten in HOAN_CONG_TRANG_THAI:
+            r = rows.get((n, ma))
+            vals = [cat.label if cat else code, ky, TEN_NHOM_HC[n], ten,
+                    (r.sl_mct or 0) if r else 0, (r.cong_no or 0) if r else 0,
+                    (r.note or "") if r else "",
+                    r.updated_at.strftime("%d/%m/%Y") if r and r.updated_at else "",
+                    (r.updated_by or "") if r else ""]
+            lines.append(",".join('"' + str(v).replace('"', '""') + '"' for v in vals))
+    content = "\ufeff" + "\n".join(lines) + "\n"
+    return PlainTextResponse(
+        content, media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="hoan-cong-{_slug(code)}-{ky}.csv"'},
+    )
 
 
 @admin_router.get("/progress/export")

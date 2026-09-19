@@ -530,6 +530,7 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
   const [nhomMoi, setNhomMoi] = useState("");
   const [dvMoi, setDvMoi] = useState({ label: "", owner: "", group: chiNhom || "" });
   const [trong, setTrong] = useState(null);     // danh sách đầu việc trống
+  const [moCoi, setMoCoi] = useState([]);      // số liệu của đầu việc đã bị xoá
   const [chonXoa, setChonXoa] = useState([]);
   const [hangLoat, setHangLoat] = useState({ nhom: "", text: "" });
   const [suaNhom, setSuaNhom] = useState(null);
@@ -555,7 +556,20 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
   const taiDauViecTrong = () => {
     setTrong(null); setChonXoa([]);
     api.get("/api/admin/tech-tasks/categories/trong")
-      .then((x) => setTrong(x.dau_viec || [])).catch((e) => setLoi(e.message));
+      .then((x) => { setTrong(x.dau_viec || []); setMoCoi(x.mo_coi || []); })
+      .catch((e) => setLoi(e.message));
+  };
+
+  /** Số liệu treo lại sau khi đầu việc bị xoá: gắn sang đầu việc khác, hoặc bỏ. */
+  const xuLyMoCoi = async (m, sang) => {
+    const nhan = sang ? `Gắn ${m.dong} dòng của “${m.category}” sang đầu việc đã chọn?`
+      : `Xóa hẳn ${m.dong} dòng số liệu của “${m.category}”? Không khôi phục được.`;
+    if (!window.confirm(nhan)) return;
+    try {
+      await api.post("/api/admin/tech-tasks/so-lieu-mo-coi",
+                     { category_cu: m.category, category_moi: sang || "" });
+      taiDauViecTrong(); tai(); onDoi?.();
+    } catch (e) { setLoi(e.message); }
   };
 
   const xoaDauViecTrong = async () => {
@@ -716,6 +730,31 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
               <Trash2 size={13} />Dọn đầu việc trống
             </button>
           )}
+        </div>
+      )}
+
+      {mo === "don" && !!moCoi.length && (
+        <div className="card" style={{ padding: 12, marginBottom: 12, borderLeft: `4px solid ${RED}` }}>
+          <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+            {moCoi.length} nhóm số liệu đang treo — đầu việc đã bị xoá nên không hiện ở đâu
+          </p>
+          {moCoi.map((m) => (
+            <div key={m.category} className="flex items-center gap-2"
+              style={{ flexWrap: "wrap", fontSize: 12.5, padding: "4px 0", borderBottom: "1px solid #F4F1F2" }}>
+              <b>{m.category}</b>
+              <span className="muted">{m.dong} dòng · kế hoạch {m.ke_hoach} · kỳ {m.ky.join(", ")}</span>
+              <select className="inp" style={{ maxWidth: 240 }} defaultValue=""
+                onChange={(e) => { if (e.target.value) { xuLyMoCoi(m, e.target.value); e.target.value = ""; } }}>
+                <option value="">— Gắn sang đầu việc… —</option>
+                {(dl?.nhom || []).flatMap((g) => g.categories).map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </select>
+              <button className="btn btn-sm" onClick={() => xuLyMoCoi(m, "")}>
+                <Trash2 size={13} />Xóa hẳn
+              </button>
+            </div>
+          ))}
         </div>
       )}
 

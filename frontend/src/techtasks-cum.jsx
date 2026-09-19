@@ -43,6 +43,7 @@ export function SoLieuCumFT({ category, label }) {
   const [moSheet, setMoSheet] = useState(false);
   const [xemTruoc, setXemTruoc] = useState(null);   // kết quả đọc thử từ sheet
   const [nhieuTab, setNhieuTab] = useState(null);  // kết quả đọc bảng tính nhiều tab
+  const [tenTab, setTenTab] = useState("");        // tên tab tự gõ, mỗi tên một dòng
   const [dangDoc, setDangDoc] = useState(false);
   const [err, setErr] = useState("");
   const { danhSach: dsTrungTam, tenTrungTam } = useCenters();
@@ -171,7 +172,8 @@ export function SoLieuCumFT({ category, label }) {
     setDangDoc(true);
     try {
       const kq = await api.post(`/api/admin/tech-tasks/categories/${category}/dong-bo-sheet`,
-                                { sheet_url: sheetUrl, period, item, ghi });
+                                { sheet_url: sheetUrl, period, item, ghi,
+                                  tab: tenTab.split("\n")[0].trim() });
       setXemTruoc(kq); setErr("");
       if (ghi) { setSheetLuc(new Date().toISOString()); taiCum(); }
     } catch (e) { setErr(e.message); setXemTruoc(null); }
@@ -183,7 +185,8 @@ export function SoLieuCumFT({ category, label }) {
     setDangDoc(true);
     try {
       const kq = await api.post("/api/admin/tech-tasks/dong-bo-sheet-nhieu",
-                                { sheet_url: sheetUrl, period, ghi });
+                                { sheet_url: sheetUrl, period, ghi,
+                                  tabs: tenTab.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) });
       setNhieuTab(kq); setXemTruoc(null); setErr("");
       if (ghi) taiCum();
     } catch (e) { setErr(e.message); setNhieuTab(null); }
@@ -206,6 +209,7 @@ export function SoLieuCumFT({ category, label }) {
     kh: a.kh + (f.plan_qty || 0), th: a.th + (f.done_qty || 0), bkk: a.bkk + (f.bkk_qty || 0),
   }), { kh: 0, th: 0, bkk: 0 });
   const cumDangMo = cums.find((c) => c.center === moFt);
+  const cumTrong = !!moFt && !cumDangMo;        // cụm chưa nhập số liệu mức trung tâm
   const lech = cumDangMo && (ftTong.kh !== (cumDangMo.plan_qty || 0) || ftTong.th !== (cumDangMo.done_qty || 0)
                              || ftTong.bkk !== (cumDangMo.bkk_qty || 0));
 
@@ -251,7 +255,10 @@ export function SoLieuCumFT({ category, label }) {
                 <b> Tệp › Chia sẻ › Đăng lên web › CSV</b> rồi dán link vào đây. Cột cần có:
                 <b> trung_tam, ke_hoach, thuc_hien</b>, thêm được <b>bkk, ghi_chu</b> và <b>ky, hang_muc</b>.
                 Máy chủ đọc sheet mỗi lần bạn bấm đồng bộ, không tự ghi đè.
-                Một bảng tính nhiều tab thì bấm <b>Đọc mọi tab</b>: tab nào mang tên một đầu việc sẽ vào đúng đầu việc đó.
+                Bảng tính phải mở cho người ngoài xem: <b>Chia sẻ › Bất kỳ ai có đường liên kết</b> (vai trò Người xem),
+                hoặc <b>Tệp › Chia sẻ › Đăng lên web › CSV</b> — nếu không Google trả lỗi 401 và cổng không đọc được.
+                Một bảng tính nhiều tab thì gõ tên các tab vào ô dưới rồi bấm <b>Đọc mọi tab</b>:
+                tab nào mang tên một đầu việc sẽ vào đúng đầu việc đó.
               </p>
               <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                 <input className="inp" style={{ flex: 1, minWidth: 260 }} value={sheetUrl}
@@ -271,6 +278,14 @@ export function SoLieuCumFT({ category, label }) {
                   </a>
                 )}
               </div>
+              <div className="flex items-start gap-2" style={{ flexWrap: "wrap", marginTop: 8 }}>
+                <label style={{ flex: 1, minWidth: 260, fontSize: 12.5 }}>
+                  Tên tab (mỗi tab một dòng) — để trống thì cổng tự dò danh sách tab
+                  <textarea className="inp" rows="2" value={tenTab} placeholder={`${label}\nĐầu việc khác…`}
+                    onChange={(e) => setTenTab(e.target.value)} />
+                </label>
+              </div>
+
               {sheetLuc && !!sheetUrl && (
                 <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                   Đồng bộ gần nhất: {new Date(sheetLuc).toLocaleString("vi-VN")}
@@ -424,8 +439,8 @@ export function SoLieuCumFT({ category, label }) {
               <tbody>
                 {dong.map((c) => (
                   <React.Fragment key={c.id || c.center}>
-                    <tr style={{ cursor: c.trong ? "default" : "pointer" }} onClick={() => !c.trong && moCum(c.center)}>
-                      <td>{c.trong ? "" : (moFt === c.center ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}</td>
+                    <tr style={{ cursor: "pointer" }} onClick={() => moCum(c.center)}>
+                      <td>{moFt === c.center ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
                       <td><b>{tenTrungTam(c.center)}</b></td>
                       <td>{c.trong ? <span className="muted">—</span> : so(c.plan_qty)}</td>
                       <td>{c.trong ? <span className="muted">—</span> : so(c.done_qty)}</td>
@@ -437,11 +452,15 @@ export function SoLieuCumFT({ category, label }) {
                           {pct((c.plan_qty || 0) - (c.bkk_qty || 0), c.done_qty)}</>}</td>
                       <td className="muted" style={{ fontSize: 12.5 }}>{c.note || "—"}</td>
                       <td style={{ textAlign: "right" }}>
-                        <ThaoTac onView={c.trong ? null : () => moCum(c.center)} xemTitle="Xem chi tiết theo FT"
+                        <ThaoTac onView={() => moCum(c.center)}
+                          xemTitle={c.trong ? "Xem / thêm FT cho cụm này" : "Xem chi tiết theo FT"}
                           onEdit={duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty ?? "",
                             done_qty: c.done_qty ?? "", bkk_qty: c.bkk_qty ?? "" }) : null}
                           suaTitle={c.trong ? "Nhập số liệu cho cụm này" : "Sửa số liệu cụm"}
-                          onDelete={duocXoa && !c.trong ? () => xoaCum(c) : null} />
+                          onDelete={duocXoa ? () => (c.trong
+                            ? setErr(`Cụm ${tenTrungTam(c.center)} chưa có số liệu nào để xóa.`)
+                            : xoaCum(c)) : null}
+                          xoaTitle={c.trong ? "Chưa có số liệu để xóa" : "Xóa số liệu cụm"} />
                       </td>
                     </tr>
                     {moFt === c.center && (
@@ -458,7 +477,7 @@ export function SoLieuCumFT({ category, label }) {
                                 <Plus size={13} />Thêm FT
                               </button>
                             )}
-                            {duocSua && lech && !!ftRows.length && (
+                            {duocSua && lech && !cumTrong && !!ftRows.length && (
                               <button className="btn btn-sm" onClick={dongBoTuFt} title="Ghi tổng các dòng FT vào dòng cụm">
                                 <RefreshCw size={13} />Lấy tổng FT làm số cụm
                               </button>

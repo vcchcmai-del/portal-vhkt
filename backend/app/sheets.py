@@ -55,8 +55,8 @@ def normalize_url(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         raise SheetError("Đường dẫn phải bắt đầu bằng https://")
 
-    # Đã là CSV thì giữ nguyên
-    if "output=csv" in url or "format=csv" in url:
+    # Đã là CSV thì giữ nguyên — gồm cả cổng gviz (tải một tab theo tên)
+    if "output=csv" in url or "format=csv" in url or "gviz/tq" in url:
         return url
 
     # Dạng .../spreadsheets/d/<ID>/edit#gid=<GID>
@@ -84,8 +84,10 @@ def _tai_text(url: str, csv_thoi: bool = False) -> str:
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
             raise SheetError(
-                "Google từ chối truy cập. Vào Tệp > Chia sẻ > Đăng lên web, "
-                "chọn định dạng CSV rồi dán lại đường dẫn."
+                "Google từ chối truy cập bảng tính này (401/403) — nghĩa là bảng tính "
+                "chưa mở cho người ngoài xem. Trên Google Sheet: Chia sẻ > Người có quyền "
+                "truy cập chung > “Bất kỳ ai có đường liên kết” (vai trò Người xem), "
+                "hoặc Tệp > Chia sẻ > Đăng lên web > CSV. Xong rồi dán lại đường dẫn."
             )
         if e.code == 404:
             raise SheetError("Không tìm thấy bảng tính. Kiểm tra lại đường dẫn.")
@@ -148,8 +150,17 @@ def liet_ke_tab(url: str) -> list:
 
 
 def url_tab(url: str, gid: str) -> str:
-    """Đường dẫn tải CSV của đúng một tab."""
+    """Đường dẫn tải CSV của đúng một tab theo gid."""
     return f"{goc_bang_tinh(url)}/export?format=csv&gid={gid}"
+
+
+def url_tab_theo_ten(url: str, ten: str) -> str:
+    """Đường dẫn tải CSV của một tab theo TÊN — khỏi phải biết gid.
+
+    Dùng cổng gviz của chính Google: nhập tên tab như trên bảng tính là đủ.
+    """
+    from urllib.parse import quote
+    return f"{goc_bang_tinh(url)}/gviz/tq?tqx=out:csv&sheet={quote(ten)}"
 
 
 # ------------------------------------------------------------- Đọc bảng
