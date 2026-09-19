@@ -446,7 +446,7 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.active = data.active
     if data.sheet_url is not None:
         row.sheet_url = data.sheet_url.strip() or None
-    if data.kieu is not None and data.kieu in ("cum", "hoan_cong"):
+    if data.kieu is not None and data.kieu in ("cum", "hoan_cong", "du_an"):
         row.kieu = data.kieu
     if data.hc_don_vi is not None and data.hc_don_vi in ("ty", "trieu"):
         row.hc_don_vi = data.hc_don_vi
@@ -471,6 +471,57 @@ def _mo_ta_dang_dung(d: dict) -> str:
     ten = {"viec": "công việc", "viec_thung_rac": "việc trong thùng rác",
            "hang_muc": "hạng mục tiến độ", "dong_tien_do": "dòng tiến độ"}
     return ", ".join(f"{d[k]} {ten[k]}" for k in ten if d.get(k))
+
+
+def _dau_viec_trong(db: Session) -> list:
+    """Đầu việc không có gì bên trong: không nhiệm vụ (kể cả trong Thùng rác),
+    không hạng mục, không số liệu cụm, không bảng hoàn công."""
+    co_viec = {r[0] for r in db.query(models.TechTask.category).distinct()}
+    co_hang_muc = {r[0] for r in db.query(models.TechProgressItem.category_code).distinct()}
+    co_so_lieu = {r[0] for r in db.query(models.ProgressEntry.category).distinct()}
+    co_hoan_cong = {r[0] for r in db.query(models.HoanCongRow.category).distinct()}
+    co_du_an = {r[0] for r in db.query(models.DuAnRow.category).distinct()}
+    dung = co_viec | co_hang_muc | co_so_lieu | co_hoan_cong | co_du_an
+    nhom = nhom_cua_dau_viec(db)
+    return [{"id": c.code, "label": c.label,
+             "group_label": (nhom.get(c.code) or {}).get("label", ""),
+             "owner": c.owner or "", "hint": c.hint or ""}
+            for c in categories(db) if c.code not in dung]
+
+
+@admin_router.get("/tech-tasks/categories/trong")
+def liet_ke_dau_viec_trong(db: Session = Depends(get_db),
+                           _=Depends(require_module("tech_tasks", "view"))):
+    """Danh sách đầu việc trống, để dọn một lượt thay vì xoá từng cái."""
+    return {"dau_viec": _dau_viec_trong(db)}
+
+
+class XoaNhieuIn(BaseModel):
+    ma: list[str] = []
+
+
+@admin_router.post("/tech-tasks/categories/xoa-nhieu")
+def xoa_nhieu_dau_viec(data: XoaNhieuIn, db: Session = Depends(get_db),
+                       user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+    """Xoá các đầu việc đã chọn — chỉ chấp nhận đầu việc đang trống, để không
+    bao giờ xoá nhầm thứ còn số liệu bên trong."""
+    trong = {c["id"]: c["label"] for c in _dau_viec_trong(db)}
+    xoa, bo_qua = [], []
+    for ma in data.ma:
+        if ma not in trong:
+            bo_qua.append(ma)
+            continue
+        row = db.query(models.TechCategory).filter(models.TechCategory.code == ma).first()
+        if not row:
+            bo_qua.append(ma)
+            continue
+        nhan = row.label
+        db.delete(row)
+        xoa.append({"id": ma, "label": nhan})
+    db.commit()
+    for x in xoa:
+        log_action(db, user, "delete", "tech_tasks", None, f"Đầu việc trống: {x['label']}", request=request)
+    return {"da_xoa": xoa, "bo_qua": bo_qua}
 
 
 @admin_router.get("/tech-tasks/structure")
@@ -1916,6 +1967,115 @@ def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
     }
 
 
+# ------------------------------------------------------------------- DỰ ÁN
+
+# Các bước một điểm triển khai phải đi qua, theo đúng thứ tự bảng theo dõi.
+DU_AN_BUOC = [
+    ("khao_sat", "Khảo sát, vẽ layout"),
+    ("phan_bo", "Phân bổ hàng mức Cụm/Huyện"),
+    ("lap_dat", "Lắp đặt, thi công"),
+    ("nghiem_thu", "Test, nghiệm thu"),
+    ("ban_ve", "Bản vẽ hoàn công"),
+    ("ky_bbbg", "Ký BBBG"),
+    ("ky_bb_xn", "Ký BB XN hoàn thành"),
+]
+
+
+class DuAnIn(BaseModel):
+    period: Optional[str] = None
+    don_vi: Optional[str] = None
+    khoi: Optional[str] = None
+    order_no: Optional[int] = None
+    tong_trien_khai: Optional[float] = None
+    khao_sat: Optional[float] = None
+    phan_bo: Optional[float] = None
+    lap_dat: Optional[float] = None
+    nghiem_thu: Optional[float] = None
+    ban_ve: Optional[float] = None
+    ky_bbbg: Optional[float] = None
+    ky_bb_xn: Optional[float] = None
+    note: Optional[str] = None
+
+
+def _out_du_an(r):
+    tong = r.tong_trien_khai or 0
+    buoc = {ma: getattr(r, ma) or 0 for ma, _ in DU_AN_BUOC}
+    return {
+        "id": r.id, "khoi": r.khoi or "", "don_vi": r.don_vi, "order_no": r.order_no or 0,
+        "tong_trien_khai": tong, **buoc,
+        "ty_le": {ma: (buoc[ma] / tong) if tong else None for ma, _ in DU_AN_BUOC},
+        "note": r.note or "", "updated_by": r.updated_by or "", "updated_at": r.updated_at,
+    }
+
+
+@admin_router.get("/du-an/{code}")
+def xem_du_an(code: str, period: Optional[str] = None, db: Session = Depends(get_db),
+              _=Depends(require_module("tech_tasks", "view"))):
+    """Bảng dự án của một đầu việc: từng đơn vị với khối lượng qua mỗi bước."""
+    ky = (period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    rows = (db.query(models.DuAnRow)
+            .filter(models.DuAnRow.category == code, models.DuAnRow.period == ky)
+            .order_by(models.DuAnRow.order_no, models.DuAnRow.id).all())
+    ra = [_out_du_an(r) for r in rows]
+    cong = {"tong_trien_khai": sum(x["tong_trien_khai"] for x in ra)}
+    for ma, _ in DU_AN_BUOC:
+        cong[ma] = sum(x[ma] for x in ra)
+    cong["ty_le"] = {ma: (cong[ma] / cong["tong_trien_khai"]) if cong["tong_trien_khai"] else None
+                     for ma, _ in DU_AN_BUOC}
+    return {
+        "category": code, "period": ky, "buoc": [{"ma": m, "nhan": n} for m, n in DU_AN_BUOC],
+        "dong": ra, "cong": cong,
+        "ky_co_so_lieu": sorted({r.period for r in db.query(models.DuAnRow)
+                                 .filter(models.DuAnRow.category == code).all()}, reverse=True),
+    }
+
+
+@admin_router.put("/du-an/{code}")
+def ghi_du_an(code: str, data: DuAnIn, db: Session = Depends(get_db),
+              user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Thêm hoặc sửa một đơn vị trong bảng dự án."""
+    don_vi = (data.don_vi or "").strip()
+    if not don_vi:
+        raise HTTPException(400, "Chưa nhập tên đơn vị.")
+    ky = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    row = (db.query(models.DuAnRow)
+           .filter(models.DuAnRow.category == code, models.DuAnRow.period == ky,
+                   models.DuAnRow.don_vi == don_vi).first())
+    if not row:
+        cuoi = (db.query(models.DuAnRow).filter(models.DuAnRow.category == code,
+                                                models.DuAnRow.period == ky)
+                .order_by(models.DuAnRow.order_no.desc()).first())
+        row = models.DuAnRow(category=code, period=ky, don_vi=don_vi,
+                             order_no=(cuoi.order_no + 1) if cuoi else 0)
+        db.add(row)
+    if data.khoi is not None:
+        row.khoi = data.khoi.strip()
+    if data.order_no is not None:
+        row.order_no = data.order_no
+    for ma in ["tong_trien_khai"] + [m for m, _ in DU_AN_BUOC]:
+        v = getattr(data, ma)
+        if v is not None:
+            setattr(row, ma, v)
+    if data.note is not None:
+        row.note = data.note.strip()
+    row.updated_by = _ten(user)
+    db.commit(); db.refresh(row)
+    log_action(db, user, "update", "tech_tasks", row.id, f"Dự án {code}: {row.don_vi}", request=request)
+    return _out_du_an(row)
+
+
+@admin_router.delete("/du-an/{code}/{row_id}")
+def xoa_du_an(code: str, row_id: int, db: Session = Depends(get_db),
+              user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+    row = db.get(models.DuAnRow, row_id)
+    if not row or row.category != code:
+        raise HTTPException(404, "Không tìm thấy dòng này.")
+    ten = row.don_vi
+    db.delete(row); db.commit()
+    log_action(db, user, "delete", "tech_tasks", row_id, f"Dự án {code}: {ten}", request=request)
+    return {"deleted": row_id}
+
+
 # ---------------------------------------------------------------- HOÀN CÔNG
 
 # Trạng thái hồ sơ của một MCT, theo đúng thứ tự bảng theo dõi của phòng.
@@ -2006,6 +2166,87 @@ def ghi_hoan_cong(code: str, data: HoanCongIn, db: Session = Depends(get_db),
                f"Hoàn công {code} nhóm {row.nhom}/{row.trang_thai}", request=request)
     return {"id": row.id, "nhom": row.nhom, "trang_thai": row.trang_thai,
             "sl_mct": row.sl_mct, "cong_no": row.cong_no, "note": row.note or ""}
+
+
+class SheetNhieuIn(BaseModel):
+    sheet_url: Optional[str] = None
+    period: Optional[str] = None
+    ghi: bool = False
+
+
+@admin_router.post("/tech-tasks/dong-bo-sheet-nhieu")
+def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
+                        user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Một bảng tính nhiều tab: mỗi tab mang tên một đầu việc, đồng bộ cả loạt.
+
+    Tab nào trùng tên đầu việc (bỏ dấu, không phân biệt hoa thường) thì số liệu
+    của tab đó vào đúng đầu việc ấy; tab không khớp được nêu ra chứ không bỏ im.
+    Mặc định chỉ xem trước, gọi lại với ghi=true mới ghi.
+    """
+    url = (data.sheet_url or "").strip()
+    if not url:
+        raise HTTPException(400, "Chưa nhập đường dẫn bảng tính.")
+    try:
+        tabs = sheets.liet_ke_tab(url)
+    except sheets.SheetError as e:
+        raise HTTPException(400, str(e))
+
+    theo_ten = {_slug(c.label): c.code for c in categories(db)}
+    ma_tt = _ma_trung_tam(db)
+    ky_mac_dinh = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+
+    ket_qua, bo_qua = [], []
+    for ten_tab, gid in tabs:
+        ma_dv = theo_ten.get(_slug(ten_tab))
+        if not ma_dv:
+            bo_qua.append({"tab": ten_tab, "vi_sao": "không có đầu việc nào tên như vậy"})
+            continue
+        hang_muc = progress_items(db, ma_dv)
+        if not hang_muc:
+            bo_qua.append({"tab": ten_tab, "vi_sao": "đầu việc chưa theo dõi theo cụm"})
+            continue
+        try:
+            header, rows = sheets.read_rows(sheets.fetch_csv(sheets.url_tab(url, gid)))
+        except sheets.SheetError as e:
+            bo_qua.append({"tab": ten_tab, "vi_sao": str(e)})
+            continue
+        if "trung_tam" not in header or "ke_hoach" not in header:
+            bo_qua.append({"tab": ten_tab, "vi_sao": "thiếu cột trung_tam / ke_hoach"})
+            continue
+
+        item = hang_muc[0].code
+        doc, loi = [], []
+        for i, r in enumerate(rows, start=2):
+            tt = ma_tt.get(_slug(r.get("trung_tam", "")))
+            if not tt:
+                loi.append(f"dòng {i}: không nhận ra trung tâm “{r.get('trung_tam', '')}”")
+                continue
+            def so(v):
+                v = str(v or "").strip().replace(".", "").replace(",", ".")
+                try:
+                    return float(v) if v else 0.0
+                except ValueError:
+                    return None
+            kh, th, bkk = so(r.get("ke_hoach")), so(r.get("thuc_hien")), so(r.get("bkk"))
+            if kh is None or th is None or bkk is None:
+                loi.append(f"dòng {i} ({tt}): kế hoạch/thực hiện/BKK phải là số")
+                continue
+            ky = (r.get("ky") or "").strip() or ky_mac_dinh
+            doc.append((ky, tt, kh, th, bkk, r.get("ghi_chu", "")))
+            if data.ghi:
+                upsert_progress_center(db, ma_dv, item, ky, tt, kh, th, r.get("ghi_chu", ""), bkk, _ten(user))
+        if data.ghi and doc:
+            cat = db.query(models.TechCategory).filter(models.TechCategory.code == ma_dv).first()
+            if cat:
+                cat.sheet_url, cat.sheet_synced_at = url, models.now()
+        ket_qua.append({"tab": ten_tab, "category": ma_dv, "dong": len(doc), "loi": loi})
+
+    if data.ghi:
+        db.commit()
+        log_action(db, user, "update", "tech_tasks", None, "Đồng bộ Google Sheet nhiều tab",
+                   detail=f"{len(ket_qua)} đầu việc", request=request)
+    return {"da_ghi": data.ghi, "so_tab": len(tabs), "ky": ky_mac_dinh,
+            "ket_qua": ket_qua, "bo_qua": bo_qua}
 
 
 @admin_router.get("/progress/export")

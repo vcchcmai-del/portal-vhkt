@@ -7,6 +7,7 @@ import { api, coQuyen, getUser, laNguoiQuanLy } from "./api";
 import { Card, Empty, Field, norm, RED, ThaoTac } from "./ui";
 import { SoLieuCumFT } from "./techtasks-cum";
 import { BangHoanCong } from "./techtasks-hoancong";
+import { BangDuAn } from "./techtasks-duan";
 
 /*
  * Danh sách công việc mảng kỹ thuật.
@@ -526,6 +527,8 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
   const [nhomLoc, setNhomLoc] = useState(chiNhom || "");
   const [nhomMoi, setNhomMoi] = useState("");
   const [dvMoi, setDvMoi] = useState({ label: "", owner: "", group: chiNhom || "" });
+  const [trong, setTrong] = useState(null);     // danh sách đầu việc trống
+  const [chonXoa, setChonXoa] = useState([]);
   const [hangLoat, setHangLoat] = useState({ nhom: "", text: "" });
   const [suaNhom, setSuaNhom] = useState(null);
   const [xoaHoi, setXoaHoi] = useState(null);           // { cats: [...], cach, dich }
@@ -545,6 +548,22 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
   const lam = async (viec, nhan = "") => {
     try { await viec(); setLoi(""); setTin(nhan); tai(); onDoi?.(); }
     catch (e) { setLoi(e.message); setTin(""); }
+  };
+
+  const taiDauViecTrong = () => {
+    setTrong(null); setChonXoa([]);
+    api.get("/api/admin/tech-tasks/categories/trong")
+      .then((x) => setTrong(x.dau_viec || [])).catch((e) => setLoi(e.message));
+  };
+
+  const xoaDauViecTrong = async () => {
+    const ten = trong.filter((c) => chonXoa.includes(c.id)).map((c) => c.label);
+    if (!window.confirm(`Xóa ${ten.length} đầu việc trống?\n\n${ten.join("\n")}`)) return;
+    try {
+      const kq = await api.post("/api/admin/tech-tasks/categories/xoa-nhieu", { ma: chonXoa });
+      setLoi(kq.bo_qua?.length ? `${kq.bo_qua.length} đầu việc không xoá được (đã có số liệu).` : "");
+      taiDauViecTrong(); tai(); onDoi?.();
+    } catch (e) { setLoi(e.message); }
   };
 
   const nhomCoMa = (dl?.nhom || []).filter((g) => g.id);
@@ -687,6 +706,51 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
           <button className={`btn btn-sm ${mo === "nhieu" ? "btn-red" : ""}`} onClick={() => setMo(mo === "nhieu" ? "" : "nhieu")}>
             <Plus size={13} />Thêm nhiều đầu việc
           </button>
+          <span style={{ flex: 1 }} />
+          {duocXoa && (
+            <button className={`btn btn-sm ${mo === "don" ? "btn-red" : ""}`}
+              title="Tìm các đầu việc không có nhiệm vụ, không có số liệu để xoá một lượt"
+              onClick={() => { setMo(mo === "don" ? "" : "don"); if (mo !== "don") taiDauViecTrong(); }}>
+              <Trash2 size={13} />Dọn đầu việc trống
+            </button>
+          )}
+        </div>
+      )}
+
+      {mo === "don" && (
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          {!trong ? <p className="muted">Đang tìm…</p> : !trong.length ? (
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              Không có đầu việc nào trống — mọi đầu việc đều đang có nhiệm vụ hoặc số liệu.
+            </p>
+          ) : (
+            <>
+              <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                {trong.length} đầu việc không có nhiệm vụ, không có hạng mục và không có số liệu nào
+              </p>
+              <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 8 }}>
+                {trong.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2"
+                    style={{ fontSize: 13, padding: "4px 0", borderBottom: "1px solid #F4F1F2" }}>
+                    <input type="checkbox" checked={chonXoa.includes(c.id)}
+                      onChange={(e) => setChonXoa(e.target.checked
+                        ? [...chonXoa, c.id] : chonXoa.filter((x) => x !== c.id))} />
+                    <b>{c.label}</b>
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {c.group_label || "chưa xếp nhóm"}{c.owner ? ` · ${c.owner}` : ""}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                <button className="btn btn-sm" onClick={() => setChonXoa(trong.map((c) => c.id))}>Chọn tất cả</button>
+                <button className="btn btn-sm" onClick={() => setChonXoa([])}>Bỏ chọn</button>
+                <button className="btn btn-red btn-sm" disabled={!chonXoa.length} onClick={xoaDauViecTrong}>
+                  <Trash2 size={13} />Xóa {chonXoa.length || ""} đầu việc đã chọn
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -1193,9 +1257,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const dangMo = rows.find((x) => x.id === moId);
   // Chỉ tách tab khi đầu việc có cả hai phần; thiếu phần nào thì phần còn lại
   // hiện thẳng, không bắt người dùng bấm thêm một nhịp.
-  const tachTab = !!dauViecDangXem && dauViecDangXem.total > 0 && (coCum || kieuDV === "hoan_cong");
+  const rieng = kieuDV === "hoan_cong" || kieuDV === "du_an";   // có bảng riêng thay cho bảng cụm
+  const tachTab = !!dauViecDangXem && dauViecDangXem.total > 0 && (coCum || rieng);
   const hienViec = !tachTab || tabCon === "viec";
-  const hienCum = (!tachTab || tabCon === "cum") && (coCum || kieuDV === "hoan_cong");
+  const hienCum = (!tachTab || tabCon === "cum") && (coCum || rieng);
 
   const suaViec = (x) => {
     setMoId(null);
@@ -1433,7 +1498,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 Nhiệm vụ · {dauViecDangXem.total}
               </button>
               <button className={`btn btn-sm ${tabCon === "cum" ? "btn-red" : ""}`} onClick={() => setTabCon("cum")}>
-                {kieuDV === "hoan_cong" ? "Bảng hoàn công" : "Số liệu theo cụm / FT"}
+                {kieuDV === "hoan_cong" ? "Bảng hoàn công"
+                  : kieuDV === "du_an" ? "Bảng dự án" : "Số liệu theo cụm / FT"}
               </button>
             </div>
           )}
@@ -1501,7 +1567,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                   mức chi nhánh, mức cụm rồi tới từng FT. */}
               {hienCum && (kieuDV === "hoan_cong"
                 ? <BangHoanCong category={dauViecDangXem.category} label={dauViecDangXem.label} />
-                : <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />)}
+                : kieuDV === "du_an"
+                  ? <BangDuAn category={dauViecDangXem.category} label={dauViecDangXem.label} />
+                  : <SoLieuCumFT category={dauViecDangXem.category} label={dauViecDangXem.label} />)}
             </div>
           </div>
         </>

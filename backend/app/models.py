@@ -701,6 +701,39 @@ class TechProgressItem(Base):
     active = Column(Boolean, default=True)
 
 
+class DuAnRow(Base):
+    """Một điểm triển khai của một dự án: khối lượng đã qua từng bước.
+
+    Dự án theo dõi theo đơn vị (PTO, SGN, Thủ Dầu Một...) gom trong khối
+    (ACT/BDG/VTU), mỗi đơn vị có tổng số điểm triển khai và số điểm đã qua từng
+    bước: khảo sát, phân bổ hàng, lắp đặt, nghiệm thu, bản vẽ hoàn công, ký
+    BBBG, ký biên bản xác nhận hoàn thành. Tỉ lệ hoàn thành suy ra từ hai con
+    số, không nhập tay.
+    """
+    __tablename__ = "du_an_rows"
+
+    id = Column(Integer, primary_key=True)
+    category = Column(String(40), nullable=False, index=True)
+    period = Column(String(20), nullable=False, index=True)
+    khoi = Column(String(40))                 # ACT | BDG | VTU
+    don_vi = Column(String(120), nullable=False, index=True)
+    order_no = Column(Integer, default=0)
+
+    tong_trien_khai = Column(Float, default=0)
+    khao_sat = Column(Float, default=0)
+    phan_bo = Column(Float, default=0)
+    lap_dat = Column(Float, default=0)
+    nghiem_thu = Column(Float, default=0)
+    ban_ve = Column(Float, default=0)
+    ky_bbbg = Column(Float, default=0)
+    ky_bb_xn = Column(Float, default=0)
+
+    note = Column(Text)                       # vướng mắc của chính điểm này
+    updated_by = Column(String(160))
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
 class HoanCongRow(Base):
     """Một ô trong bảng hoàn công: nhóm MCT nào, đang ở trạng thái hồ sơ nào,
     bao nhiêu MCT và bao nhiêu công nợ.

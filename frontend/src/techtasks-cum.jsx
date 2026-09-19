@@ -42,6 +42,7 @@ export function SoLieuCumFT({ category, label }) {
   const [sheetLuc, setSheetLuc] = useState(null);   // lần đồng bộ gần nhất
   const [moSheet, setMoSheet] = useState(false);
   const [xemTruoc, setXemTruoc] = useState(null);   // kết quả đọc thử từ sheet
+  const [nhieuTab, setNhieuTab] = useState(null);  // kết quả đọc bảng tính nhiều tab
   const [dangDoc, setDangDoc] = useState(false);
   const [err, setErr] = useState("");
   const { danhSach: dsTrungTam, tenTrungTam } = useCenters();
@@ -177,6 +178,18 @@ export function SoLieuCumFT({ category, label }) {
     finally { setDangDoc(false); }
   };
 
+  /** Bảng tính có nhiều tab, mỗi tab mang tên một đầu việc: đồng bộ cả loạt. */
+  const docNhieuTab = async (ghi = false) => {
+    setDangDoc(true);
+    try {
+      const kq = await api.post("/api/admin/tech-tasks/dong-bo-sheet-nhieu",
+                                { sheet_url: sheetUrl, period, ghi });
+      setNhieuTab(kq); setXemTruoc(null); setErr("");
+      if (ghi) taiCum();
+    } catch (e) { setErr(e.message); setNhieuTab(null); }
+    finally { setDangDoc(false); }
+  };
+
   const luuLinkSheet = async () => {
     try {
       await api.put(`/api/admin/tech-tasks/categories/${category}`, { sheet_url: sheetUrl });
@@ -238,6 +251,7 @@ export function SoLieuCumFT({ category, label }) {
                 <b> Tệp › Chia sẻ › Đăng lên web › CSV</b> rồi dán link vào đây. Cột cần có:
                 <b> trung_tam, ke_hoach, thuc_hien</b>, thêm được <b>bkk, ghi_chu</b> và <b>ky, hang_muc</b>.
                 Máy chủ đọc sheet mỗi lần bạn bấm đồng bộ, không tự ghi đè.
+                Một bảng tính nhiều tab thì bấm <b>Đọc mọi tab</b>: tab nào mang tên một đầu việc sẽ vào đúng đầu việc đó.
               </p>
               <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
                 <input className="inp" style={{ flex: 1, minWidth: 260 }} value={sheetUrl}
@@ -246,6 +260,10 @@ export function SoLieuCumFT({ category, label }) {
                 <button className="btn btn-sm" onClick={luuLinkSheet} disabled={!sheetUrl}>Lưu link</button>
                 <button className="btn btn-sm" onClick={() => docSheet(false)} disabled={!sheetUrl || dangDoc}>
                   <RefreshCw size={13} />{dangDoc ? "Đang đọc…" : "Đọc thử"}
+                </button>
+                <button className="btn btn-sm" onClick={() => docNhieuTab(false)} disabled={!sheetUrl || dangDoc}
+                  title="Bảng tính có nhiều tab, mỗi tab mang tên một đầu việc">
+                  <Sheet size={13} />Đọc mọi tab
                 </button>
                 {!!sheetUrl && (
                   <a className="btn btn-sm" href={sheetUrl} target="_blank" rel="noreferrer">
@@ -257,6 +275,39 @@ export function SoLieuCumFT({ category, label }) {
                 <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
                   Đồng bộ gần nhất: {new Date(sheetLuc).toLocaleString("vi-VN")}
                 </p>
+              )}
+
+              {nhieuTab && (
+                <div style={{ marginTop: 10 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700 }}>
+                    {nhieuTab.da_ghi ? "Đã ghi" : "Đọc thử"} {nhieuTab.so_tab} tab · kỳ {nhieuTab.ky}
+                  </p>
+                  <table className="tbl" style={{ marginTop: 6 }}>
+                    <thead><tr><th>Tab</th><th>Vào đầu việc</th><th>Số dòng</th><th>Ghi chú</th></tr></thead>
+                    <tbody>
+                      {nhieuTab.ket_qua.map((k) => (
+                        <tr key={k.tab}>
+                          <td><b>{k.tab}</b></td><td className="muted">{k.category}</td><td>{k.dong}</td>
+                          <td style={{ color: k.loi?.length ? RED : undefined, fontSize: 12.5 }}>
+                            {k.loi?.length ? k.loi.slice(0, 3).join("; ") : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                      {nhieuTab.bo_qua.map((k) => (
+                        <tr key={k.tab}>
+                          <td>{k.tab}</td><td className="muted">—</td><td>—</td>
+                          <td className="muted" style={{ fontSize: 12.5 }}>bỏ qua: {k.vi_sao}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!nhieuTab.da_ghi && !!nhieuTab.ket_qua.length && (
+                    <button className="btn btn-red btn-sm" style={{ marginTop: 8 }}
+                      onClick={() => docNhieuTab(true)} disabled={dangDoc}>
+                      Ghi {nhieuTab.ket_qua.reduce((a, k) => a + k.dong, 0)} dòng vào {nhieuTab.ket_qua.length} đầu việc
+                    </button>
+                  )}
+                </div>
               )}
 
               {xemTruoc && (
@@ -299,7 +350,8 @@ export function SoLieuCumFT({ category, label }) {
                   )}
                 </div>
               )}
-              <button className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => { setMoSheet(false); setXemTruoc(null); }}>Đóng</button>
+              <button className="btn btn-sm" style={{ marginTop: 8 }}
+                onClick={() => { setMoSheet(false); setXemTruoc(null); setNhieuTab(null); }}>Đóng</button>
             </div>
           )}
 

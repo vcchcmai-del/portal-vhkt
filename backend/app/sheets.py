@@ -73,8 +73,11 @@ def normalize_url(url: str) -> str:
 # ------------------------------------------------------------------ Tải về
 
 def fetch_csv(url: str) -> str:
-    real = normalize_url(url)
-    req = urllib.request.Request(real, headers={"User-Agent": "CongThongTinNoiBo/1.0"})
+    return _tai_text(normalize_url(url), csv_thoi=True)
+
+
+def _tai_text(url: str, csv_thoi: bool = False) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "CongThongTinNoiBo/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as res:
             raw = res.read(MAX_BYTES + 1)
@@ -96,12 +99,57 @@ def fetch_csv(url: str) -> str:
         raise SheetError("Bảng tính quá lớn (trên 3 MB). Hãy tách bớt dữ liệu.")
 
     text = raw.decode("utf-8-sig", errors="replace")
-    if text.lstrip()[:15].lower().startswith("<!doctype") or "<html" in text[:200].lower():
+    if csv_thoi and (text.lstrip()[:15].lower().startswith("<!doctype") or "<html" in text[:200].lower()):
         raise SheetError(
             "Đường dẫn trả về trang web chứ không phải dữ liệu CSV. "
             "Nhiều khả năng bảng tính chưa được đăng lên web."
         )
     return text
+
+
+def goc_bang_tinh(url: str) -> str:
+    """Phần đường dẫn chung của một bảng tính, bỏ đuôi /edit, /htmlview, /export."""
+    url = (url or "").strip()
+    m = re.match(r"(https?://[^?#]*?/spreadsheets/d/[^/?#]+)", url)
+    if m:
+        return m.group(1)
+    # Đường dẫn khác (máy chủ nội bộ khi thử nghiệm): cắt phần tệp cuối cùng.
+    return re.sub(r"/(htmlview|edit|export|pub)[^/]*$", "", url.split("?")[0]).rstrip("/")
+
+
+def liet_ke_tab(url: str) -> list:
+    """[(tên tab, gid)] của bảng tính — để một link nhiều tab đồng bộ được cả loạt.
+
+    Google không có API công khai cho việc này, nhưng trang /htmlview của chính
+    bảng tính có sẵn danh sách tab; đọc từ đó thì không cần khoá API.
+    """
+    goc = goc_bang_tinh(url)
+    try:
+        html = _tai_text(f"{goc}/htmlview")
+    except SheetError:
+        html = _tai_text(f"{goc}/pubhtml")
+    ra = []
+    for gid, ten in re.findall(r'id="sheet-button-(\d+)"[^>]*>([^<]+)<', html):
+        ra.append((ten.strip(), gid))
+    if not ra:
+        for ten, gid in re.findall(r'\{"name":"(.*?)".*?"gid":"?(\d+)', html):
+            ra.append((ten.strip(), gid))
+    if not ra:
+        raise SheetError("Không đọc được danh sách tab của bảng tính. "
+                         "Hãy chắc bảng tính đã chia sẻ công khai (Đăng lên web).")
+    # Bỏ trùng, giữ thứ tự tab trong bảng tính.
+    thay, kq = set(), []
+    for ten, gid in ra:
+        if gid in thay:
+            continue
+        thay.add(gid)
+        kq.append((ten, gid))
+    return kq
+
+
+def url_tab(url: str, gid: str) -> str:
+    """Đường dẫn tải CSV của đúng một tab."""
+    return f"{goc_bang_tinh(url)}/export?format=csv&gid={gid}"
 
 
 # ------------------------------------------------------------- Đọc bảng
