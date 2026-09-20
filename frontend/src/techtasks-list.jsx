@@ -921,7 +921,8 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
                 <input className="inp" style={{ maxWidth: 220 }} autoFocus value={suaNhom.label}
                   onChange={(e) => setSuaNhom({ ...suaNhom, label: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuTenNhom(); } if (e.key === "Escape") setSuaNhom(null); }} />
-                <span style={{ minWidth: 220 }}>
+                <span className="flex items-center gap-1" style={{ minWidth: 260 }}>
+                  <b style={{ fontSize: 12.5, whiteSpace: "nowrap" }}>Trưởng nhóm:</b>
                   <ChonNguoi value={suaNhom.owner || ""} assignees={assignees}
                     onChange={(v) => setSuaNhom({ ...suaNhom, owner: v })} />
                 </span>
@@ -933,10 +934,14 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
             )}
             <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
             {g.id && suaNhom?.id !== g.id && (
-              <span className="muted flex items-center gap-1" style={{ fontSize: 12 }}
-                title="Trưởng nhóm tự nhập được số liệu của mọi đầu việc trong nhóm">
-                <User size={12} />{g.owner ? `Trưởng nhóm: ${g.owner}` : "chưa có trưởng nhóm"}
-              </span>
+              <button type="button" className="btn btn-sm"
+                style={{ fontSize: 12, padding: "2px 8px", color: g.owner ? undefined : RED,
+                         borderColor: g.owner ? undefined : "#E8C4CB" }}
+                disabled={!duocSua}
+                title="Trưởng nhóm nhập được số liệu của mọi đầu việc trong nhóm này"
+                onClick={() => duocSua && setSuaNhom({ id: g.id, label: g.label, owner: g.owner || "" })}>
+                <User size={12} />{g.owner ? `Trưởng nhóm: ${g.owner}` : "Đặt trưởng nhóm"}
+              </button>
             )}
             <span style={{ flex: 1 }} />
             {g.id && suaNhom?.id !== g.id && (
