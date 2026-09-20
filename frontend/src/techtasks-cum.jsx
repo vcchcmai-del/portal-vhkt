@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Download, ExternalLink, Pencil, Plus, RefreshCw, Sheet, Upload } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Download, ExternalLink, Pencil, Plus, RefreshCw, Sheet, Stethoscope, Timer, Upload } from "lucide-react";
 import { api, coQuyen, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Field, RED, ThaoTac, useCuonToi } from "./ui";
@@ -48,6 +48,8 @@ export function SoLieuCumFT({ category, label }) {
   const [xemTruoc, setXemTruoc] = useState(null);   // kết quả đọc thử từ sheet
   const [nhieuTab, setNhieuTab] = useState(null);  // kết quả đọc bảng tính nhiều tab
   const [tenTab, setTenTab] = useState("");        // tên tab tự gõ, mỗi tên một dòng
+  const [kiemTra, setKiemTra] = useState(null);   // kết quả thử từng cách đọc bảng tính
+  const [tuDong, setTuDong] = useState(null);     // {tu_dong, chu_ky_phut, lan_cuoi_tin, lan_cuoi_ok}
   const [dangDoc, setDangDoc] = useState(false);
   const [err, setErr] = useState("");
   const { danhSach: dsTrungTam, tenTrungTam: tenGoc } = useCenters();
@@ -77,6 +79,12 @@ export function SoLieuCumFT({ category, label }) {
       setSheetUrl(c?.sheet_url || "");
       setSheetLuc(c?.sheet_synced_at || null);
       setCoTheSua(c ? !!c.co_the_sua : null);
+      api.get("/api/admin/tech-tasks/sheet/tu-dong")
+        .then((x) => {
+          const o = (x?.dau_viec || []).find((y) => y.category === category);
+          setTuDong({ chu_ky_phut: x?.chu_ky_phut || 15, ...(o || { tu_dong: false }) });
+          if (o?.tab) setTenTab((cu) => cu || o.tab);
+        }).catch(() => {});
     }).catch(() => {});
     api.get("/api/admin/progress/periods").then((x) => {
       const ds = Array.isArray(x) ? x : [];
@@ -200,7 +208,7 @@ export function SoLieuCumFT({ category, label }) {
     setDangDoc(true);
     try {
       const kq = await api.post("/api/admin/tech-tasks/dong-bo-sheet-nhieu",
-                                { sheet_url: sheetUrl, period, ghi,
+                                { sheet_url: sheetUrl, period, ghi, category,
                                   tabs: tenTab.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) });
       setNhieuTab(kq); setXemTruoc(null); setErr("");
       if (ghi) taiCum();
@@ -208,11 +216,29 @@ export function SoLieuCumFT({ category, label }) {
     finally { setDangDoc(false); }
   };
 
-  const luuLinkSheet = async () => {
+  /** Lưu link + tab, và (tùy chọn) bật tắt đọc tự động — một đường lưu duy nhất. */
+  const luuSheet = async (doi = {}) => {
     try {
-      await api.put(`/api/admin/tech-tasks/categories/${category}`, { sheet_url: sheetUrl });
+      const kq = await api.put(`/api/admin/tech-tasks/categories/${category}/sheet`, {
+        sheet_url: sheetUrl, tab: tenTab.split("\n")[0].trim(), ...doi,
+      });
+      setTuDong((cu) => ({ ...(cu || {}), ...kq }));
       setErr("");
-    } catch (e) { setErr(e.message); }
+      return kq;
+    } catch (e) { setErr(e.message); return null; }
+  };
+
+  const luuLinkSheet = () => luuSheet();
+
+  /** Thử mọi cách đọc bảng tính rồi kể lại từng cách — để biết vướng ở đâu. */
+  const kiemTraSheet = async () => {
+    setDangDoc(true);
+    try {
+      const kq = await api.post("/api/admin/tech-tasks/sheet/kiem-tra",
+                                { sheet_url: sheetUrl, tab: tenTab.split("\n")[0].trim() });
+      setKiemTra(kq); setErr("");
+    } catch (e) { setErr(e.message); setKiemTra(null); }
+    finally { setDangDoc(false); }
   };
 
   const xoaFt = async (f) => {
@@ -288,6 +314,10 @@ export function SoLieuCumFT({ category, label }) {
                   placeholder="https://docs.google.com/spreadsheets/…"
                   onChange={(e) => setSheetUrl(e.target.value)} />
                 <button className="btn btn-sm" onClick={luuLinkSheet} disabled={!sheetUrl}>Lưu link</button>
+                <button className="btn btn-sm" onClick={kiemTraSheet} disabled={!sheetUrl || dangDoc}
+                  title="Thử mọi cách đọc bảng tính và cho biết vướng ở đâu">
+                  <Stethoscope size={13} />Kiểm tra kết nối
+                </button>
                 <button className="btn btn-sm" onClick={() => docSheet(false)} disabled={!sheetUrl || dangDoc}>
                   <RefreshCw size={13} />{dangDoc ? "Đang đọc…" : "Đọc thử"}
                 </button>
@@ -308,6 +338,74 @@ export function SoLieuCumFT({ category, label }) {
                     onChange={(e) => setTenTab(e.target.value)} />
                 </label>
               </div>
+
+              {/* Công tắc để máy chủ tự đọc lại theo chu kỳ — báo cáo tự cập nhật. */}
+              <div className="card flex items-center gap-2"
+                style={{ padding: 10, marginTop: 8, flexWrap: "wrap",
+                         background: tuDong?.tu_dong ? "#F1FAF3" : "#FCFBFB" }}>
+                <button className={`btn btn-sm ${tuDong?.tu_dong ? "btn-red" : ""}`}
+                  disabled={!sheetUrl}
+                  onClick={() => luuSheet({ tu_dong: !tuDong?.tu_dong })}>
+                  <Timer size={13} />{tuDong?.tu_dong ? "Đang tự động đọc — tắt đi" : "Bật tự động đọc"}
+                </button>
+                <span className="muted" style={{ fontSize: 12.5, flex: 1, minWidth: 220 }}>
+                  {tuDong?.tu_dong
+                    ? `Máy chủ đọc lại tab “${tenTab.split("\n")[0].trim() || "đầu tiên"}” mỗi ${tuDong?.chu_ky_phut || 15} phút và ghi thẳng vào số liệu cụm.`
+                    : `Bật lên thì máy chủ tự đọc mỗi ${tuDong?.chu_ky_phut || 15} phút, khỏi phải vào bấm.`}
+                </span>
+                {tuDong?.tu_dong && (
+                  <button className="btn btn-sm" disabled={dangDoc}
+                    onClick={async () => {
+                      setDangDoc(true);
+                      try { await api.post("/api/admin/tech-tasks/sheet/doc-ngay", {}); taiCum();
+                            const x = await api.get("/api/admin/tech-tasks/sheet/tu-dong");
+                            const o = (x?.dau_viec || []).find((y) => y.category === category);
+                            setTuDong({ chu_ky_phut: x?.chu_ky_phut || 15, ...(o || {}) }); }
+                      catch (e) { setErr(e.message); }
+                      finally { setDangDoc(false); }
+                    }}>
+                    <RefreshCw size={13} />Đọc ngay
+                  </button>
+                )}
+                {!!tuDong?.lan_cuoi_tin && (
+                  <span style={{ fontSize: 12.5, width: "100%",
+                                 color: tuDong.lan_cuoi_ok ? "#16A34A" : RED }}>
+                    Lần tự động gần nhất: {tuDong.lan_cuoi_tin}
+                  </span>
+                )}
+              </div>
+
+              {kiemTra && (
+                <div className="card" style={{ padding: 10, marginTop: 8 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{kiemTra.ket_luan}</p>
+                  <table className="tbl">
+                    <thead><tr><th>Cách đọc</th><th>Kết quả</th></tr></thead>
+                    <tbody>
+                      {kiemTra.cua.map((c) => (
+                        <tr key={c.ten}>
+                          <td><b>{c.ten}</b>
+                            <div className="muted" style={{ fontSize: 11.5, wordBreak: "break-all" }}>{c.duong_dan}</div>
+                          </td>
+                          <td style={{ fontSize: 12.5, color: c.duoc ? "#16A34A" : RED }}>
+                            {c.duoc ? "Đọc được — " : "Không đọc được — "}{c.chi_tiet}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!!kiemTra.tabs?.length && (
+                    <p className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+                      Tab trong bảng tính: {kiemTra.tabs.join(" · ")}
+                      {" — "}bấm để điền:{" "}
+                      {kiemTra.tabs.map((t) => (
+                        <button key={t} className="btn btn-sm" style={{ padding: "1px 7px", margin: 2, fontSize: 11 }}
+                          onClick={() => setTenTab(t)}>{t}</button>
+                      ))}
+                    </p>
+                  )}
+                  <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => setKiemTra(null)}>Đóng</button>
+                </div>
+              )}
 
               {sheetLuc && !!sheetUrl && (
                 <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
@@ -334,7 +432,14 @@ export function SoLieuCumFT({ category, label }) {
                       {nhieuTab.bo_qua.map((k) => (
                         <tr key={k.tab}>
                           <td>{k.tab}</td><td className="muted">—</td><td>—</td>
-                          <td className="muted" style={{ fontSize: 12.5 }}>bỏ qua: {k.vi_sao}</td>
+                          <td className="muted" style={{ fontSize: 12.5 }}>
+                            bỏ qua: {k.vi_sao}
+                            {!k.goi_y?.length && (
+                              <div style={{ color: RED }}>
+                                Đổi tên tab thành tên đầu việc, hoặc dùng nút <b>Đọc thử</b> để đưa tab này vào “{label}”.
+                              </div>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

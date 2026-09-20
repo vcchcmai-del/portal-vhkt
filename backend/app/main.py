@@ -198,6 +198,13 @@ def on_startup():
         print(nap_neu_trong())
     chay("Nạp số liệu kèm mã nguồn", buoc_so_lieu_kem_ma_nguon)
 
+    # Đọc lại Google Sheet của các đầu việc đã bật tự động, theo chu kỳ, để
+    # báo cáo tự cập nhật mà không ai phải bấm gì.
+    def buoc_doc_sheet_tu_dong():
+        from .techtasks import bat_dau_vong_sheet
+        bat_dau_vong_sheet()
+    chay("Bật vòng đọc Google Sheet tự động", buoc_doc_sheet_tu_dong)
+
     # Nạp dữ liệu mẫu, chỉ chạy khi cơ sở dữ liệu còn trống.
     def buoc_seed():
         from .seed import seed_if_empty

@@ -149,6 +149,54 @@ def liet_ke_tab(url: str) -> list:
     return kq
 
 
+def kiem_tra(url: str, ten_tab: str = "") -> dict:
+    """Thử từng cửa của Google rồi kể lại đúng từng cửa một.
+
+    Người dùng dán link vào mà không đọc được thì phải biết vì sao: bảng tính
+    chưa mở, tên tab sai, hay thiếu cột. Mỗi cửa thử độc lập, cửa nào đi được
+    thì báo luôn kích thước và dòng đầu để đối chiếu.
+    """
+    goc = goc_bang_tinh(url)
+    cua = []
+
+    def thu(ten, duong, la_csv=True):
+        o = {"ten": ten, "duong_dan": duong, "duoc": False, "chi_tiet": ""}
+        try:
+            t = _tai_text(duong, csv_thoi=la_csv)
+            dong = [d for d in t.splitlines() if d.strip()]
+            o["duoc"] = True
+            o["chi_tiet"] = f"{len(dong)} dòng" + (f" · cột: {dong[0][:120]}" if dong else "")
+        except SheetError as e:
+            o["chi_tiet"] = str(e)
+        cua.append(o)
+        return o
+
+    thu("Tải CSV theo đường dẫn bạn dán", normalize_url(url))
+    if ten_tab:
+        thu(f"Tải CSV tab “{ten_tab}” theo tên", url_tab_theo_ten(url, ten_tab))
+    o = thu("Đọc danh sách tab (trang htmlview)", f"{goc}/htmlview", la_csv=False)
+    tabs = []
+    if o["duoc"]:
+        try:
+            tabs = [t for t, _g in liet_ke_tab(url)]
+            o["chi_tiet"] = f"{len(tabs)} tab: " + ", ".join(tabs[:12])
+        except SheetError as e:
+            o["duoc"] = False
+            o["chi_tiet"] = str(e)
+
+    duoc = [c for c in cua if c["duoc"]]
+    if duoc:
+        ket = "Đọc được. " + "; ".join(c["ten"] for c in duoc) + "."
+    elif any("401" in c["chi_tiet"] or "403" in c["chi_tiet"] for c in cua):
+        ket = ("Bảng tính chưa mở cho người ngoài xem nên Google từ chối (401/403). "
+               "Mở Google Sheet > Chia sẻ > Người có quyền truy cập chung > "
+               "“Bất kỳ ai có đường liên kết”, vai trò Người xem. Hoặc Tệp > Chia sẻ > "
+               "Đăng lên web > chọn CSV rồi dán đường dẫn vừa tạo vào đây.")
+    else:
+        ket = "Không đọc được bảng tính. Xem chi tiết từng cách bên dưới."
+    return {"goc": goc, "ket_luan": ket, "cua": cua, "tabs": tabs}
+
+
 def url_tab(url: str, gid: str) -> str:
     """Đường dẫn tải CSV của đúng một tab theo gid."""
     return f"{goc_bang_tinh(url)}/export?format=csv&gid={gid}"

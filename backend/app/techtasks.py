@@ -1,7 +1,9 @@
 """Phân hệ quản lý công việc mảng kỹ thuật: 10 đầu việc lớn giao cho Tổ
 trưởng/Đội trưởng/FT theo dõi tiến độ (Tuyển dụng, Kiểm soát WO, Kế hoạch 5G...)."""
 import datetime as dt
+import os
 import re
+import time
 import unicodedata
 from collections import defaultdict
 from typing import Optional
@@ -2234,6 +2236,195 @@ def _ma_trung_tam(db: Session) -> dict:
     return ra
 
 
+def _tim_dau_viec_theo_ten(db: Session, ten: str):
+    """Đầu việc nào mang cái tên này — khớp rộng rãi, nhưng phải không nhập nhằng.
+
+    Tên tab trên bảng tính hiếm khi trùng từng chữ với tên đầu việc: người ta
+    gõ "SRT5G" cho "Tích hợp SRT5G", hay "3. Kế hoạch 5G" cho "Kế hoạch 5G".
+    Thử lần lượt: đúng mã, đúng tên, tên đã bỏ số thứ tự, rồi tới chứa nhau —
+    nhưng chỉ nhận khi đúng MỘT đầu việc khớp, còn nhiều thì trả về để người
+    dùng tự chọn chứ không đoán liều.
+
+    Trả về (mã đầu việc, gợi ý) — gợi ý là danh sách tên khi còn nhập nhằng.
+    """
+    goc = _slug(ten)
+    if not goc:
+        return None, []
+    cats = categories(db)
+    bo_so = lambda x: re.sub(r"^\d+[._)\s-]*", "", (x or "").strip())
+
+    for lay in (lambda c: _slug(c.code), lambda c: _slug(c.label), lambda c: _slug(bo_so(c.label))):
+        khop = [c for c in cats if lay(c) == goc]
+        if len(khop) == 1:
+            return khop[0].code, []
+
+    chua = [c for c in cats if goc and (goc in _slug(c.label) or _slug(c.label) in goc)]
+    if len(chua) == 1:
+        return chua[0].code, []
+    if chua:
+        return None, [c.label for c in chua[:6]]
+    return None, []
+
+
+SHEET_TU_DONG_PHUT = int(os.getenv("SHEET_AUTO_MINUTES", "15"))
+
+
+def doc_sheet_mot_dau_viec(db: Session, cat, ky: str = "", nguoi: str = "") -> dict:
+    """Đọc sheet của một đầu việc rồi ghi thẳng vào số liệu cụm.
+
+    Dùng chung cho nút bấm tay và vòng tự động — một đường đi, một cách hiểu,
+    nên cái gì chạy được bằng tay thì chạy được tự động và ngược lại.
+    """
+    url = (cat.sheet_url or "").strip()
+    if not url:
+        return {"ok": False, "tin": "Chưa lưu đường dẫn bảng tính."}
+    hang_muc = progress_items(db, cat.code)
+    if not hang_muc:
+        return {"ok": False, "tin": "Đầu việc chưa theo dõi theo cụm."}
+    ky = (ky or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
+    tab = (cat.sheet_tab or "").strip()
+    duong = sheets.url_tab_theo_ten(url, tab) if tab else url
+    try:
+        header, rows = sheets.read_rows(sheets.fetch_csv(duong))
+    except sheets.SheetError as e:
+        return {"ok": False, "tin": str(e)}
+    if "trung_tam" not in header or "ke_hoach" not in header:
+        return {"ok": False, "tin": "Bảng tính thiếu cột trung_tam / ke_hoach."}
+
+    ma_tt = _ma_trung_tam(db)
+    item = hang_muc[0].code
+    ghi_duoc, loi = 0, []
+    for i, r in enumerate(rows, start=2):
+        tt = ma_tt.get(_slug(r.get("trung_tam", "")))
+        if not tt:
+            loi.append(f"dòng {i}: không nhận ra trung tâm “{r.get('trung_tam', '')}”")
+            continue
+        kh, th, bkk = _so(r.get("ke_hoach")), _so(r.get("thuc_hien")), _so(r.get("bkk"))
+        if kh is None or th is None or bkk is None:
+            loi.append(f"dòng {i} ({tt}): kế hoạch/thực hiện/BKK phải là số")
+            continue
+        ky_dong = (r.get("ky") or "").strip() or ky
+        upsert_progress_center(db, cat.code, item, ky_dong, tt, kh, th,
+                               r.get("ghi_chu", ""), bkk, nguoi or "Tự động đọc sheet")
+        ghi_duoc += 1
+    cat.sheet_synced_at = models.now()
+    tin = f"Đọc {ghi_duoc} dòng lúc {models.now():%H:%M %d/%m}"
+    if loi:
+        tin += f" · {len(loi)} dòng bỏ qua: {loi[0]}"
+    return {"ok": True, "tin": tin, "dong": ghi_duoc, "loi": loi}
+
+
+def chay_sheet_tu_dong() -> dict:
+    """Một vòng đọc cho mọi đầu việc đã bật tự động. Gọi từ luồng nền."""
+    from .database import SessionLocal
+    db = SessionLocal()
+    xong, hong = [], []
+    try:
+        cats = (db.query(models.TechCategory)
+                .filter(models.TechCategory.sheet_auto.is_(True))
+                .filter(models.TechCategory.sheet_url.isnot(None)).all())
+        for c in cats:
+            kq = doc_sheet_mot_dau_viec(db, c)
+            c.sheet_last_ok = bool(kq["ok"])
+            c.sheet_last_msg = kq["tin"][:500]
+            (xong if kq["ok"] else hong).append(c.label)
+        db.commit()
+    finally:
+        db.close()
+    return {"xong": xong, "hong": hong}
+
+
+def bat_dau_vong_sheet():
+    """Luồng nền đọc lại sheet mỗi SHEET_TU_DONG_PHUT phút.
+
+    Dùng luồng thường chứ không phải tác vụ nền của web: đọc sheet là việc
+    chặn (urllib), để nó trong luồng riêng thì không giữ chân request nào.
+    """
+    import threading
+
+    def vong():
+        while True:
+            time.sleep(max(SHEET_TU_DONG_PHUT, 1) * 60)
+            try:
+                chay_sheet_tu_dong()
+            except Exception as e:  # noqa: BLE001 — luồng nền không được chết
+                print("Đọc sheet tự động lỗi:", e)
+
+    t = threading.Thread(target=vong, name="doc-sheet-tu-dong", daemon=True)
+    t.start()
+    return t
+
+
+class SheetTuDongIn(BaseModel):
+    sheet_url: Optional[str] = None
+    tab: Optional[str] = None
+    tu_dong: Optional[bool] = None
+
+
+@admin_router.get("/tech-tasks/sheet/tu-dong")
+def xem_sheet_tu_dong(db: Session = Depends(get_db),
+                      _=Depends(require_module("tech_tasks", "view"))):
+    """Đầu việc nào đang tự đọc sheet, lần gần nhất ra sao."""
+    ra = []
+    for c in categories(db):
+        if not (c.sheet_url or "").strip():
+            continue
+        ra.append({"category": c.code, "label": c.label, "sheet_url": c.sheet_url,
+                   "tab": c.sheet_tab or "", "tu_dong": bool(c.sheet_auto),
+                   "lan_cuoi": c.sheet_synced_at, "lan_cuoi_ok": c.sheet_last_ok,
+                   "lan_cuoi_tin": c.sheet_last_msg or ""})
+    return {"chu_ky_phut": SHEET_TU_DONG_PHUT, "dau_viec": ra}
+
+
+@admin_router.put("/tech-tasks/categories/{code}/sheet")
+def dat_sheet_dau_viec(code: str, data: SheetTuDongIn, db: Session = Depends(get_db),
+                       user=Depends(require_module("tech_tasks", "view")), request: Request = None):
+    """Lưu đường dẫn, tên tab và bật/tắt tự động đọc cho một đầu việc."""
+    _doi_sua_dau_viec(db, user, code)
+    cat = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
+    if not cat:
+        raise HTTPException(404, "Không tìm thấy đầu việc.")
+    if data.sheet_url is not None:
+        cat.sheet_url = data.sheet_url.strip()
+    if data.tab is not None:
+        cat.sheet_tab = data.tab.strip()
+    if data.tu_dong is not None:
+        cat.sheet_auto = bool(data.tu_dong)
+        if cat.sheet_auto and not (cat.sheet_url or "").strip():
+            raise HTTPException(400, "Phải lưu đường dẫn bảng tính trước khi bật tự động.")
+    db.commit()
+    log_action(db, user, "update", "tech_tasks", cat.id,
+               f"Sheet của “{cat.label}”: {'tự động' if cat.sheet_auto else 'thủ công'}",
+               request=request)
+    return {"category": cat.code, "sheet_url": cat.sheet_url or "", "tab": cat.sheet_tab or "",
+            "tu_dong": bool(cat.sheet_auto), "chu_ky_phut": SHEET_TU_DONG_PHUT}
+
+
+@admin_router.post("/tech-tasks/sheet/doc-ngay")
+def doc_sheet_ngay(db: Session = Depends(get_db),
+                   user=Depends(require_module("tech_tasks", "view")), request: Request = None):
+    """Chạy ngay một vòng đọc cho mọi đầu việc đã bật tự động."""
+    kq = chay_sheet_tu_dong()
+    log_action(db, user, "update", "tech_tasks", None,
+               f"Đọc sheet tự động: {len(kq['xong'])} đầu việc", request=request)
+    return kq
+
+
+class SheetKiemTraIn(BaseModel):
+    sheet_url: Optional[str] = None
+    tab: Optional[str] = None
+
+
+@admin_router.post("/tech-tasks/sheet/kiem-tra")
+def kiem_tra_sheet(data: SheetKiemTraIn, _=Depends(require_module("tech_tasks", "view"))):
+    """Thử đọc bảng tính bằng mọi cách và kể lại từng cách — để người dùng biết
+    chính xác đang vướng ở đâu thay vì chỉ thấy “không đọc được”."""
+    url = (data.sheet_url or "").strip()
+    if not url:
+        raise HTTPException(400, "Chưa nhập đường dẫn bảng tính.")
+    return sheets.kiem_tra(url, (data.tab or "").strip())
+
+
 @admin_router.post("/tech-tasks/categories/{code}/dong-bo-sheet")
 def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
                   user=Depends(require_module("tech_tasks", "view")), request: Request = None):
@@ -2529,6 +2720,7 @@ def ghi_hoan_cong(code: str, data: HoanCongIn, db: Session = Depends(get_db),
 
 
 class SheetNhieuIn(BaseModel):
+    category: Optional[str] = None      # đọc từ trong một đầu việc: tab lạ thì vào đầu việc này
     sheet_url: Optional[str] = None
     period: Optional[str] = None
     tabs: Optional[list[str]] = None     # tên tab tự khai; bỏ trống thì tự dò
@@ -2558,15 +2750,21 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
         except sheets.SheetError as e:
             raise HTTPException(400, str(e) + " Hoặc tự gõ tên các tab vào ô “Tên tab”.")
 
-    theo_ten = {_slug(c.label): c.code for c in categories(db)}
     ma_tt = _ma_trung_tam(db)
     ky_mac_dinh = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
 
     ket_qua, bo_qua = [], []
     for ten_tab, gid in tabs:
-        ma_dv = theo_ten.get(_slug(ten_tab))
+        ma_dv, goi_y = _tim_dau_viec_theo_ten(db, ten_tab)
+        # Đọc từ trong một đầu việc cụ thể: tab không mang tên đầu việc nào thì
+        # hiểu là số liệu của chính đầu việc đang mở, khỏi bắt đổi tên tab.
+        if not ma_dv and (data.category or "").strip() and len(tabs) == 1:
+            ma_dv = data.category.strip()
         if not ma_dv:
-            bo_qua.append({"tab": ten_tab, "vi_sao": "không có đầu việc nào tên như vậy"})
+            bo_qua.append({"tab": ten_tab,
+                           "vi_sao": ("tên tab hợp với nhiều đầu việc: " + ", ".join(goi_y)
+                                      if goi_y else "không có đầu việc nào tên như vậy"),
+                           "goi_y": goi_y})
             continue
         hang_muc = progress_items(db, ma_dv)
         if not hang_muc:

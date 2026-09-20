@@ -689,6 +689,14 @@ class TechCategory(Base):
     kieu = Column(String(20), default="cum")
     # Đơn vị của cột công nợ trong bảng hoàn công: "ty" hoặc "trieu" đồng.
     hc_don_vi = Column(String(10), default="ty")
+    # Tab của bảng tính chứa số liệu đầu việc này (để trống = tab đầu tiên).
+    sheet_tab = Column(String(160))
+    # Bật thì máy chủ tự đọc lại sheet theo chu kỳ, không cần ai bấm.
+    sheet_auto = Column(Boolean, default=False)
+    # Kết quả lần đọc tự động gần nhất, để màn hình nói được "đang chạy tốt"
+    # hay "hỏng từ lúc nào vì sao".
+    sheet_last_ok = Column(Boolean)
+    sheet_last_msg = Column(Text)
     sheet_url = Column(String(1000))
     sheet_synced_at = Column(DateTime, nullable=True)
 
