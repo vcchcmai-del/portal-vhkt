@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Download, RefreshCw, Upload } from "lucide-react";
+import { Check, Download, Pencil, RefreshCw, Upload } from "lucide-react";
 import { api, coQuyen } from "./api";
 import { Card, RED } from "./ui";
 
@@ -25,6 +25,10 @@ export function BangHoanCong({ category, label }) {
   const donVi = dl?.don_vi || "ty";
   const tenDonVi = TEN_DON_VI[donVi] || TEN_DON_VI.ty;
   const duocSua = coQuyen("tech_tasks", "update");
+  // Bảng này chủ yếu để đọc và in báo cáo, nên các nút sửa nằm im cho tới khi
+  // người dùng bật chế độ cập nhật.
+  const [cheDoSua, setCheDoSua] = useState(false);
+  const mo = duocSua && cheDoSua;
 
   const tai = (ky = period) => api.get(`/api/admin/hoan-cong/${category}?period=${encodeURIComponent(ky)}`)
     .then((x) => { setDl(x); setErr(""); }).catch((e) => setErr(e.message));
@@ -106,7 +110,7 @@ export function BangHoanCong({ category, label }) {
           <input className="inp" style={{ maxWidth: 120 }} value={period} list="ky-hc"
             onChange={(e) => setPeriod(e.target.value)} placeholder="2026-09" />
           <datalist id="ky-hc">{(dl.ky_co_so_lieu || []).map((k) => <option key={k} value={k} />)}</datalist>
-          {duocSua && (
+          {mo && (
             <select className="inp" style={{ maxWidth: 150 }} value={donVi}
               title="Đơn vị của cột Công nợ" onChange={(e) => doiDonVi(e.target.value)}>
               <option value="ty">Công nợ: tỷ đồng</option>
@@ -115,9 +119,16 @@ export function BangHoanCong({ category, label }) {
           )}
           <button className="btn btn-sm" onClick={() => tai()}><RefreshCw size={13} />Tải lại</button>
           <button className="btn btn-sm" onClick={xuatCsv}><Download size={13} />Xuất CSV</button>
-          {duocSua && (
+          {mo && (
             <button className="btn btn-sm" onClick={() => { setNhap(nhap ? null : { noi_dung: "", kq: null }); setLoat(null); }}>
               <Upload size={13} />Nhập CSV
+            </button>
+          )}
+          {duocSua && (
+            <button className={`btn btn-sm${mo ? " btn-red" : ""}`}
+              title={mo ? "Ẩn các nút sửa, chỉ xem bảng" : "Hiện các nút sửa để nhập số"}
+              onClick={() => { setCheDoSua(!cheDoSua); setSua(null); setLoat(null); setNhap(null); }}>
+              {mo ? <><Check size={13} />Xong</> : <><Pencil size={13} />Cập nhật số liệu</>}
             </button>
           )}
         </div>
@@ -234,7 +245,7 @@ export function BangHoanCong({ category, label }) {
               {dl.nhom.map((g) => (
                 <th key={g.nhom} colSpan={2} style={{ textAlign: "center" }}>
                   {g.nhan}
-                  {duocSua && (
+                  {mo && (
                     <button type="button" className="tt-btn" title={`Sửa cả cột “${g.nhan}”`}
                       style={{ marginLeft: 4 }} onClick={() => moLoat("cot", g.nhom)}>✎</button>
                   )}
@@ -260,22 +271,22 @@ export function BangHoanCong({ category, label }) {
                 <tr key={c.trang_thai}>
                   <td>
                     <b>{c.nhan}</b>
-                    {duocSua && (
+                    {mo && (
                       <button type="button" className="tt-btn" title={`Sửa cả hàng “${c.nhan}”`}
                         style={{ marginLeft: 4 }} onClick={() => moLoat("hang", c.trang_thai)}>✎</button>
                     )}
                   </td>
                   {dl.nhom.map((g, i) => (
                     <React.Fragment key={g.nhom}>
-                      <td style={{ cursor: duocSua ? "pointer" : undefined }}
-                        title={duocSua ? "Bấm để sửa ô này" : undefined}
-                        onClick={() => duocSua && setSua({ nhom: g.nhom, trang_thai: c.trang_thai,
+                      <td style={{ cursor: mo ? "pointer" : undefined }}
+                        title={mo ? "Bấm để sửa ô này" : undefined}
+                        onClick={() => mo && setSua({ nhom: g.nhom, trang_thai: c.trang_thai,
                                                            sl_mct: o[i].sl_mct ?? "", cong_no: o[i].cong_no ?? "",
                                                            note: o[i].note || "" })}>
                         {so(o[i].sl_mct)}
                       </td>
-                      <td style={{ cursor: duocSua ? "pointer" : undefined }}
-                        onClick={() => duocSua && setSua({ nhom: g.nhom, trang_thai: c.trang_thai,
+                      <td style={{ cursor: mo ? "pointer" : undefined }}
+                        onClick={() => mo && setSua({ nhom: g.nhom, trang_thai: c.trang_thai,
                                                            sl_mct: o[i].sl_mct ?? "", cong_no: o[i].cong_no ?? "",
                                                            note: o[i].note || "" })}>
                         {so(o[i].cong_no, 2)}
@@ -309,8 +320,9 @@ export function BangHoanCong({ category, label }) {
         </table>
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-        {duocSua ? "Bấm vào một ô để sửa riêng ô đó, hoặc bấm ✎ ở tên hàng / tên nhóm để sửa cả hàng, cả cột."
-          : "Chỉ người có quyền sửa mới nhập được số."}
+        {!duocSua ? "Chỉ người có quyền sửa mới nhập được số."
+          : mo ? "Bấm vào một ô để sửa riêng ô đó, hoặc bấm ✎ ở tên hàng / tên nhóm để sửa cả hàng, cả cột."
+            : "Bấm “Cập nhật số liệu” khi cần nhập; lúc đó các nút sửa mới hiện ra."}
         {" "}Kế hoạch từng nhóm là tổng các trạng thái nên luôn khớp với các ô bên trên.
         {" "}Công nợ tính bằng <b>{tenDonVi}</b>.
       </p>

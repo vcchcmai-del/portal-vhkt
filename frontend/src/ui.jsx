@@ -208,6 +208,11 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 .tt-btn:hover{color:#0E6CD6;border-color:#C9DBF5;background:#F3F8FE}
 .tt-btn.tt-xoa:hover{color:#C8102E;border-color:#E8C4CB;background:#FBF4F5}
 .tt-btn:focus-visible{outline:2px solid #0E6CD6;outline-offset:1px}
+/* Nút sửa của thẻ nhóm nằm im cho tới khi rê chuột vào thẻ — nhìn cho gọn,
+   nhưng vẫn giữ chỗ để thẻ không nhảy lên nhảy xuống. */
+.the-nhom .tt{opacity:0;transition:opacity .15s}
+.the-nhom:hover .tt,.the-nhom:focus-within .tt{opacity:1}
+@media (hover: none){.the-nhom .tt{opacity:1}}
 .tt-nen{position:fixed;inset:0;background:rgba(28,26,27,.38);display:flex;align-items:center;justify-content:center;
   z-index:1000;padding:16px;font-family:'Be Vietnam Pro', -apple-system, 'Segoe UI', Roboto, sans-serif;color:#1C1A1B}
 .tt-hop{width:100%;max-width:640px;overflow:hidden;background:#fff;box-shadow:0 20px 50px rgba(30,25,27,.25)}

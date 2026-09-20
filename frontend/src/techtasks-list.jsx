@@ -1678,7 +1678,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
         {(fNhom ? theNhom.filter((g) => g.id === fNhom) : theNhom).map((g) => {
           const tt = trangThaiDauViec(g);
           return (
-            <div key={g.id || "chua"} className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div key={g.id || "chua"} className="card the-nhom" style={{ padding: 0, overflow: "hidden" }}>
               <div style={{ height: 4, background: tt.mau }} />
               <div style={{ padding: 12 }}>
                 <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>

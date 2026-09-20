@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api, coQuyen } from "./api";
 import { Card, Field, RED } from "./ui";
 
@@ -30,6 +30,9 @@ export function BangDuAn({ category, label }) {
   const [err, setErr] = useState("");
   const duocSua = coQuyen("tech_tasks", "update");
   const duocXoa = coQuyen("tech_tasks", "delete");
+  // Mặc định bảng sạch để đọc và in; bật chế độ cập nhật thì cột thao tác mới hiện.
+  const [cheDoSua, setCheDoSua] = useState(false);
+  const mo = (duocSua || duocXoa) && cheDoSua;
 
   const tai = () => api.get(`/api/admin/du-an/${category}?period=${encodeURIComponent(period)}`)
     .then((x) => { setDl(x); setErr(""); }).catch((e) => setErr(e.message));
@@ -65,9 +68,16 @@ export function BangDuAn({ category, label }) {
             onChange={(e) => setPeriod(e.target.value)} placeholder="2026-09" />
           <datalist id="ky-da">{(dl.ky_co_so_lieu || []).map((k) => <option key={k} value={k} />)}</datalist>
           <button className="btn btn-sm" onClick={tai}><RefreshCw size={13} />Tải lại</button>
-          {duocSua && (
+          {mo && duocSua && (
             <button className="btn btn-sm" onClick={() => setForm({ ...DONG_TRONG })}>
               <Plus size={13} />Thêm đơn vị
+            </button>
+          )}
+          {(duocSua || duocXoa) && (
+            <button className={`btn btn-sm${mo ? " btn-red" : ""}`}
+              title={mo ? "Ẩn các nút sửa, chỉ xem bảng" : "Hiện các nút sửa để nhập số"}
+              onClick={() => { setCheDoSua(!cheDoSua); setForm(null); }}>
+              {mo ? <><Check size={13} />Xong</> : <><Pencil size={13} />Cập nhật số liệu</>}
             </button>
           )}
         </div>
@@ -122,17 +132,14 @@ export function BangDuAn({ category, label }) {
         <table className="tbl">
           <thead>
             <tr>
-              <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Khối</th>
-              <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Đơn vị</th>
-              <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Tổng triển khai</th>
-              <th colSpan={buoc.length} style={{ textAlign: "center" }}>Khối lượng đã qua từng bước</th>
-              <th colSpan={buoc.length} style={{ textAlign: "center" }}>Tỉ lệ hoàn thành</th>
-              <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Ghi chú (vướng mắc)</th>
-              {(duocSua || duocXoa) && <th rowSpan={2} style={{ textAlign: "right", verticalAlign: "bottom" }}>Thao tác</th>}
-            </tr>
-            <tr>
-              {buoc.map((b) => <th key={`kl-${b.ma}`}>{b.nhan}</th>)}
-              {buoc.map((b) => <th key={`tl-${b.ma}`}>{b.nhan}</th>)}
+              <th style={{ verticalAlign: "bottom" }}>Khối</th>
+              <th style={{ verticalAlign: "bottom" }}>Đơn vị</th>
+              <th style={{ verticalAlign: "bottom" }}>Tổng triển khai</th>
+              {buoc.map((b) => (
+                <th key={b.ma} title={`${b.nhan} — khối lượng và tỉ lệ hoàn thành`}>{b.nhan}</th>
+              ))}
+              <th style={{ verticalAlign: "bottom" }}>Ghi chú (vướng mắc)</th>
+              {mo && <th style={{ textAlign: "right", verticalAlign: "bottom" }}>Thao tác</th>}
             </tr>
           </thead>
           <tbody>
@@ -141,14 +148,16 @@ export function BangDuAn({ category, label }) {
                 <td className="muted" style={{ fontSize: 12.5 }}>{khoiTruoc[i] ? "" : d.khoi}</td>
                 <td><b>{d.don_vi}</b></td>
                 <td><b>{so(d.tong_trien_khai)}</b></td>
-                {buoc.map((b) => <td key={b.ma}>{so(d[b.ma])}</td>)}
                 {buoc.map((b) => (
-                  <td key={b.ma} style={{ color: mauTyLe(d.ty_le[b.ma]), fontWeight: 600 }}>
-                    {pct(d.ty_le[b.ma])}
+                  <td key={b.ma} style={{ whiteSpace: "nowrap" }}>
+                    {so(d[b.ma])}{" "}
+                    <span style={{ color: mauTyLe(d.ty_le[b.ma]), fontWeight: 600, fontSize: 12 }}>
+                      {pct(d.ty_le[b.ma])}
+                    </span>
                   </td>
                 ))}
                 <td className="muted" style={{ fontSize: 12.5, maxWidth: 260, whiteSpace: "normal" }}>{d.note || "—"}</td>
-                {(duocSua || duocXoa) && (
+                {mo && (
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     {duocSua && (
                       <button className="tt-btn" title="Sửa dòng này"
@@ -164,7 +173,7 @@ export function BangDuAn({ category, label }) {
               </tr>
             ))}
             {!dl.dong.length && (
-              <tr><td colSpan={4 + buoc.length * 2} className="muted" style={{ fontSize: 12.5 }}>
+              <tr><td colSpan={4 + buoc.length + (mo ? 1 : 0)} className="muted" style={{ fontSize: 12.5 }}>
                 Kỳ {period} chưa có đơn vị nào — bấm “Thêm đơn vị” để nhập.
               </td></tr>
             )}
@@ -172,13 +181,15 @@ export function BangDuAn({ category, label }) {
               <tr style={{ background: "#FCFBFB" }}>
                 <td /><td><b>Cộng</b></td>
                 <td><b>{so(dl.cong.tong_trien_khai)}</b></td>
-                {buoc.map((b) => <td key={b.ma}><b>{so(dl.cong[b.ma])}</b></td>)}
                 {buoc.map((b) => (
-                  <td key={b.ma} style={{ color: mauTyLe(dl.cong.ty_le[b.ma]), fontWeight: 700 }}>
-                    {pct(dl.cong.ty_le[b.ma])}
+                  <td key={b.ma} style={{ whiteSpace: "nowrap" }}>
+                    <b>{so(dl.cong[b.ma])}</b>{" "}
+                    <span style={{ color: mauTyLe(dl.cong.ty_le[b.ma]), fontWeight: 700, fontSize: 12 }}>
+                      {pct(dl.cong.ty_le[b.ma])}
+                    </span>
                   </td>
                 ))}
-                <td /><td />
+                <td />{mo && <td />}
               </tr>
             )}
           </tbody>

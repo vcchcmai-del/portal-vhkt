@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Download, ExternalLink, Plus, RefreshCw, Sheet, Upload } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Download, ExternalLink, Pencil, Plus, RefreshCw, Sheet, Upload } from "lucide-react";
 import { api, coQuyen, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { Card, Field, RED, ThaoTac } from "./ui";
@@ -50,6 +50,9 @@ export function SoLieuCumFT({ category, label }) {
   const duocThem = coQuyen("tech_tasks", "create");
   const duocSua = coQuyen("tech_tasks", "update");
   const duocXoa = coQuyen("tech_tasks", "delete");
+  // Nút xem luôn có (để mở danh sách FT); nút sửa/xóa chờ bật chế độ cập nhật.
+  const [cheDoSua, setCheDoSua] = useState(false);
+  const mo = (duocSua || duocXoa) && cheDoSua;
 
   useEffect(() => {
     api.get(`/api/admin/progress/items?category=${encodeURIComponent(category)}`)
@@ -222,10 +225,18 @@ export function SoLieuCumFT({ category, label }) {
           <datalist id="ky-cum">{periods.map((p) => <option key={p} value={p} />)}</datalist>
           <button className="btn btn-sm" onClick={() => { taiCum(); if (moFt) taiFt(); }}><RefreshCw size={13} />Tải lại</button>
           <button className="btn btn-sm" onClick={xuatCsv}><Download size={13} />Xuất CSV</button>
-          {duocThem && <button className="btn btn-sm" onClick={() => setNhap((v) => !v)}><Upload size={13} />Nhập Excel</button>}
-          {duocSua && (
-            <button className={`btn btn-sm ${sheetUrl ? "" : ""}`} onClick={() => setMoSheet((v) => !v)}>
+          {mo && duocThem && <button className="btn btn-sm" onClick={() => setNhap((v) => !v)}><Upload size={13} />Nhập Excel</button>}
+          {mo && duocSua && (
+            <button className="btn btn-sm" onClick={() => setMoSheet((v) => !v)}>
               <Sheet size={13} />Google Sheet{sheetUrl ? " ✓" : ""}
+            </button>
+          )}
+          {(duocSua || duocXoa) && (
+            <button className={`btn btn-sm${mo ? " btn-red" : ""}`}
+              title={mo ? "Ẩn các nút sửa, chỉ xem bảng" : "Hiện các nút sửa để nhập số"}
+              onClick={() => { setCheDoSua(!cheDoSua); setFormCum(null); setFormFt(null);
+                               setNhap(false); setMoSheet(false); }}>
+              {mo ? <><Check size={13} />Xong</> : <><Pencil size={13} />Cập nhật số liệu</>}
             </button>
           )}
         </div>
@@ -454,10 +465,10 @@ export function SoLieuCumFT({ category, label }) {
                       <td style={{ textAlign: "right" }}>
                         <ThaoTac onView={() => moCum(c.center)}
                           xemTitle={c.trong ? "Xem / thêm FT cho cụm này" : "Xem chi tiết theo FT"}
-                          onEdit={duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty ?? "",
+                          onEdit={mo && duocSua ? () => setFormCum({ ...c, plan_qty: c.plan_qty ?? "",
                             done_qty: c.done_qty ?? "", bkk_qty: c.bkk_qty ?? "" }) : null}
                           suaTitle={c.trong ? "Nhập số liệu cho cụm này" : "Sửa số liệu cụm"}
-                          onDelete={duocXoa ? () => (c.trong
+                          onDelete={mo && duocXoa ? () => (c.trong
                             ? setErr(`Cụm ${tenTrungTam(c.center)} chưa có số liệu nào để xóa.`)
                             : xoaCum(c)) : null}
                           xoaTitle={c.trong ? "Chưa có số liệu để xóa" : "Xóa số liệu cụm"} />
@@ -472,7 +483,7 @@ export function SoLieuCumFT({ category, label }) {
                               Tổng FT {so(ftTong.th)}/{so(ftTong.kh)} — cụm {so(c.done_qty)}/{so(c.plan_qty)}
                               {!!(ftTong.bkk || c.bkk_qty) && ` · BKK ${so(ftTong.bkk)}/${so(c.bkk_qty)}`}
                             </span>
-                            {duocThem && (
+                            {mo && duocThem && (
                               <button className="btn btn-sm" onClick={() => setFormFt({ ft_name: "", plan_qty: "", done_qty: "", bkk_qty: "", note: "" })}>
                                 <Plus size={13} />Thêm FT
                               </button>
@@ -528,8 +539,8 @@ export function SoLieuCumFT({ category, label }) {
                                   <td><ThanhNho kh={(f.plan_qty || 0) - (f.bkk_qty || 0)} th={f.done_qty} />{" "}
                                     {pct((f.plan_qty || 0) - (f.bkk_qty || 0), f.done_qty)}</td>
                                   <td style={{ textAlign: "right" }}>
-                                    <ThaoTac onEdit={duocSua ? () => setFormFt({ ...f }) : null}
-                                      onDelete={duocXoa ? () => xoaFt(f) : null} />
+                                    <ThaoTac onEdit={mo && duocSua ? () => setFormFt({ ...f }) : null}
+                                      onDelete={mo && duocXoa ? () => xoaFt(f) : null} />
                                   </td>
                                 </tr>
                               ))}
@@ -547,7 +558,7 @@ export function SoLieuCumFT({ category, label }) {
             </table>
           </div>
 
-          {duocThem && (
+          {mo && duocThem && (
             <button className="btn btn-sm" style={{ marginTop: 10 }}
               onClick={() => setFormCum({ center: "", plan_qty: "", done_qty: "", note: "" })}>
               <Plus size={13} />Thêm cụm
