@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Check, Download, Pencil, RefreshCw, Upload } from "lucide-react";
 import { api, coQuyen } from "./api";
-import { Card, RED } from "./ui";
+import { Card, RED, useCuonToi } from "./ui";
 
 /*
  * Bảng hoàn công của một đầu việc.
@@ -29,6 +29,7 @@ export function BangHoanCong({ category, label }) {
   // người dùng bật chế độ cập nhật.
   const [cheDoSua, setCheDoSua] = useState(false);
   const mo = duocSua && cheDoSua;
+  const oNhap = useCuonToi(!!sua || !!loat || !!nhap);
 
   const tai = (ky = period) => api.get(`/api/admin/hoan-cong/${category}?period=${encodeURIComponent(ky)}`)
     .then((x) => { setDl(x); setErr(""); }).catch((e) => setErr(e.message));
@@ -147,7 +148,7 @@ export function BangHoanCong({ category, label }) {
       </div>
 
       {nhap && (
-        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div ref={oNhap} className="card" style={{ padding: 12, marginBottom: 12 }}>
           <p className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
             Dán nội dung CSV đúng khuôn tệp xuất — cột <b>nhom, trang_thai, sl_mct, cong_no</b>,
             thêm được <b>ghi_chu</b>. Bấm <b>Xuất CSV</b> để lấy tệp mẫu có sẵn số hiện tại.
@@ -176,7 +177,7 @@ export function BangHoanCong({ category, label }) {
       )}
 
       {loat && (
-        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div ref={oNhap} className="card" style={{ padding: 12, marginBottom: 12 }}>
           <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
             {loat.kieu === "hang"
               ? `Sửa cả hàng: ${cot.find((c) => c.trang_thai === loat.khoa)?.nhan}`
@@ -212,7 +213,7 @@ export function BangHoanCong({ category, label }) {
       )}
 
       {sua && (
-        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div ref={oNhap} className="card" style={{ padding: 12, marginBottom: 12 }}>
           <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
             {dl.nhom.find((g) => g.nhom === sua.nhom)?.nhan} · {cot.find((c) => c.trang_thai === sua.trang_thai)?.nhan}
           </p>

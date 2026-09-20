@@ -2,7 +2,7 @@
  * Thành phần giao diện dùng chung và toàn bộ phần định kiểu.
  * Bảng màu bám nhận diện Viettel: đỏ #EA0A2A làm chủ đạo, nền trắng.
  */
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Eye, SquarePen, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 
@@ -208,6 +208,9 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px soli
 .tt-btn:hover{color:#0E6CD6;border-color:#C9DBF5;background:#F3F8FE}
 .tt-btn.tt-xoa:hover{color:#C8102E;border-color:#E8C4CB;background:#FBF4F5}
 .tt-btn:focus-visible{outline:2px solid #0E6CD6;outline-offset:1px}
+/* Khung nhập vừa mở: nháy một nhịp cho người dùng biết nó ở đâu. */
+@keyframes o-nhap-nhay{from{box-shadow:0 0 0 3px rgba(200,16,46,.35)}to{box-shadow:0 0 0 3px rgba(200,16,46,0)}}
+.o-nhap-sang{animation:o-nhap-nhay 1.2s ease-out 1}
 /* Nút sửa của thẻ nhóm nằm im cho tới khi rê chuột vào thẻ — nhìn cho gọn,
    nhưng vẫn giữ chỗ để thẻ không nhảy lên nhảy xuống. */
 .the-nhom .tt{opacity:0;transition:opacity .15s}
@@ -266,6 +269,29 @@ export function Delta({ v }) {
       {up ? "+" : ""}{v}%
     </span>
   );
+}
+
+/**
+ * Khung nhập mở ra ở đầu thẻ, còn người dùng lại bấm ở dòng cuối bảng — mở
+ * xong nhìn màn hình không thấy gì đổi, tưởng hỏng. Móc này cuộn khung vào
+ * tầm mắt và cho nháy sáng một nhịp mỗi khi nó mở ra.
+ *
+ *   const oNhap = useCuonToi(!!formCum);
+ *   {formCum && <div ref={oNhap} className="o-nhap">…</div>}
+ */
+export function useCuonToi(mo) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!mo || !ref.current) return;
+    ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    const e = ref.current;
+    e.classList.remove("o-nhap-sang");
+    // Bắt trình duyệt vẽ lại rồi mới gắn lớp, nếu không lần mở thứ hai sẽ
+    // không nháy vì lớp chưa kịp bị gỡ.
+    void e.offsetWidth;
+    e.classList.add("o-nhap-sang");
+  }, [mo]);
+  return ref;
 }
 
 export function Field({ label, children }) {

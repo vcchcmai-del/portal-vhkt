@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Check, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api, coQuyen } from "./api";
-import { Card, Field, RED } from "./ui";
+import { Card, Field, RED, useCuonToi } from "./ui";
 
 /*
  * Bảng dự án của một đầu việc.
@@ -33,6 +33,7 @@ export function BangDuAn({ category, label }) {
   // Mặc định bảng sạch để đọc và in; bật chế độ cập nhật thì cột thao tác mới hiện.
   const [cheDoSua, setCheDoSua] = useState(false);
   const mo = (duocSua || duocXoa) && cheDoSua;
+  const oNhap = useCuonToi(!!form);
 
   const tai = () => api.get(`/api/admin/du-an/${category}?period=${encodeURIComponent(period)}`)
     .then((x) => { setDl(x); setErr(""); }).catch((e) => setErr(e.message));
@@ -95,7 +96,7 @@ export function BangDuAn({ category, label }) {
       </div>
 
       {form && (
-        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div ref={oNhap} className="card" style={{ padding: 12, marginBottom: 12 }}>
           <div className="grid md:grid-cols-4 gap-3">
             <Field label="Đơn vị">
               <input className="inp" autoFocus value={form.don_vi} placeholder="vd: PTO, Thủ Dầu Một"

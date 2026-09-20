@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, ChevronRight, Download, ExternalLink, Pencil, Plus, RefreshCw, Sheet, Upload } from "lucide-react";
 import { api, coQuyen, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
-import { Card, Field, RED, ThaoTac } from "./ui";
+import { Card, Field, RED, ThaoTac, useCuonToi } from "./ui";
 
 /*
  * Số liệu theo cụm (trung tâm) và theo FT của MỘT đầu việc, đặt ngay trong màn
@@ -53,6 +53,8 @@ export function SoLieuCumFT({ category, label }) {
   // Nút xem luôn có (để mở danh sách FT); nút sửa/xóa chờ bật chế độ cập nhật.
   const [cheDoSua, setCheDoSua] = useState(false);
   const mo = (duocSua || duocXoa) && cheDoSua;
+  const oNhapCum = useCuonToi(!!formCum);
+  const oNhapFt = useCuonToi(!!formFt);
 
   useEffect(() => {
     api.get(`/api/admin/progress/items?category=${encodeURIComponent(category)}`)
@@ -406,7 +408,13 @@ export function SoLieuCumFT({ category, label }) {
           </div>
 
           {formCum && (
-            <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+            <div ref={oNhapCum} className="card" style={{ padding: 12, marginBottom: 12 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                {formCum.id ? `Sửa số liệu cụm ${tenTrungTam(formCum.center)}`
+                  : formCum.center ? `Nhập số liệu cho cụm ${tenTrungTam(formCum.center)}`
+                    : "Thêm số liệu cho một cụm"}
+                <span className="muted" style={{ fontWeight: 400 }}> · kỳ {period}</span>
+              </p>
               <div className="grid md:grid-cols-5 gap-3">
                 <Field label="Cụm / trung tâm">
                   <select className="inp" value={formCum.center} disabled={!!formCum.id}
@@ -495,7 +503,7 @@ export function SoLieuCumFT({ category, label }) {
                             )}
                           </div>
                           {formFt && (
-                            <div className="grid md:grid-cols-5 gap-3" style={{ marginBottom: 8 }}>
+                            <div ref={oNhapFt} className="grid md:grid-cols-5 gap-3" style={{ marginBottom: 8 }}>
                               <Field label="Tên FT">
                                 <input className="inp" autoFocus value={formFt.ft_name}
                                   onChange={(e) => setFormFt({ ...formFt, ft_name: e.target.value })} />
