@@ -397,6 +397,58 @@ def _duoc_sua(user) -> bool:
     return "update" in effective_permission_matrix(user).get("tech_tasks", [])
 
 
+def _chuan_ten(t: str) -> str:
+    """So tên người theo kiểu dễ dãi: bỏ khoảng trắng thừa, không phân biệt hoa thường."""
+    return " ".join((t or "").split()).casefold()
+
+
+def _nguoi_phu_trach(db: Session) -> dict:
+    """{mã đầu việc: {tên chuẩn của những người được tự sửa số liệu đầu việc đó}}
+
+    Gồm nhân sự chủ trì đầu việc và trưởng nhóm của nhóm chứa đầu việc đó.
+    """
+    truong = {g.code: _chuan_ten(g.owner) for g in db.query(models.TechGroup).all() if (g.owner or "").strip()}
+    ra = {}
+    for c in categories(db):
+        ten = set()
+        if (c.owner or "").strip():
+            ten.add(_chuan_ten(c.owner))
+        if c.group_code and truong.get(c.group_code):
+            ten.add(truong[c.group_code])
+        ra[c.code] = ten
+    return ra
+
+
+def _duoc_sua_dau_viec(db: Session, user, code: str) -> bool:
+    """Ai sửa được số liệu của một đầu việc.
+
+    Người có quyền "sửa" ở module Công việc kỹ thuật thì sửa được tất cả, như
+    trước. Ngoài ra, nhân sự chủ trì đầu việc và trưởng nhóm của mảng đó cũng
+    sửa được phần của mình mà không cần cấp thêm quyền gì.
+    """
+    if _duoc_sua(user):
+        return True
+    return _chuan_ten(getattr(user, "full_name", "")) in _nguoi_phu_trach(db).get(code, set())
+
+
+def _doi_sua_dau_viec(db: Session, user, code: str):
+    """Chặn lại kèm lời giải thích ai mới sửa được đầu việc này."""
+    if _duoc_sua_dau_viec(db, user, code):
+        return
+    c = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
+    nhan = c.label if c else code
+    ai = []
+    if c and (c.owner or "").strip():
+        ai.append(c.owner.strip())
+    if c and c.group_code:
+        g = db.query(models.TechGroup).filter(models.TechGroup.code == c.group_code).first()
+        if g and (g.owner or "").strip() and g.owner.strip() not in ai:
+            ai.append(g.owner.strip())
+    raise HTTPException(403, f"Chỉ nhân sự chủ trì và trưởng nhóm của “{nhan}” mới sửa được số liệu này"
+                             + (f" (hiện là: {', '.join(ai)})." if ai else
+                                " — đầu việc chưa ghi người chủ trì, nhờ quản trị viên gán giúp."))
+
+
 def _duoc_bao_cao(user, row) -> bool:
     """Có quyền sửa module, hoặc là người được gắn tên trong chính việc này."""
     return _duoc_sua(user) or (user.full_name or "").strip().casefold() in _nguoi_cua_viec(row)
@@ -417,18 +469,26 @@ class CategoryIn(BaseModel):
 class GroupIn(BaseModel):
     label: Optional[str] = None
     note: Optional[str] = None
+    owner: Optional[str] = None
     order_no: Optional[int] = None
     active: Optional[bool] = None
 
 
 @admin_router.get("/tech-tasks/categories")
-def list_categories(db: Session = Depends(get_db), _=Depends(require_module("tech_tasks", "view"))):
+def list_categories(db: Session = Depends(get_db), user=Depends(require_module("tech_tasks", "view"))):
     ensure_seeded(db)
-    ten_nhom = {g.code: g.label for g in db.query(models.TechGroup).all()}
+    nhom = {g.code: g for g in db.query(models.TechGroup).all()}
+    # "co_the_sua": người đang đăng nhập có được nhập số liệu đầu việc này không
+    # — quyền sửa cả module, hoặc là chủ trì đầu việc / trưởng nhóm của mảng.
+    toan_quyen = _duoc_sua(user)
+    ten_toi = _chuan_ten(getattr(user, "full_name", ""))
+    phu_trach = _nguoi_phu_trach(db)
     return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
-             "group": c.group_code or "", "group_label": ten_nhom.get(c.group_code, ""),
+             "group": c.group_code or "", "group_label": (nhom[c.group_code].label if c.group_code in nhom else ""),
+             "group_owner": (nhom[c.group_code].owner or "") if c.group_code in nhom else "",
              "sheet_url": c.sheet_url or "", "sheet_synced_at": c.sheet_synced_at,
-             "kieu": c.kieu or "cum", "hc_don_vi": c.hc_don_vi or "ty"}
+             "kieu": c.kieu or "cum", "hc_don_vi": c.hc_don_vi or "ty",
+             "co_the_sua": toan_quyen or ten_toi in phu_trach.get(c.code, set())}
             for c in categories(db)]
 
 
@@ -620,8 +680,9 @@ def tech_structure(db: Session = Depends(get_db), _=Depends(require_module("tech
                  "active": bool(c.active), "order_no": c.order_no or 0, "dang_dung": dem[c.code]}
                 for c in cats if (c.group_code or "") == ma]
 
-    ra = [{"id": g.code, "label": g.label, "note": g.note or "", "categories": ds(g.code)} for g in nhom]
-    ra.append({"id": "", "label": "Chưa xếp nhóm", "note": "", "categories": ds("")})
+    ra = [{"id": g.code, "label": g.label, "note": g.note or "", "owner": g.owner or "",
+           "categories": ds(g.code)} for g in nhom]
+    ra.append({"id": "", "label": "Chưa xếp nhóm", "note": "", "owner": "", "categories": ds("")})
     return {"nhom": ra, "tat_ca_dau_viec": [{"id": c.code, "label": c.label} for c in cats]}
 
 
@@ -737,10 +798,12 @@ def list_groups(db: Session = Depends(get_db), _=Depends(require_module("tech_ta
     for g in (db.query(models.TechGroup).filter(models.TechGroup.active.is_(True))
               .order_by(models.TechGroup.order_no, models.TechGroup.id).all()):
         ra.append({"id": g.code, "label": g.label, "note": g.note or "", "order_no": g.order_no or 0,
+                   "owner": g.owner or "",
                    "categories": [{"id": c.code, "label": c.label} for c in cats if c.group_code == g.code]})
     chua = [{"id": c.code, "label": c.label} for c in cats if not c.group_code]
     if chua:
-        ra.append({"id": "", "label": "Chưa xếp nhóm", "note": "", "order_no": 999, "categories": chua})
+        ra.append({"id": "", "label": "Chưa xếp nhóm", "note": "", "order_no": 999, "owner": "",
+                   "categories": chua})
     return ra
 
 
@@ -754,11 +817,12 @@ def create_group(data: GroupIn, db: Session = Depends(get_db),
         raise HTTPException(400, "Nhóm đầu việc này đã có.")
     cuoi = db.query(models.TechGroup).order_by(models.TechGroup.order_no.desc()).first()
     row = models.TechGroup(code=_ma_chua_dung(db, models.TechGroup, _slug(label, "nhom")), label=label,
-                           note=(data.note or "").strip(),
+                           note=(data.note or "").strip(), owner=(data.owner or "").strip(),
                            order_no=(cuoi.order_no + 1) if cuoi else 0, active=True)
     db.add(row); db.commit(); db.refresh(row)
     log_action(db, user, "create", "tech_tasks", row.id, "Nhóm đầu việc: " + row.label, request=request)
-    return {"id": row.code, "label": row.label, "note": row.note or "", "categories": []}
+    return {"id": row.code, "label": row.label, "note": row.note or "", "owner": row.owner or "",
+            "categories": []}
 
 
 @admin_router.put("/tech-tasks/groups/{code}")
@@ -771,13 +835,15 @@ def update_group(code: str, data: GroupIn, db: Session = Depends(get_db),
         row.label = data.label.strip()
     if data.note is not None:
         row.note = data.note.strip()
+    if data.owner is not None:
+        row.owner = data.owner.strip()
     if data.order_no is not None:
         row.order_no = data.order_no
     if data.active is not None:
         row.active = data.active
     db.commit()
     log_action(db, user, "update", "tech_tasks", row.id, "Nhóm đầu việc: " + row.label, request=request)
-    return {"id": row.code, "label": row.label, "note": row.note or ""}
+    return {"id": row.code, "label": row.label, "note": row.note or "", "owner": row.owner or ""}
 
 
 @admin_router.delete("/tech-tasks/groups/{code}")
@@ -1701,7 +1767,7 @@ def list_progress_items(category: Optional[str] = None, db: Session = Depends(ge
 
 @admin_router.post("/progress/items")
 def create_progress_item(data: ProgressItemIn, db: Session = Depends(get_db),
-                         user=Depends(require_module("tech_tasks", "create")), request: Request = None):
+                         user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Thêm hạng mục định lượng cho một đầu việc."""
     label = (data.label or "").strip()
     category = (data.category or "").strip()
@@ -1710,6 +1776,7 @@ def create_progress_item(data: ProgressItemIn, db: Session = Depends(get_db),
     ensure_seeded(db)
     if category not in category_ids(db):
         raise HTTPException(400, "Đầu việc không hợp lệ.")
+    _doi_sua_dau_viec(db, user, category)
     if (db.query(models.TechProgressItem)
             .filter(models.TechProgressItem.category_code == category,
                     models.TechProgressItem.label == label).first()):
@@ -1727,10 +1794,11 @@ def create_progress_item(data: ProgressItemIn, db: Session = Depends(get_db),
 
 @admin_router.put("/progress/items/{code}")
 def update_progress_item(code: str, data: ProgressItemIn, db: Session = Depends(get_db),
-                         user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                         user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     row = db.query(models.TechProgressItem).filter(models.TechProgressItem.code == code).first()
     if not row:
         raise HTTPException(404, "Không tìm thấy hạng mục.")
+    _doi_sua_dau_viec(db, user, row.category_code)
     if data.label is not None and data.label.strip():
         row.label = data.label.strip()
     if data.category is not None and data.category.strip() and data.category != row.category_code:
@@ -1754,13 +1822,14 @@ def update_progress_item(code: str, data: ProgressItemIn, db: Session = Depends(
 
 @admin_router.delete("/progress/items/{code}")
 def delete_progress_item(code: str, xoa_so_lieu: bool = False, db: Session = Depends(get_db),
-                         user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+                         user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Xoá hạng mục. Còn số liệu thì mặc định từ chối (trả 409 kèm số dòng để
     giao diện hỏi lại); gửi xoa_so_lieu=true thì xoá luôn số liệu các kỳ.
     Công việc đang liên kết hạng mục được gỡ liên kết chứ không bị xoá."""
     row = db.query(models.TechProgressItem).filter(models.TechProgressItem.code == code).first()
     if not row:
         raise HTTPException(404, "Không tìm thấy hạng mục.")
+    _doi_sua_dau_viec(db, user, row.category_code)
     q_so_lieu = db.query(models.ProgressEntry).filter(models.ProgressEntry.item == code)
     so_dong = q_so_lieu.count()
     if so_dong and not xoa_so_lieu:
@@ -1825,7 +1894,7 @@ def list_progress_centers(category: str, item: str, period: str, db: Session = D
 
 @admin_router.post("/progress/centers")
 def create_progress_center(data: ProgressIn, db: Session = Depends(get_db),
-                           user=Depends(require_module("tech_tasks", "create")), request: Request = None):
+                           user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     if not (data.category or "").strip() or not (data.item or "").strip():
         raise HTTPException(400, "Chưa chọn đầu việc / hạng mục.")
     if not (data.period or "").strip():
@@ -1833,6 +1902,7 @@ def create_progress_center(data: ProgressIn, db: Session = Depends(get_db),
     if not (data.center or "").strip():
         raise HTTPException(400, "Chưa nhập trung tâm.")
     _validate_progress(data, db)
+    _doi_sua_dau_viec(db, user, data.category.strip())
     row = upsert_progress_center(db, data.category, data.item, data.period.strip(), data.center.strip(),
                                   data.plan_qty or 0, data.done_qty or 0, data.note or "", data.bkk_qty or 0,
                                   _ten(user))
@@ -1843,9 +1913,10 @@ def create_progress_center(data: ProgressIn, db: Session = Depends(get_db),
 
 @admin_router.put("/progress/centers/{item_id}")
 def update_progress_center(item_id: int, data: ProgressIn, db: Session = Depends(get_db),
-                           user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                           user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     _validate_progress(data, db)
     row = _get_progress(db, item_id)
+    _doi_sua_dau_viec(db, user, row.category)
     vals = data.model_dump(exclude_unset=True)
     vals.pop("ft_name", None)   # dòng trung tâm luôn giữ ft_name rỗng
     _apply(row, vals)
@@ -1857,8 +1928,9 @@ def update_progress_center(item_id: int, data: ProgressIn, db: Session = Depends
 
 @admin_router.delete("/progress/centers/{item_id}")
 def delete_progress_center(item_id: int, db: Session = Depends(get_db),
-                           user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+                           user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     row = _get_progress(db, item_id)
+    _doi_sua_dau_viec(db, user, row.category)
     label = f"{row.item}/{row.center}/{row.period}"
     db.delete(row); db.commit()
     log_action(db, user, "delete", "tech_tasks", item_id, label, request=request)
@@ -1878,7 +1950,7 @@ def list_progress_ft(category: str, item: str, period: str, center: str, db: Ses
 
 @admin_router.post("/progress/ft")
 def create_progress_ft(data: ProgressIn, db: Session = Depends(get_db),
-                       user=Depends(require_module("tech_tasks", "create")), request: Request = None):
+                       user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     if not (data.category or "").strip() or not (data.item or "").strip():
         raise HTTPException(400, "Chưa chọn đầu việc / hạng mục.")
     if not (data.period or "").strip() or not (data.center or "").strip():
@@ -1886,6 +1958,7 @@ def create_progress_ft(data: ProgressIn, db: Session = Depends(get_db),
     if not (data.ft_name or "").strip():
         raise HTTPException(400, "Chưa nhập tên FT.")
     _validate_progress(data, db)
+    _doi_sua_dau_viec(db, user, data.category.strip())
     existing = (db.query(models.ProgressEntry)
                 .filter(models.ProgressEntry.category == data.category, models.ProgressEntry.item == data.item,
                         models.ProgressEntry.period == data.period.strip(), models.ProgressEntry.center == data.center.strip(),
@@ -1912,9 +1985,10 @@ def create_progress_ft(data: ProgressIn, db: Session = Depends(get_db),
 
 @admin_router.put("/progress/ft/{item_id}")
 def update_progress_ft(item_id: int, data: ProgressIn, db: Session = Depends(get_db),
-                       user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                       user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     _validate_progress(data, db)
     row = _get_progress(db, item_id)
+    _doi_sua_dau_viec(db, user, row.category)
     _apply(row, data.model_dump(exclude_unset=True))
     row.updated_by = _ten(user)
     db.commit(); db.refresh(row)
@@ -1924,8 +1998,9 @@ def update_progress_ft(item_id: int, data: ProgressIn, db: Session = Depends(get
 
 @admin_router.delete("/progress/ft/{item_id}")
 def delete_progress_ft(item_id: int, db: Session = Depends(get_db),
-                       user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+                       user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     row = _get_progress(db, item_id)
+    _doi_sua_dau_viec(db, user, row.category)
     label = f"{row.item}/{row.center}/{row.ft_name}"
     db.delete(row); db.commit()
     log_action(db, user, "delete", "tech_tasks", item_id, label, request=request)
@@ -1978,7 +2053,7 @@ def _ma_trung_tam(db: Session) -> dict:
 
 @admin_router.post("/tech-tasks/categories/{code}/dong-bo-sheet")
 def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
-                  user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                  user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Đọc Google Sheet của đầu việc rồi ghi vào số liệu cụm của kỳ đang chọn.
 
     Sheet để công khai dạng CSV (Tệp > Chia sẻ > Đăng lên web > CSV), cột giống
@@ -1988,6 +2063,7 @@ def dong_bo_sheet(code: str, data: SheetIn, db: Session = Depends(get_db),
     Mặc định chỉ XEM TRƯỚC: trả về từng dòng đọc được kèm số cũ trên cổng để
     đối chiếu; muốn ghi thì gọi lại với ghi=true.
     """
+    _doi_sua_dau_viec(db, user, code)
     cat = db.query(models.TechCategory).filter(models.TechCategory.code == code).first()
     if not cat:
         raise HTTPException(404, "Không tìm thấy đầu việc.")
@@ -2129,8 +2205,9 @@ def xem_du_an(code: str, period: Optional[str] = None, db: Session = Depends(get
 
 @admin_router.put("/du-an/{code}")
 def ghi_du_an(code: str, data: DuAnIn, db: Session = Depends(get_db),
-              user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+              user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Thêm hoặc sửa một đơn vị trong bảng dự án."""
+    _doi_sua_dau_viec(db, user, code)
     don_vi = (data.don_vi or "").strip()
     if not don_vi:
         raise HTTPException(400, "Chưa nhập tên đơn vị.")
@@ -2163,7 +2240,8 @@ def ghi_du_an(code: str, data: DuAnIn, db: Session = Depends(get_db),
 
 @admin_router.delete("/du-an/{code}/{row_id}")
 def xoa_du_an(code: str, row_id: int, db: Session = Depends(get_db),
-              user=Depends(require_module("tech_tasks", "delete")), request: Request = None):
+              user=Depends(require_module("tech_tasks", "view")), request: Request = None):
+    _doi_sua_dau_viec(db, user, code)
     row = db.get(models.DuAnRow, row_id)
     if not row or row.category != code:
         raise HTTPException(404, "Không tìm thấy dòng này.")
@@ -2240,8 +2318,9 @@ def xem_hoan_cong(code: str, period: Optional[str] = None, db: Session = Depends
 
 @admin_router.put("/hoan-cong/{code}")
 def ghi_hoan_cong(code: str, data: HoanCongIn, db: Session = Depends(get_db),
-                  user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                  user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Ghi một ô của bảng hoàn công (một nhóm, một trạng thái)."""
+    _doi_sua_dau_viec(db, user, code)
     if data.nhom not in HOAN_CONG_NHOM:
         raise HTTPException(400, "Nhóm MCT phải là 1, 2 hoặc 3.")
     if data.trang_thai not in {m for m, _ in HOAN_CONG_TRANG_THAI}:
@@ -2356,9 +2435,10 @@ class HoanCongNhieuIn(BaseModel):
 
 @admin_router.put("/hoan-cong/{code}/nhieu")
 def ghi_hoan_cong_nhieu(code: str, data: HoanCongNhieuIn, db: Session = Depends(get_db),
-                        user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                        user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Ghi nhiều ô một lần — sửa cả một hàng (một trạng thái, ba nhóm) hoặc cả
     một cột (một nhóm, mọi trạng thái) mà không phải bấm từng ô."""
+    _doi_sua_dau_viec(db, user, code)
     ky = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
     hop_le = {m for m, _ in HOAN_CONG_TRANG_THAI}
     da_ghi = []
@@ -2392,12 +2472,13 @@ class HoanCongNhapIn(BaseModel):
 
 @admin_router.post("/hoan-cong/{code}/import")
 def nhap_hoan_cong(code: str, data: HoanCongNhapIn, db: Session = Depends(get_db),
-                   user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+                   user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Nhập bảng hoàn công từ CSV đúng khuôn tệp xuất.
 
     Cột cần có: nhom (1/2/3 hoặc tên nhóm), trang_thai (tên hoặc mã), sl_mct,
     cong_no; thêm được ghi_chu. Mặc định chỉ xem trước.
     """
+    _doi_sua_dau_viec(db, user, code)
     ky = (data.period or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
     try:
         header, rows = sheets.read_rows(data.noi_dung or "")

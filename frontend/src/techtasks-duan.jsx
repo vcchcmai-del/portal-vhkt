@@ -28,8 +28,15 @@ export function BangDuAn({ category, label }) {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [form, setForm] = useState(null);
   const [err, setErr] = useState("");
-  const duocSua = coQuyen("tech_tasks", "update");
-  const duocXoa = coQuyen("tech_tasks", "delete");
+  const [coTheSua, setCoTheSua] = useState(null);
+  const duocSua = coTheSua ?? coQuyen("tech_tasks", "update");
+  const duocXoa = duocSua || coQuyen("tech_tasks", "delete");
+  useEffect(() => {
+    api.get("/api/admin/tech-tasks/categories")
+      .then((ds) => { const c = (Array.isArray(ds) ? ds : []).find((x) => x.id === category);
+                      setCoTheSua(c ? !!c.co_the_sua : null); })
+      .catch(() => {});
+  }, [category]);
   // Mặc định bảng sạch để đọc và in; bật chế độ cập nhật thì cột thao tác mới hiện.
   const [cheDoSua, setCheDoSua] = useState(false);
   const mo = (duocSua || duocXoa) && cheDoSua;

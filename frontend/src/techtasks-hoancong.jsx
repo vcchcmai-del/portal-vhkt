@@ -24,7 +24,16 @@ export function BangHoanCong({ category, label }) {
   const [err, setErr] = useState("");
   const donVi = dl?.don_vi || "ty";
   const tenDonVi = TEN_DON_VI[donVi] || TEN_DON_VI.ty;
-  const duocSua = coQuyen("tech_tasks", "update");
+  const [coTheSua, setCoTheSua] = useState(null);
+  const duocSua = coTheSua ?? coQuyen("tech_tasks", "update");
+  useEffect(() => {
+    // Ai nhập được bảng này: người có quyền sửa cả module, chủ trì đầu việc,
+    // hoặc trưởng nhóm của mảng — máy chủ tính sẵn.
+    api.get("/api/admin/tech-tasks/categories")
+      .then((ds) => { const c = (Array.isArray(ds) ? ds : []).find((x) => x.id === category);
+                      setCoTheSua(c ? !!c.co_the_sua : null); })
+      .catch(() => {});
+  }, [category]);
   // Bảng này chủ yếu để đọc và in báo cáo, nên các nút sửa nằm im cho tới khi
   // người dùng bật chế độ cập nhật.
   const [cheDoSua, setCheDoSua] = useState(false);
@@ -321,7 +330,7 @@ export function BangHoanCong({ category, label }) {
         </table>
       </div>
       <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-        {!duocSua ? "Chỉ người có quyền sửa mới nhập được số."
+        {!duocSua ? "Chỉ nhân sự chủ trì, trưởng nhóm của mảng này hoặc người được cấp quyền sửa mới nhập được số."
           : mo ? "Bấm vào một ô để sửa riêng ô đó, hoặc bấm ✎ ở tên hàng / tên nhóm để sửa cả hàng, cả cột."
             : "Bấm “Cập nhật số liệu” khi cần nhập; lúc đó các nút sửa mới hiện ra."}
         {" "}Kế hoạch từng nhóm là tổng các trạng thái nên luôn khớp với các ô bên trên.

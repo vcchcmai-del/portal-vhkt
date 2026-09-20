@@ -640,9 +640,10 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
   };
 
   const luuTenNhom = () => lam(async () => {
-    await api.put(`/api/admin/tech-tasks/groups/${suaNhom.id}`, { label: suaNhom.label });
+    await api.put(`/api/admin/tech-tasks/groups/${suaNhom.id}`,
+                  { label: suaNhom.label, owner: suaNhom.owner || "" });
     setSuaNhom(null);
-  }, "Đã đổi tên nhóm.");
+  }, "Đã lưu nhóm.");
 
   const xoaNhom = (g) => {
     if (!window.confirm(`Xóa nhóm “${g.label}”?\n\n${g.categories.length} đầu việc trong nhóm vẫn còn, chỉ quay về mục “Chưa xếp nhóm”.`)) return;
@@ -708,6 +709,10 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
       <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
         Nhóm cấp 1 (vd CĐBR) gom các đầu việc cùng mảng. Mỗi đầu việc có một nhân sự chủ trì — giao việc mới trong đầu việc đó
         sẽ tự điền sẵn người này.
+        <br />
+        <b>Quyền nhập số liệu đi theo tên ở đây</b>: trưởng nhóm nhập được mọi đầu việc trong nhóm, nhân sự chủ trì
+        nhập được đầu việc của mình — thêm, sửa, xóa số liệu và đọc Google Sheet — mà không cần cấp thêm quyền ở
+        Quản lý tài khoản. Tên phải trùng họ tên của tài khoản đăng nhập.
       </p>
 
       {/* Thanh thêm: gom mọi thao tác tạo mới về một chỗ */}
@@ -913,9 +918,13 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
             )}
             {suaNhom?.id === g.id ? (
               <>
-                <input className="inp" style={{ maxWidth: 240 }} autoFocus value={suaNhom.label}
+                <input className="inp" style={{ maxWidth: 220 }} autoFocus value={suaNhom.label}
                   onChange={(e) => setSuaNhom({ ...suaNhom, label: e.target.value })}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); luuTenNhom(); } if (e.key === "Escape") setSuaNhom(null); }} />
+                <span style={{ minWidth: 220 }}>
+                  <ChonNguoi value={suaNhom.owner || ""} assignees={assignees}
+                    onChange={(v) => setSuaNhom({ ...suaNhom, owner: v })} />
+                </span>
                 <button className="btn btn-red btn-sm" onClick={luuTenNhom}>Lưu</button>
                 <button className="btn btn-sm" onClick={() => setSuaNhom(null)}>Hủy</button>
               </>
@@ -923,9 +932,16 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
               <b style={{ fontSize: 13.5 }}>{g.label}</b>
             )}
             <span className="muted" style={{ fontSize: 12 }}>{g.categories.length} đầu việc</span>
+            {g.id && suaNhom?.id !== g.id && (
+              <span className="muted flex items-center gap-1" style={{ fontSize: 12 }}
+                title="Trưởng nhóm tự nhập được số liệu của mọi đầu việc trong nhóm">
+                <User size={12} />{g.owner ? `Trưởng nhóm: ${g.owner}` : "chưa có trưởng nhóm"}
+              </span>
+            )}
             <span style={{ flex: 1 }} />
             {g.id && suaNhom?.id !== g.id && (
-              <ThaoTac onEdit={duocSua ? () => setSuaNhom({ id: g.id, label: g.label }) : null} suaTitle="Đổi tên nhóm"
+              <ThaoTac onEdit={duocSua ? () => setSuaNhom({ id: g.id, label: g.label, owner: g.owner || "" }) : null}
+                suaTitle="Đổi tên nhóm / đặt trưởng nhóm"
                 onDelete={duocXoa ? () => xoaNhom(g) : null} xoaTitle="Xóa nhóm (đầu việc vẫn giữ)" />
             )}
           </div>

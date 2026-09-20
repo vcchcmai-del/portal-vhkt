@@ -660,6 +660,10 @@ class TechGroup(Base):
     code = Column(String(40), unique=True, nullable=False, index=True)   # vd cdbr
     label = Column(String(160), nullable=False)                          # vd "CĐBR"
     note = Column(Text)
+    # Trưởng nhóm: người chịu trách nhiệm cả mảng. Ghi đúng họ tên như trong
+    # tài khoản đăng nhập thì người đó tự cập nhật được số liệu của mọi đầu
+    # việc trong nhóm, không cần quản trị viên cấp thêm quyền.
+    owner = Column(String(160))
     order_no = Column(Integer, default=0)
     active = Column(Boolean, default=True)
 

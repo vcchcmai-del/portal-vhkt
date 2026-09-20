@@ -132,13 +132,15 @@ for i, g in enumerate(loc["nhom"]):
     cu = nhom_live.get(g["id"]) or nhom_live.get(nhan_live.get(g["label"], ""))
     if cu:
         anh_xa_nhom[g["id"]] = cu["id"]
-        if cu["label"] != g["label"]:
-            print(f"  ~ {cu['label']} -> {g['label']}")
-            ghi(L, "put", f"/tech-tasks/groups/{cu['id']}", {"label": g["label"], "order_no": i})
+        if cu["label"] != g["label"] or (cu.get("owner") or "") != (g.get("owner") or ""):
+            print(f"  ~ {cu['label']} -> {g['label']}"
+                  + (f"  [trưởng nhóm: {g.get('owner') or '—'}]" if g.get("owner") else ""))
+            ghi(L, "put", f"/tech-tasks/groups/{cu['id']}",
+                {"label": g["label"], "owner": g.get("owner") or "", "order_no": i})
         continue
     print(f"  + nhóm “{g['label']}”")
     moi = ghi(L, "post", "/tech-tasks/groups", {"label": g["label"], "note": g.get("note") or "",
-                                                "order_no": i})
+                                                "owner": g.get("owner") or "", "order_no": i})
     anh_xa_nhom[g["id"]] = moi.get("id", g["id"])
     if THAT:
         ghi(L, "put", f"/tech-tasks/groups/{anh_xa_nhom[g['id']]}", {"order_no": i})

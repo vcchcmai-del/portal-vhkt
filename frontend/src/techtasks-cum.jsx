@@ -54,8 +54,11 @@ export function SoLieuCumFT({ category, label }) {
   // Mã dành riêng cho phần kế hoạch chưa chia được về cụm nào.
   const tenTrungTam = (ma) => (ma === CHI_NHANH ? TEN_CHI_NHANH : tenGoc(ma));
   const duocThem = coQuyen("tech_tasks", "create");
-  const duocSua = coQuyen("tech_tasks", "update");
-  const duocXoa = coQuyen("tech_tasks", "delete");
+  // Máy chủ trả sẵn "co_the_sua" cho từng đầu việc: quyền sửa cả module, hoặc
+  // là nhân sự chủ trì đầu việc này, hoặc là trưởng nhóm của mảng.
+  const [coTheSua, setCoTheSua] = useState(null);
+  const duocSua = coTheSua ?? coQuyen("tech_tasks", "update");
+  const duocXoa = duocSua || coQuyen("tech_tasks", "delete");
   // Nút xem luôn có (để mở danh sách FT); nút sửa/xóa chờ bật chế độ cập nhật.
   const [cheDoSua, setCheDoSua] = useState(false);
   const mo = (duocSua || duocXoa) && cheDoSua;
@@ -73,6 +76,7 @@ export function SoLieuCumFT({ category, label }) {
       const c = (Array.isArray(ds) ? ds : []).find((x) => x.id === category);
       setSheetUrl(c?.sheet_url || "");
       setSheetLuc(c?.sheet_synced_at || null);
+      setCoTheSua(c ? !!c.co_the_sua : null);
     }).catch(() => {});
     api.get("/api/admin/progress/periods").then((x) => {
       const ds = Array.isArray(x) ? x : [];
