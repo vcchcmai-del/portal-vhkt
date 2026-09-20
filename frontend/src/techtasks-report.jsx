@@ -80,7 +80,12 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
   const theoNhom = (d.theo_nhom || []).map((g) => ({ ...g, ten: g.label }));
   const uuTien = (d.uu_tien || []).filter((x) => x.tong > 0);
   const khoang = (d.khoang_tien_do || []).map((x) => ({ ...x, ten: x.khoang }));
-  const tienDo = (d.tien_do || []).map((g) => ({ ten: boSo(g.label), ke_hoach: g.plan, thuc_hien: g.done, ty_le: g.rate, ky: g.period }));
+  const tienDoTatCa = (d.tien_do || [])
+    .map((g) => ({ ten: boSo(g.label), ke_hoach: g.plan, thuc_hien: g.done, ty_le: g.rate, ky: g.period }))
+    .filter((g) => g.ke_hoach > 0);
+  // Cả phòng có tám chục đầu việc, vẽ hết thì chữ chồng lên nhau. Lấy 12 đầu
+  // việc kế hoạch lớn nhất — phần còn lại xem ở bảng trong từng đầu việc.
+  const tienDo = [...tienDoTatCa].sort((a, b) => b.ke_hoach - a.ke_hoach).slice(0, 12);
   const kyTienDo = tienDo[0]?.ky;
 
   return (
@@ -99,18 +104,25 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
         <button className="btn btn-sm" onClick={load}><RefreshCw size={14} />Tải lại</button>
       </div>
 
+      {/* Sáu ô này đếm nhiệm vụ. Phòng theo dõi bằng khối lượng nên có lúc chưa
+          giao nhiệm vụ nào — khi ấy bày sáu số 0 chỉ làm rối, giữ lại ô nhân sự. */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        {!!d.tong && <>
         <OChiSo icon={ClipboardList} nhan="Tổng công việc" gia_tri={d.tong} phu={`${conMo} việc đang mở`} mau="#0E6CD6" />
         <OChiSo icon={CheckCircle2} nhan="Hoàn thành" gia_tri={tt.done || 0} phu={`Tỷ lệ ${pct(d.ty_le_hoan_thanh)}`} mau={MAU.done} />
         <OChiSo icon={Clock} nhan="Đang thực hiện" gia_tri={tt.doing || 0} phu={`${tt.todo || 0} chưa bắt đầu`} mau={MAU.doing} />
         <OChiSo icon={AlertTriangle} nhan="Quá hạn" gia_tri={tt.overdue || 0} phu={conMo ? `${pct((tt.overdue || 0) / conMo)} số việc đang mở` : "—"} mau={MAU.overdue} />
         <OChiSo icon={Clock} nhan="Sắp đến hạn (≤ 3 ngày)" gia_tri={sapHan} phu={`${d.han?.khong_han || 0} việc chưa đặt hạn`} mau={MAU.todo} />
+        </>}
         <OChiSo icon={Users} nhan="Nhân viên có việc" gia_tri={(d.nguoi || []).length}
           phu={canhBao.length ? `${canhBao.length} người đang có cảnh báo` : "Không ai bị cảnh báo"} mau={canhBao.length ? MAU.overdue : "#0E6CD6"} />
       </div>
 
       {!d.tong && (
-        <Card><Empty title="Chưa có công việc nào." hint="Biểu đồ trạng thái, đầu việc và nhân viên sẽ hiện khi giao việc ở tab Danh sách công việc." /></Card>
+        <p className="muted" style={{ fontSize: 12.5 }}>
+          Kỳ này chưa giao nhiệm vụ riêng lẻ nào — báo cáo dưới đây đọc theo khối lượng.
+          Biểu đồ trạng thái và hạn xử lý sẽ hiện khi có nhiệm vụ ở tab Danh sách công việc.
+        </p>
       )}
 
       {!!d.tong && (
@@ -202,7 +214,7 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
       )}
 
       <div className="grid lg:grid-cols-2 gap-4">
-        {!!nguoi.length && (
+        {!!d.tong && !!nguoi.length && (
           <Khung tieuDe={d.toan_phong ? "Công việc theo nhân viên" : "Công việc của tôi"}
             phu={(d.nguoi || []).length > 15 ? "15 người nhiều việc nhất — bấm để xem" : "Bấm tên để xem danh sách"}
             cao={Math.max(220, 44 + nguoi.length * 30)}>
@@ -250,22 +262,26 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
               </BarChart>
           </Khung>
         )}
-        {!!tienDo.length && (
-          <Khung tieuDe="Tiến độ hạng mục theo đầu việc" phu={kyTienDo ? `Kỳ ${kyTienDo} — tổng các trung tâm` : ""} cao={250}>
-              <BarChart data={tienDo} margin={{ top: 18, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EEF1F6" />
-                <XAxis dataKey="ten" tick={{ fontSize: 11 }} interval={0} tickFormatter={(v) => rutGon(v, 12)} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip {...tooltipStyle} formatter={(v, n) => [so(v), n]} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar isAnimationActive={false} dataKey="ke_hoach" name="Kế hoạch" fill="#5B8DEF" radius={[5, 5, 0, 0]} />
-                <Bar isAnimationActive={false} dataKey="thuc_hien" name="Thực hiện" fill={MAU.done} radius={[5, 5, 0, 0]}>
-                  <LabelList dataKey="ty_le" position="top" style={{ fontSize: 11, fontWeight: 700 }} formatter={pct} />
-                </Bar>
-              </BarChart>
-          </Khung>
-        )}
       </div>
+
+      {!!tienDo.length && (
+        <Khung tieuDe="Khối lượng theo đầu việc"
+          phu={`${kyTienDo ? `Kỳ ${kyTienDo} — tổng các trung tâm` : ""}${tienDoTatCa.length > tienDo.length
+            ? ` · 12/${tienDoTatCa.length} đầu việc kế hoạch lớn nhất` : ""}`}
+          cao={Math.max(260, 60 + tienDo.length * 30)}>
+            <BarChart data={tienDo} layout="vertical" margin={{ top: 4, right: 56, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EEF1F6" />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="ten" width={210} tick={{ fontSize: 11.5 }} tickFormatter={(v) => rutGon(v, 30)} />
+              <Tooltip {...tooltipStyle} formatter={(v, n) => [so(v), n]} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar isAnimationActive={false} dataKey="ke_hoach" name="Kế hoạch" fill="#5B8DEF" radius={[0, 5, 5, 0]} />
+              <Bar isAnimationActive={false} dataKey="thuc_hien" name="Thực hiện" fill={MAU.done} radius={[0, 5, 5, 0]}>
+                <LabelList dataKey="ty_le" position="right" style={{ fontSize: 11, fontWeight: 700 }} formatter={pct} />
+              </Bar>
+            </BarChart>
+        </Khung>
+      )}
 
       {!!canhBao.length && (
         <Card title={`Cảnh báo tồn việc — ${canhBao.length} người`} icon={AlertTriangle} pad={false}>

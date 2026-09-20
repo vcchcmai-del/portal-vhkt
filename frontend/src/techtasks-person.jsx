@@ -108,33 +108,22 @@ export function TheoNhanVienTab({ onXemViec }) {
         <OSo nhan="Tồn quá hạn" so={so(tong.ton_qua_han)} mau={tong.ton_qua_han ? MAU_MUC.do : MAU_MUC.xanh} />
       </div>
 
-      {!!canhBao.length && (
-        <div className="card" style={{ padding: 12, borderLeft: `4px solid ${canhBao.some((p) => p.muc === "do") ? MAU_MUC.do : MAU_MUC.vang}` }}>
-          <p className="flex items-center gap-2" style={{ fontWeight: 700, marginBottom: 6 }}>
-            <AlertTriangle size={16} color={canhBao.some((p) => p.muc === "do") ? MAU_MUC.do : MAU_MUC.vang} />
-            Còn tồn khối lượng — {canhBao.length} người
-          </p>
-          {canhBao.map((p) => (
-            <div key={p.name} className="flex items-center gap-2" style={{ fontSize: 13, padding: "2px 0", flexWrap: "wrap" }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: MAU_MUC[p.muc], display: "inline-block" }} />
-              <b>{p.name}</b>
-              <span className="muted">
-                tồn {so(p.ton)}
-                {!!p.ton_qua_han && <span style={{ color: MAU_MUC.do, fontWeight: 700 }}> · quá hạn {so(p.ton_qua_han)}</span>}
-                {!!p.ghi_chu?.length && ` · ${p.ghi_chu.join(" · ")}`}
-              </span>
-              <button className="btn btn-sm" style={{ padding: "2px 8px" }} onClick={() => onXemViec(p.name)}>Xem việc</button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {data.toan_phong && (
         <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
           <input className="inp" style={{ maxWidth: 260 }} placeholder="🔎 Tìm nhân viên…" value={tim} onChange={(e) => setTim(e.target.value)} />
           <button className={`btn btn-sm ${chiCanhBao ? "btn-red" : ""}`} onClick={() => setChiCanhBao((v) => !v)}>
             <AlertTriangle size={14} />Chỉ người còn tồn
           </button>
+          {/* Nói một lần ở đây; ai còn tồn thì dòng của họ trong bảng dưới đã
+              tô vàng và ghi rõ tồn bao nhiêu, khỏi liệt kê lại lần nữa. */}
+          {!!canhBao.length && (
+            <span style={{ fontSize: 12.5, color: canhBao.some((p) => p.muc === "do") ? MAU_MUC.do : MAU_MUC.vang,
+                           fontWeight: 700 }}>
+              {canhBao.length} người còn tồn khối lượng
+              {(() => { const n = canhBao.filter((p) => p.ton_qua_han).length;
+                        return n ? `, ${n} người có tồn quá hạn` : ""; })()}
+            </span>
+          )}
         </div>
       )}
 

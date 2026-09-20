@@ -1196,18 +1196,6 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   };
 
   /** Mọi người đang được gắn tên trong các việc đang tải, kèm số việc — cho ô lọc. */
-  const dsNguoi = useMemo(() => {
-    const dem = new Map();
-    for (const x of rows) {
-      const ten = new Map();
-      for (const t of [x.assignee, x.reporter, ...(x.coordinators || [])]) {
-        if (t && t.trim()) ten.set(chuanTen(t), t.replace(/\s+/g, " ").trim());
-      }
-      for (const [k, t] of ten) dem.set(k, { name: dem.get(k)?.name || t, n: (dem.get(k)?.n || 0) + 1 });
-    }
-    return [...dem.values()].sort((a, b) => a.name.localeCompare(b.name, "vi"));
-  }, [rows]);
-
   // Đầu việc nào thuộc nhóm nào — để lọc nhanh khi bấm một ô nhóm.
   const nhomCuaDauViec = useMemo(
     () => Object.fromEntries(summary.map((c) => [c.category, c.group || ""])), [summary]);
@@ -1320,6 +1308,10 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
   /* Khung giao việc / xem chi tiết một nhiệm vụ — dùng chung cho màn danh
      sách và màn chi tiết đầu việc, để bấm vào đâu thì khung mở ngay ở đó. */
+  // Đang tìm hay đang lọc thì mới bày bảng nhiệm vụ ra; không thì thẻ nhóm ở
+  // trên đã là danh sách rồi, bày thêm bảng rỗng chỉ tổ rối.
+  const dangLoc = !!(search || fStatus || fNguoi || cuaToi || fNhom || fCategory);
+
   const khungViec = (
     <>
       {form && (
@@ -1751,19 +1743,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       {!dauViecDangXem && (
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <input className="inp" style={{ maxWidth: 280 }} placeholder="🔎 Tìm theo nội dung / người làm / phối hợp…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select className="inp" style={{ maxWidth: 240 }} value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
-          <option value="">Mọi đầu việc</option>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
         <select className="inp" style={{ maxWidth: 180 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
           <option value="">Mọi trạng thái</option>
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select className="inp" style={{ maxWidth: 230 }} value={fNguoi} onChange={(e) => { setFNguoi(e.target.value); if (e.target.value) setCuaToi(false); }}
-          title="Lọc theo nhân viên được gắn tên trong việc">
-          <option value="">Mọi nhân viên</option>
-          {fNguoi && !dsNguoi.some((p) => chuanTen(p.name) === chuanTen(fNguoi)) && <option value={fNguoi}>{fNguoi} (0)</option>}
-          {dsNguoi.map((p) => <option key={p.name} value={p.name}>{p.name} ({p.n})</option>)}
         </select>
         {fNguoi && (
           <select className="inp" style={{ maxWidth: 170 }} value={fVaiTro} onChange={(e) => setFVaiTro(e.target.value)}>
@@ -1792,7 +1774,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
       {!dauViecDangXem && khungViec}
 
-      {!dauViecDangXem && (
+      {!dauViecDangXem && (dangLoc || !!filteredRows.length) && (
       <Card pad={false}>
         <div style={{ overflowX: "auto" }}>
           <table className="tbl">
@@ -1856,18 +1838,8 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
             </tbody>
           </table>
           {!filteredRows.length && (
-            <>
-              <Empty title={cuaToi ? "Bạn chưa được gắn tên trong việc nào." : "Chưa có công việc."}
-                hint={rows.length ? "Không có dòng nào khớp bộ lọc."
-                  : duocGiao ? "Giao việc xong, mỗi dòng việc có nút Sửa / Xóa ở cuối dòng." : ""} />
-              {!rows.length && duocGiao && !form && (
-                <div style={{ textAlign: "center", paddingBottom: 20 }}>
-                  <button className="btn btn-red btn-sm" onClick={() => { setMoId(null); moForm(blankTask(categories, fCategory)); }}>
-                    <Plus size={14} />Giao việc mới
-                  </button>
-                </div>
-              )}
-            </>
+            <Empty title={cuaToi ? "Bạn chưa được gắn tên trong việc nào." : "Không có việc nào khớp."}
+              hint="Đổi từ khóa hoặc bỏ lọc để xem lại." />
           )}
         </div>
       </Card>
