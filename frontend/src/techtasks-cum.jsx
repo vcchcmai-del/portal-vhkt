@@ -27,6 +27,10 @@ function ThanhNho({ kh, th }) {
   );
 }
 
+/** Mã dòng giữ phần kế hoạch chưa chia về cụm — xem chú thích đầu tệp. */
+const CHI_NHANH = "CN";
+const TEN_CHI_NHANH = "Chưa chia cụm (mức chi nhánh)";
+
 export function SoLieuCumFT({ category, label }) {
   const [hangMuc, setHangMuc] = useState([]);
   const [item, setItem] = useState("");
@@ -46,7 +50,9 @@ export function SoLieuCumFT({ category, label }) {
   const [tenTab, setTenTab] = useState("");        // tên tab tự gõ, mỗi tên một dòng
   const [dangDoc, setDangDoc] = useState(false);
   const [err, setErr] = useState("");
-  const { danhSach: dsTrungTam, tenTrungTam } = useCenters();
+  const { danhSach: dsTrungTam, tenTrungTam: tenGoc } = useCenters();
+  // Mã dành riêng cho phần kế hoạch chưa chia được về cụm nào.
+  const tenTrungTam = (ma) => (ma === CHI_NHANH ? TEN_CHI_NHANH : tenGoc(ma));
   const duocThem = coQuyen("tech_tasks", "create");
   const duocSua = coQuyen("tech_tasks", "update");
   const duocXoa = coQuyen("tech_tasks", "delete");
@@ -105,7 +111,7 @@ export function SoLieuCumFT({ category, label }) {
   const dong = useMemo(() => {
     const co = new Map(cums.map((c) => [c.center, c]));
     const ds = dsTrungTam.map((t) => co.get(t.code) || { center: t.code, trong: true });
-    for (const c of cums) if (!dsTrungTam.some((t) => t.code === c.center)) ds.push(c);
+    for (const c of cums) if (!dsTrungTam.some((t) => t.code === c.center)) ds.unshift(c);
     return ds;
   }, [cums, dsTrungTam]);
 
@@ -397,7 +403,8 @@ export function SoLieuCumFT({ category, label }) {
 
           <div className="card" style={{ padding: 10, marginBottom: 10, background: "#FCFBFB" }}>
             <div className="flex items-center gap-3" style={{ flexWrap: "wrap", fontSize: 13 }}>
-              <b>Mức chi nhánh (tổng {cums.length} cụm):</b>
+              <b>Mức chi nhánh (tổng {cums.filter((c) => c.center !== CHI_NHANH).length} cụm
+                {cums.some((c) => c.center === CHI_NHANH) ? " + phần chưa chia" : ""}):</b>
               <span>Kế hoạch <b>{so(tong.kh)}</b></span>
               <span>Thực hiện <b>{so(tong.th)}</b></span>
               <span>Tồn <b>{so(Math.max(tong.kh - tong.bkk - tong.th, 0))}</b></span>
@@ -420,6 +427,7 @@ export function SoLieuCumFT({ category, label }) {
                   <select className="inp" value={formCum.center} disabled={!!formCum.id}
                     onChange={(e) => setFormCum({ ...formCum, center: e.target.value })}>
                     <option value="">— Chọn cụm —</option>
+                    <option value={CHI_NHANH}>{TEN_CHI_NHANH}</option>
                     {dsTrungTam.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.short || c.name}</option>)}
                   </select>
                 </Field>
@@ -565,6 +573,14 @@ export function SoLieuCumFT({ category, label }) {
               </tbody>
             </table>
           </div>
+
+          {cums.some((c) => c.center === CHI_NHANH) && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Dòng <b>{TEN_CHI_NHANH}</b> giữ phần kế hoạch bảng giấy chỉ cho tổng toàn HCM,
+              chưa chia về cụm nào. Trung tâm nhận phần của mình thì chuyển bớt số từ dòng này
+              sang cụm đó — tổng chi nhánh không đổi.
+            </p>
+          )}
 
           {mo && duocThem && (
             <button className="btn btn-sm" style={{ marginTop: 10 }}

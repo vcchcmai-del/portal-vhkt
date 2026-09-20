@@ -1628,7 +1628,9 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                 <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
                   <b style={{ fontSize: 22, color: mau, lineHeight: 1.1 }}>{phanTram(g.percent)}</b>
                   <span className="muted" style={{ fontSize: 11.5, textAlign: "right", flex: 1 }}>
-                    {g.kh ? <>{soGon(g.th)}/{soGon(g.kh - g.bkk)}</> : <>{g.done}/{g.total} nhiệm vụ</>}
+                    {g.kh ? <>{soGon(g.th)}/{soGon(g.kh - g.bkk)}</>
+                      : g.total ? <>{g.done}/{g.total} nhiệm vụ</>
+                        : <span className="muted">chưa có kế hoạch</span>}
                   </span>
                 </div>
                 <TienDoNho percent={g.percent} rong="100%" anSo />
