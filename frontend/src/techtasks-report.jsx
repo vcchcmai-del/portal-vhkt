@@ -5,6 +5,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { api } from "./api";
+import { PhanTichKhoiLuong } from "./techtasks-phantich";
 import { Card, Empty, RED, ThaoTac, tooltipStyle } from "./ui";
 
 /*
@@ -80,21 +81,18 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
   const theoNhom = (d.theo_nhom || []).map((g) => ({ ...g, ten: g.label }));
   const uuTien = (d.uu_tien || []).filter((x) => x.tong > 0);
   const khoang = (d.khoang_tien_do || []).map((x) => ({ ...x, ten: x.khoang }));
-  const tienDoTatCa = (d.tien_do || [])
-    .map((g) => ({ ten: boSo(g.label), ke_hoach: g.plan, thuc_hien: g.done, ty_le: g.rate, ky: g.period }))
-    .filter((g) => g.ke_hoach > 0);
-  // Cả phòng có tám chục đầu việc, vẽ hết thì chữ chồng lên nhau. Lấy 12 đầu
-  // việc kế hoạch lớn nhất — phần còn lại xem ở bảng trong từng đầu việc.
-  const tienDo = [...tienDoTatCa].sort((a, b) => b.ke_hoach - a.ke_hoach).slice(0, 12);
-  const kyTienDo = tienDo[0]?.ky;
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Phần chính: phân tích khối lượng — thứ cả phòng thật sự theo dõi. */}
+      <PhanTichKhoiLuong onXemNguoi={onXemViec} onXemDauViec={onXemDauViec} />
+
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <b>Báo cáo công việc kỹ thuật</b>
+          <b>Nhiệm vụ giao riêng lẻ</b>
           <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>
-            Tổng hợp theo trạng thái, đầu việc, nhân viên và hạn xử lý{d.toan_phong ? "" : " — tài khoản của bạn chỉ thấy số liệu của chính mình ở phần nhân viên"}.
+            Phần này chỉ đếm các nhiệm vụ giao đích danh trong từng đầu việc — khối lượng của cả phòng đã nằm ở
+            phân tích bên trên{d.toan_phong ? "" : "; tài khoản của bạn chỉ thấy số liệu của chính mình"}.
             Bấm cột đầu việc hoặc tên nhân viên để mở danh sách việc tương ứng.
           </p>
         </div>
@@ -264,46 +262,7 @@ export function BaoCaoCongViec({ onXemViec, onXemDauViec }) {
         )}
       </div>
 
-      {!!tienDo.length && (
-        <Khung tieuDe="Khối lượng theo đầu việc"
-          phu={`${kyTienDo ? `Kỳ ${kyTienDo} — tổng các trung tâm` : ""}${tienDoTatCa.length > tienDo.length
-            ? ` · 12/${tienDoTatCa.length} đầu việc kế hoạch lớn nhất` : ""}`}
-          cao={Math.max(260, 60 + tienDo.length * 30)}>
-            <BarChart data={tienDo} layout="vertical" margin={{ top: 4, right: 56, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EEF1F6" />
-              <XAxis type="number" tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="ten" width={210} tick={{ fontSize: 11.5 }} tickFormatter={(v) => rutGon(v, 30)} />
-              <Tooltip {...tooltipStyle} formatter={(v, n) => [so(v), n]} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar isAnimationActive={false} dataKey="ke_hoach" name="Kế hoạch" fill="#5B8DEF" radius={[0, 5, 5, 0]} />
-              <Bar isAnimationActive={false} dataKey="thuc_hien" name="Thực hiện" fill={MAU.done} radius={[0, 5, 5, 0]}>
-                <LabelList dataKey="ty_le" position="right" style={{ fontSize: 11, fontWeight: 700 }} formatter={pct} />
-              </Bar>
-            </BarChart>
-        </Khung>
-      )}
 
-      {!!canhBao.length && (
-        <Card title={`Cảnh báo tồn việc — ${canhBao.length} người`} icon={AlertTriangle} pad={false}>
-          <div style={{ overflowX: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th>Nhân viên</th><th>Tồn</th><th>Quá hạn</th><th>Sắp hạn</th><th>Cảnh báo</th><th style={{ textAlign: "right" }}>Thao tác</th></tr></thead>
-              <tbody>
-                {canhBao.map((p) => (
-                  <tr key={p.name} style={{ background: p.muc === "do" ? "#FDF1F3" : "#FFF8E8" }}>
-                    <td><b>{p.name}</b></td>
-                    <td style={{ fontWeight: 700 }}>{p.ton}</td>
-                    <td style={{ color: p.overdue ? MAU.overdue : undefined, fontWeight: 700 }}>{p.overdue}</td>
-                    <td style={{ color: p.sap_han ? MAU.todo : undefined, fontWeight: 700 }}>{p.sap_han}</td>
-                    <td style={{ color: p.muc === "do" ? MAU.overdue : "#B7791F", fontSize: 12.5 }}>{p.canh_bao.join(" · ")}</td>
-                    <td style={{ textAlign: "right" }}><ThaoTac onView={() => onXemViec?.(p.name)} xemTitle={`Xem việc của ${p.name}`} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

@@ -1272,6 +1272,189 @@ def export_tasks_csv(category: Optional[str] = None, group: Optional[str] = None
 
 # ------------------------------------------------------------ Báo cáo (Dashboard)
 
+KHOANG_HOAN_THANH = [
+    (0.0, 0.0, "Chưa làm", "#C8102E"),
+    (0.0, 0.5, "Dưới 50%", "#F2A007"),
+    (0.5, 0.8, "50–80%", "#5B8DEF"),
+    (0.8, 1.0, "80–100%", "#0E6CD6"),
+    (1.0, 9.9, "Đạt 100%", "#16A34A"),
+]
+IM_LANG_VANG = 7      # ngày không cập nhật thì nhắc
+IM_LANG_DO = 14       # ngày không cập nhật thì báo động
+NHIP_NGAY = 30        # bề dài biểu đồ nhịp cập nhật
+
+
+def _khoang_hoan_thanh(r):
+    if r is None:
+        return None
+    if r <= 0:
+        return KHOANG_HOAN_THANH[0][2]
+    for thap, cao, nhan, _m in KHOANG_HOAN_THANH[1:]:
+        if r < cao or nhan == "Đạt 100%":
+            return nhan
+    return KHOANG_HOAN_THANH[-1][2]
+
+
+def _lan_sua_gan_day(db: Session, tu_ngay):
+    """Mọi lần sửa số liệu gần đây: (ngày, người, mã đầu việc).
+
+    Đọc từ chính các bảng số liệu — ai sửa dòng nào, lúc nào — nên không phụ
+    thuộc nhật ký hệ thống và vẫn đúng khi nhật ký đã dọn bớt.
+    """
+    ra = []
+    for model, lay_ma in ((models.ProgressEntry, lambda r: r.category),
+                          (models.HoanCongRow, lambda r: r.category),
+                          (models.DuAnRow, lambda r: r.category)):
+        for r in db.query(model).all():
+            luc = getattr(r, "updated_at", None) or getattr(r, "created_at", None)
+            if not luc:
+                continue
+            ngay = luc.date()
+            if ngay < tu_ngay:
+                continue
+            ra.append((ngay, (getattr(r, "updated_by", "") or "").strip(), lay_ma(r)))
+    return ra
+
+
+@admin_router.get("/tech-tasks/phan-tich")
+def phan_tich_khoi_luong(db: Session = Depends(get_db),
+                         user=Depends(require_module("tech_tasks", "view"))):
+    """Bức tranh khối lượng của cả phòng: tổng, theo nhóm, phân bố mức hoàn
+    thành, nhịp cập nhật 30 ngày và ai đang bỏ bẵng số liệu.
+
+    Tất cả đọc theo khối lượng (kế hoạch/thực hiện/BKK/tồn) chứ không đếm số
+    nhiệm vụ, vì phòng theo dõi công việc bằng khối lượng.
+    """
+    hom_nay = models.today()
+    kl = _khoi_luong_dau_viec(db)
+    cap_nhat = _cap_nhat_dau_viec(db)
+    nhom_cua = nhom_cua_dau_viec(db)
+    cats = categories(db)
+
+    tong = {"plan": 0.0, "done": 0.0, "bkk": 0.0, "co_so_lieu": 0, "tong_dau_viec": len(cats)}
+    theo_nhom, dau_viec, phan_bo = {}, [], {n: 0 for _t, _c, n, _m in KHOANG_HOAN_THANH}
+    ky = ""
+    for c in cats:
+        b = kl.get(c.code) or {}
+        plan, done, bkk = b.get("plan", 0.0), b.get("done", 0.0), b.get("bkk", 0.0)
+        ky = max(ky, b.get("period", "") or "")
+        g = nhom_cua.get(c.code) or {"code": "", "label": "Chưa xếp nhóm"}
+        n = theo_nhom.setdefault(g["code"], {"code": g["code"], "label": g["label"] or "Chưa xếp nhóm",
+                                             "plan": 0.0, "done": 0.0, "bkk": 0.0,
+                                             "so_dau_viec": 0, "chua_nhap": 0})
+        n["plan"] += plan; n["done"] += done; n["bkk"] += bkk
+        n["so_dau_viec"] += 1
+        n["chua_nhap"] += 0 if plan else 1
+        tong["plan"] += plan; tong["done"] += done; tong["bkk"] += bkk
+        tong["co_so_lieu"] += 1 if plan else 0
+
+        phai_lam = max(plan - bkk, 0)
+        ty_le = (done / phai_lam) if phai_lam else None
+        if plan:
+            phan_bo[_khoang_hoan_thanh(ty_le or 0.0)] += 1
+        cn = cap_nhat.get(c.code)
+        luc = cn["luc"] if cn else None
+        dau_viec.append({"category": c.code, "label": c.label, "owner": c.owner or "",
+                         "group": g["code"], "group_label": g["label"] or "Chưa xếp nhóm",
+                         "plan": round(plan, 1), "done": round(done, 1), "bkk": round(bkk, 1),
+                         "ton": round(max(phai_lam - done, 0), 1),
+                         "ty_le": round(ty_le, 4) if ty_le is not None else None,
+                         "period": b.get("period", ""),
+                         "im_lang_ngay": (hom_nay - luc.date()).days if luc else None,
+                         "updated_at": luc.isoformat() if luc else None,
+                         "updated_by": (cn["ai"] if cn else "")})
+
+    for n in theo_nhom.values():
+        phai_lam = max(n["plan"] - n["bkk"], 0)
+        n["ton"] = round(max(phai_lam - n["done"], 0), 1)
+        n["ty_le"] = round(n["done"] / phai_lam, 4) if phai_lam else None
+        for k in ("plan", "done", "bkk"):
+            n[k] = round(n[k], 1)
+
+    phai_lam = max(tong["plan"] - tong["bkk"], 0)
+    tong["ton"] = round(max(phai_lam - tong["done"], 0), 1)
+    tong["ty_le"] = round(tong["done"] / phai_lam, 4) if phai_lam else None
+    for k in ("plan", "done", "bkk"):
+        tong[k] = round(tong[k], 1)
+
+    # ---- nhịp cập nhật và ai đang bỏ bẵng ----
+    tu_ngay = hom_nay - dt.timedelta(days=NHIP_NGAY - 1)
+    lan_sua = _lan_sua_gan_day(db, tu_ngay)
+    theo_ngay = {tu_ngay + dt.timedelta(days=i): {"so_lan": 0, "nguoi": set()}
+                 for i in range(NHIP_NGAY)}
+    dem_nguoi = {}
+    for ngay, ai, _ma in lan_sua:
+        o = theo_ngay.get(ngay)
+        if o is not None:
+            o["so_lan"] += 1
+            if ai:
+                o["nguoi"].add(ai.casefold())
+        if ai:
+            dem_nguoi[ai.casefold()] = dem_nguoi.get(ai.casefold(), 0) + 1
+
+    # Gom theo người chủ trì: mỗi người ôm những đầu việc nào, im lặng bao lâu.
+    nguoi = {}
+    for dv in dau_viec:
+        ten = (dv["owner"] or "").strip()
+        if not ten:
+            continue
+        p = nguoi.setdefault(_chuan_ten(ten), {"name": ten, "dau_viec": 0, "chua_nhap": 0,
+                                               "plan": 0.0, "done": 0.0, "ton": 0.0,
+                                               "im_lang_ngay": None, "lan_cuoi": None,
+                                               "chua_bao_gio": 0, "cham": []})
+        p["dau_viec"] += 1
+        p["chua_nhap"] += 0 if dv["plan"] else 1
+        p["plan"] += dv["plan"]; p["done"] += dv["done"]; p["ton"] += dv["ton"]
+        im = dv["im_lang_ngay"]
+        if im is not None and (p["im_lang_ngay"] is None or im > p["im_lang_ngay"]):
+            p["im_lang_ngay"] = im
+        if dv["updated_at"] and (p["lan_cuoi"] is None or dv["updated_at"] > p["lan_cuoi"]):
+            p["lan_cuoi"] = dv["updated_at"]
+        # Đầu việc chưa có kế hoạch thì chưa có gì để báo cáo — không tính là chậm.
+        if not dv["plan"]:
+            continue
+        if im is None:
+            p["chua_bao_gio"] += 1
+            p["cham"].append({"category": dv["category"], "label": dv["label"],
+                              "im_lang_ngay": None, "ton": dv["ton"]})
+        elif im >= IM_LANG_VANG:
+            p["cham"].append({"category": dv["category"], "label": dv["label"],
+                              "im_lang_ngay": im, "ton": dv["ton"]})
+
+    for p in nguoi.values():
+        p["so_lan_sua"] = dem_nguoi.get(_chuan_ten(p["name"]), 0)
+        im = p["im_lang_ngay"]
+        p["muc"] = ("do" if p["chua_bao_gio"] or (im is not None and im >= IM_LANG_DO)
+                    else "vang" if im is not None and im >= IM_LANG_VANG
+                    else "xanh")
+        ly_do = []
+        if p["chua_bao_gio"]:
+            ly_do.append(f"{p['chua_bao_gio']} đầu việc chưa cập nhật lần nào")
+        if im is not None and im >= IM_LANG_VANG:
+            ly_do.append(f"{im} ngày chưa cập nhật")
+        p["ly_do"] = " · ".join(ly_do)
+        # Chưa cập nhật lần nào là nặng nhất, rồi tới im lặng lâu nhất.
+        p["cham"] = sorted(p["cham"], key=lambda x: -(x["im_lang_ngay"] if x["im_lang_ngay"] is not None else 99999))[:5]
+        for k in ("plan", "done", "ton"):
+            p[k] = round(p[k], 1)
+
+    thu_tu_muc = {"do": 0, "vang": 1, "trong": 2, "xanh": 3}
+    return {
+        "ky": ky,
+        "tong": tong,
+        "theo_nhom": sorted(theo_nhom.values(), key=lambda x: -x["plan"]),
+        "dau_viec": sorted(dau_viec, key=lambda x: -x["plan"]),
+        "phan_bo": [{"khoang": n, "so": phan_bo[n], "mau": m} for _t, _c, n, m in KHOANG_HOAN_THANH],
+        "nhip": [{"ngay": d.isoformat(), "nhan": d.strftime("%d/%m"),
+                  "so_lan": v["so_lan"], "so_nguoi": len(v["nguoi"])}
+                 for d, v in sorted(theo_ngay.items())],
+        "nguoi": sorted(nguoi.values(),
+                        key=lambda p: (thu_tu_muc[p["muc"]], -p["chua_bao_gio"],
+                                       -(p["im_lang_ngay"] or 0), -p["ton"])),
+        "nguong": {"vang": IM_LANG_VANG, "do": IM_LANG_DO, "nhip_ngay": NHIP_NGAY},
+    }
+
+
 @admin_router.get("/tech-tasks/report")
 def tasks_report(weeks: int = 8, db: Session = Depends(get_db),
                  user=Depends(require_module("tech_tasks", "view"))):
