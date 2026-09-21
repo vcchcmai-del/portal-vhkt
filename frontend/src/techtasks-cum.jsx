@@ -353,6 +353,42 @@ export function SoLieuCumFT({ category, label }) {
                     ? `Máy chủ đọc lại tab “${tenTab.split("\n")[0].trim() || "đầu tiên"}” mỗi ${tuDong?.chu_ky_phut || 15} phút và ghi thẳng vào số liệu cụm.`
                     : `Bật lên thì máy chủ tự đọc mỗi ${tuDong?.chu_ky_phut || 15} phút, khỏi phải vào bấm.`}
                 </span>
+                {/* Công tắc tổng: tắt cái này thì cả hệ thống ngừng tự đọc, dù
+                    từng đầu việc vẫn bật — để còn dừng gấp khi cần. */}
+                {duocSua && (
+                  <span className="flex items-center gap-2" style={{ width: "100%", fontSize: 12.5,
+                                                                     paddingTop: 6, borderTop: "1px solid #EFECED",
+                                                                     flexWrap: "wrap" }}>
+                    <b>Toàn hệ thống:</b>
+                    <button className="btn btn-sm" style={{ padding: "2px 8px" }}
+                      onClick={async () => {
+                        try {
+                          const kq = await api.put("/api/admin/tech-tasks/sheet/cong-tac",
+                                                   { bat: !(tuDong?.bat ?? true) });
+                          setTuDong((cu) => ({ ...(cu || {}), ...kq })); setErr("");
+                        } catch (e) { setErr(e.message); }
+                      }}>
+                      {(tuDong?.bat ?? true) ? "Đang cho phép tự động — tắt" : "Đang tắt tự động — bật lại"}
+                    </button>
+                    <span className="muted">Chu kỳ</span>
+                    <select className="inp" style={{ maxWidth: 110, padding: "2px 6px" }}
+                      value={tuDong?.chu_ky_phut || 15}
+                      onChange={async (e) => {
+                        try {
+                          const kq = await api.put("/api/admin/tech-tasks/sheet/cong-tac",
+                                                   { chu_ky_phut: Number(e.target.value) });
+                          setTuDong((cu) => ({ ...(cu || {}), ...kq })); setErr("");
+                        } catch (er) { setErr(er.message); }
+                      }}>
+                      {[5, 10, 15, 30, 60, 180, 360, 720, 1440].map((p) => (
+                        <option key={p} value={p}>{p < 60 ? `${p} phút` : `${p / 60} giờ`}</option>
+                      ))}
+                    </select>
+                    {!!tuDong?.so_dang_bat && (
+                      <span className="muted">{tuDong.so_dang_bat} đầu việc đang bật tự động</span>
+                    )}
+                  </span>
+                )}
                 {tuDong?.tu_dong && (
                   <button className="btn btn-sm" disabled={dangDoc}
                     onClick={async () => {

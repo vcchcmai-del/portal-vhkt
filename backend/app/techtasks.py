@@ -2267,6 +2267,36 @@ def _tim_dau_viec_theo_ten(db: Session, ten: str):
 
 
 SHEET_TU_DONG_PHUT = int(os.getenv("SHEET_AUTO_MINUTES", "15"))
+# Công tắc tổng, lưu trong cấu hình website nên đổi được ngay trên giao diện và
+# giữ nguyên sau khi khởi động lại. Biến môi trường chỉ là giá trị mặc định
+# cho lần đầu, không đè lên lựa chọn của người dùng.
+KHOA_BAT = "sheet_auto_enabled"
+KHOA_PHUT = "sheet_auto_minutes"
+
+
+def _cau_hinh(db: Session, khoa: str, mac_dinh: str = "") -> str:
+    row = db.query(models.SiteConfig).filter(models.SiteConfig.key == khoa).first()
+    return (row.value if row and row.value is not None else mac_dinh)
+
+
+def _dat_cau_hinh(db: Session, khoa: str, gia_tri: str, nhan: str):
+    row = db.query(models.SiteConfig).filter(models.SiteConfig.key == khoa).first()
+    if row:
+        row.value = gia_tri
+    else:
+        db.add(models.SiteConfig(key=khoa, value=gia_tri, label=nhan, kind="text"))
+
+
+def sheet_tu_dong_bat(db: Session) -> bool:
+    return _cau_hinh(db, KHOA_BAT, "1") not in ("0", "false", "False", "")
+
+
+def sheet_chu_ky_phut(db: Session) -> int:
+    try:
+        v = int(_cau_hinh(db, KHOA_PHUT, str(SHEET_TU_DONG_PHUT)))
+    except ValueError:
+        v = SHEET_TU_DONG_PHUT
+    return max(5, min(v, 24 * 60))
 
 
 def doc_sheet_mot_dau_viec(db: Session, cat, ky: str = "", nguoi: str = "") -> dict:
@@ -2314,12 +2344,18 @@ def doc_sheet_mot_dau_viec(db: Session, cat, ky: str = "", nguoi: str = "") -> d
     return {"ok": True, "tin": tin, "dong": ghi_duoc, "loi": loi}
 
 
-def chay_sheet_tu_dong() -> dict:
-    """Một vòng đọc cho mọi đầu việc đã bật tự động. Gọi từ luồng nền."""
+def chay_sheet_tu_dong(bo_qua_cong_tac: bool = False) -> dict:
+    """Một vòng đọc cho mọi đầu việc đã bật tự động. Gọi từ luồng nền.
+
+    Công tắc tổng tắt thì không đọc gì — trừ khi người dùng bấm "Đọc ngay",
+    lúc đó họ đang đứng ngay đó nên cứ chạy.
+    """
     from .database import SessionLocal
     db = SessionLocal()
     xong, hong = [], []
     try:
+        if not bo_qua_cong_tac and not sheet_tu_dong_bat(db):
+            return {"xong": [], "hong": [], "tat": True}
         cats = (db.query(models.TechCategory)
                 .filter(models.TechCategory.sheet_auto.is_(True))
                 .filter(models.TechCategory.sheet_url.isnot(None)).all())
@@ -2343,8 +2379,23 @@ def bat_dau_vong_sheet():
     import threading
 
     def vong():
+        from .database import SessionLocal
         while True:
-            time.sleep(max(SHEET_TU_DONG_PHUT, 1) * 60)
+            # Ngủ từng phút rồi hỏi lại cấu hình: tắt công tắc hay đổi chu kỳ
+            # là có hiệu lực ngay, không phải khởi động lại máy chủ.
+            phut = 0
+            while True:
+                time.sleep(60)
+                phut += 1
+                db = SessionLocal()
+                try:
+                    bat, chu_ky = sheet_tu_dong_bat(db), sheet_chu_ky_phut(db)
+                finally:
+                    db.close()
+                if bat and phut >= chu_ky:
+                    break
+                if phut > 24 * 60:      # tắt lâu quá thì vẫn quay vòng lại cho gọn
+                    phut = 0
             try:
                 chay_sheet_tu_dong()
             except Exception as e:  # noqa: BLE001 — luồng nền không được chết
@@ -2361,6 +2412,28 @@ class SheetTuDongIn(BaseModel):
     tu_dong: Optional[bool] = None
 
 
+class SheetCongTacIn(BaseModel):
+    bat: Optional[bool] = None
+    chu_ky_phut: Optional[int] = None
+
+
+@admin_router.put("/tech-tasks/sheet/cong-tac")
+def dat_cong_tac_sheet(data: SheetCongTacIn, db: Session = Depends(get_db),
+                       user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Bật/tắt việc tự động đọc sheet cho toàn hệ thống, và đổi chu kỳ."""
+    if data.bat is not None:
+        _dat_cau_hinh(db, KHOA_BAT, "1" if data.bat else "0",
+                      "Tự động đọc Google Sheet của công việc kỹ thuật")
+    if data.chu_ky_phut is not None:
+        _dat_cau_hinh(db, KHOA_PHUT, str(max(5, min(int(data.chu_ky_phut), 24 * 60))),
+                      "Chu kỳ đọc Google Sheet (phút)")
+    db.commit()
+    log_action(db, user, "update", "tech_tasks", None,
+               f"Tự động đọc sheet: {'bật' if sheet_tu_dong_bat(db) else 'tắt'}"
+               f" · {sheet_chu_ky_phut(db)} phút", request=request)
+    return {"bat": sheet_tu_dong_bat(db), "chu_ky_phut": sheet_chu_ky_phut(db)}
+
+
 @admin_router.get("/tech-tasks/sheet/tu-dong")
 def xem_sheet_tu_dong(db: Session = Depends(get_db),
                       _=Depends(require_module("tech_tasks", "view"))):
@@ -2373,7 +2446,8 @@ def xem_sheet_tu_dong(db: Session = Depends(get_db),
                    "tab": c.sheet_tab or "", "tu_dong": bool(c.sheet_auto),
                    "lan_cuoi": c.sheet_synced_at, "lan_cuoi_ok": c.sheet_last_ok,
                    "lan_cuoi_tin": c.sheet_last_msg or ""})
-    return {"chu_ky_phut": SHEET_TU_DONG_PHUT, "dau_viec": ra}
+    return {"bat": sheet_tu_dong_bat(db), "chu_ky_phut": sheet_chu_ky_phut(db),
+            "so_dang_bat": sum(1 for x in ra if x["tu_dong"]), "dau_viec": ra}
 
 
 @admin_router.put("/tech-tasks/categories/{code}/sheet")
@@ -2397,14 +2471,15 @@ def dat_sheet_dau_viec(code: str, data: SheetTuDongIn, db: Session = Depends(get
                f"Sheet của “{cat.label}”: {'tự động' if cat.sheet_auto else 'thủ công'}",
                request=request)
     return {"category": cat.code, "sheet_url": cat.sheet_url or "", "tab": cat.sheet_tab or "",
-            "tu_dong": bool(cat.sheet_auto), "chu_ky_phut": SHEET_TU_DONG_PHUT}
+            "tu_dong": bool(cat.sheet_auto), "bat": sheet_tu_dong_bat(db),
+            "chu_ky_phut": sheet_chu_ky_phut(db)}
 
 
 @admin_router.post("/tech-tasks/sheet/doc-ngay")
 def doc_sheet_ngay(db: Session = Depends(get_db),
                    user=Depends(require_module("tech_tasks", "view")), request: Request = None):
     """Chạy ngay một vòng đọc cho mọi đầu việc đã bật tự động."""
-    kq = chay_sheet_tu_dong()
+    kq = chay_sheet_tu_dong(bo_qua_cong_tac=True)
     log_action(db, user, "update", "tech_tasks", None,
                f"Đọc sheet tự động: {len(kq['xong'])} đầu việc", request=request)
     return kq
