@@ -256,13 +256,34 @@ def _to_number(v):
         return None
 
 
+# Cùng một cột, người ta đặt mỗi nơi một tên — nhất là tệp CSV do chính cổng
+# xuất ra rồi đem lên Google Sheet sửa. Quy về một mối để đọc tệp nào cũng được.
+BI_DANH_COT = {
+    "ky_bao_cao": "ky", "ki": "ky", "ky_bc": "ky", "thang": "ky",
+    "trung_tam": "trung_tam", "cum": "trung_tam", "cum_trung_tam": "trung_tam",
+    "ma_trung_tam": "trung_tam", "don_vi": "trung_tam",
+    "ke_hoach": "ke_hoach", "kh": "ke_hoach", "chi_tieu": "ke_hoach",
+    "thuc_hien": "thuc_hien", "th": "thuc_hien", "da_lam": "thuc_hien",
+    "bkk": "bkk", "bat_kha_khang": "bkk",
+    "ghi_chu": "ghi_chu", "ghi_chu_vuong_mac": "ghi_chu", "note": "ghi_chu",
+    "hang_muc": "hang_muc",
+    "ft": "ft_name", "ten_ft": "ft_name", "ft_name": "ft_name",
+}
+
+
+def _ten_cot(s) -> str:
+    """Tên cột đã chuẩn hoá và quy về bí danh chính."""
+    k = _key(s)
+    return BI_DANH_COT.get(k, k)
+
+
 def read_rows(text: str):
     """Đọc CSV thành danh sách từ điển, tên cột đã chuẩn hoá."""
     rows = list(csv.reader(io.StringIO(text)))
     rows = [r for r in rows if any(_clean(c) for c in r)]
     if not rows:
         raise SheetError("Bảng tính rỗng.")
-    header = [_key(c) for c in rows[0]]
+    header = [_ten_cot(c) for c in rows[0]]
     out = []
     for r in rows[1:]:
         item = {header[i]: _clean(v) for i, v in enumerate(r) if i < len(header) and header[i]}
