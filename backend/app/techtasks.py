@@ -1333,6 +1333,30 @@ def phan_tich_khoi_luong(db: Session = Depends(get_db),
     nhom_cua = nhom_cua_dau_viec(db)
     cats = categories(db)
 
+    # Số liệu tới từng trung tâm của kỳ gần nhất — để màn hình lọc theo mảng
+    # rồi xem tồn của từng trung tâm mà không phải gọi thêm API nào.
+    thuoc = item_category(db)
+    dong_cum = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None)).all()
+    ky_moi_dv = {}
+    for r in dong_cum:
+        dv = thuoc.get(r.item)
+        if dv and r.period and r.period > ky_moi_dv.get(dv, ""):
+            ky_moi_dv[dv] = r.period
+    chi_tiet = []
+    for r in dong_cum:
+        dv = thuoc.get(r.item)
+        if not dv or r.period != ky_moi_dv.get(dv):
+            continue
+        if not (r.plan_qty or r.done_qty or r.bkk_qty):
+            continue
+        g = nhom_cua.get(dv) or {"code": "", "label": "Chưa xếp nhóm"}
+        chi_tiet.append({"category": dv, "group": g["code"] or "",
+                         "center": r.center, "plan": round(r.plan_qty or 0, 1),
+                         "done": round(r.done_qty or 0, 1), "bkk": round(r.bkk_qty or 0, 1),
+                         "ton": round(max((r.plan_qty or 0) - (r.bkk_qty or 0) - (r.done_qty or 0), 0), 1)})
+    ten_tt = {c.code: (c.name or c.code).replace("Trung tâm", "").strip(" -")
+              for c in db.query(models.InfraCenterCode).all()}
+
     tong = {"plan": 0.0, "done": 0.0, "bkk": 0.0, "co_so_lieu": 0, "tong_dau_viec": len(cats)}
     theo_nhom, dau_viec, phan_bo = {}, [], {n: 0 for _t, _c, n, _m in KHOANG_HOAN_THANH}
     ky = ""
@@ -1443,6 +1467,8 @@ def phan_tich_khoi_luong(db: Session = Depends(get_db),
     thu_tu_muc = {"do": 0, "vang": 1, "trong": 2, "xanh": 3}
     return {
         "ky": ky,
+        "chi_tiet_cum": chi_tiet,
+        "ten_trung_tam": ten_tt,
         "tong": tong,
         "theo_nhom": sorted(theo_nhom.values(), key=lambda x: -x["plan"]),
         "dau_viec": sorted(dau_viec, key=lambda x: -x["plan"]),
