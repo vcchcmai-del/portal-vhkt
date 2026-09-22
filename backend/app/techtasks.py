@@ -2299,6 +2299,78 @@ def sheet_chu_ky_phut(db: Session) -> int:
     return max(5, min(v, 24 * 60))
 
 
+def _ghi_hoan_cong_tu_bang(db: Session, code: str, ky: str, header, rows, nguoi: str) -> dict:
+    """Ghi bảng hoàn công đọc từ sheet: mỗi dòng một ô (nhóm × trạng thái)."""
+    thieu = [c for c in ("nhom", "trang_thai") if c not in header]
+    if thieu:
+        return {"ok": False, "tin": "Bảng hoàn công thiếu cột: " + ", ".join(thieu)}
+    ten_tt = {_slug(n): m for m, n in HOAN_CONG_TRANG_THAI}
+    ten_tt.update({m: m for m, _ in HOAN_CONG_TRANG_THAI})
+    ten_nhom = {_slug(v): k for k, v in TEN_NHOM_HC.items()}
+    dem, loi = 0, []
+    for i, r in enumerate(rows, start=2):
+        tho = str(r.get("nhom", "")).strip()
+        nhom = int(tho) if tho.isdigit() else ten_nhom.get(_slug(tho))
+        tt = ten_tt.get(_slug(r.get("trang_thai", "")))
+        if nhom not in HOAN_CONG_NHOM or not tt:
+            loi.append(f"dòng {i}: không nhận ra nhóm “{tho}” hoặc trạng thái “{r.get('trang_thai', '')}”")
+            continue
+        sl, cn = _so(r.get("sl_mct")), _so(r.get("cong_no"))
+        if sl is None or cn is None:
+            loi.append(f"dòng {i}: SL MCT và công nợ phải là số")
+            continue
+        row = (db.query(models.HoanCongRow)
+               .filter(models.HoanCongRow.category == code, models.HoanCongRow.period == ky,
+                       models.HoanCongRow.nhom == nhom, models.HoanCongRow.trang_thai == tt).first())
+        if not row:
+            row = models.HoanCongRow(category=code, period=ky, nhom=nhom, trang_thai=tt)
+            db.add(row)
+        row.sl_mct, row.cong_no = sl, cn
+        if r.get("ghi_chu"):
+            row.note = r["ghi_chu"]
+        row.updated_by = nguoi
+        dem += 1
+    return {"ok": True, "dong": dem, "loi": loi}
+
+
+def _ghi_du_an_tu_bang(db: Session, code: str, ky: str, header, rows, nguoi: str) -> dict:
+    """Ghi bảng dự án đọc từ sheet: mỗi dòng một đơn vị triển khai."""
+    if "don_vi" not in header:
+        return {"ok": False, "tin": "Bảng dự án thiếu cột don_vi."}
+    dem, loi = 0, []
+    for i, r in enumerate(rows, start=2):
+        ten = str(r.get("don_vi", "")).strip()
+        if not ten:
+            continue
+        so_lieu = {}
+        for k in ("tong_trien_khai",) + tuple(m for m, _n in DU_AN_BUOC):
+            v = _so(r.get(k))
+            if v is None:
+                loi.append(f"dòng {i} ({ten}): cột {k} phải là số")
+                break
+            so_lieu[k] = v
+        else:
+            row = (db.query(models.DuAnRow)
+                   .filter(models.DuAnRow.category == code, models.DuAnRow.period == ky,
+                           models.DuAnRow.don_vi == ten).first())
+            if not row:
+                cuoi = (db.query(models.DuAnRow)
+                        .filter(models.DuAnRow.category == code, models.DuAnRow.period == ky)
+                        .order_by(models.DuAnRow.order_no.desc()).first())
+                row = models.DuAnRow(category=code, period=ky, don_vi=ten,
+                                     order_no=(cuoi.order_no + 1) if cuoi else 0)
+                db.add(row)
+            for k, v in so_lieu.items():
+                setattr(row, k, v)
+            if r.get("khoi") is not None:
+                row.khoi = str(r.get("khoi") or "").strip()
+            if r.get("ghi_chu"):
+                row.note = r["ghi_chu"]
+            row.updated_by = nguoi
+            dem += 1
+    return {"ok": True, "dong": dem, "loi": loi}
+
+
 def doc_sheet_mot_dau_viec(db: Session, cat, ky: str = "", nguoi: str = "") -> dict:
     """Đọc sheet của một đầu việc rồi ghi thẳng vào số liệu cụm.
 
@@ -2308,9 +2380,7 @@ def doc_sheet_mot_dau_viec(db: Session, cat, ky: str = "", nguoi: str = "") -> d
     url = (cat.sheet_url or "").strip()
     if not url:
         return {"ok": False, "tin": "Chưa lưu đường dẫn bảng tính."}
-    hang_muc = progress_items(db, cat.code)
-    if not hang_muc:
-        return {"ok": False, "tin": "Đầu việc chưa theo dõi theo cụm."}
+    kieu = cat.kieu or "cum"
     ky = (ky or "").strip() or f"{models.today().year:04d}-{models.today().month:02d}"
     tab = (cat.sheet_tab or "").strip()
     duong = sheets.url_tab_theo_ten(url, tab) if tab else url
@@ -2318,6 +2388,21 @@ def doc_sheet_mot_dau_viec(db: Session, cat, ky: str = "", nguoi: str = "") -> d
         header, rows = sheets.read_rows(sheets.fetch_csv(duong))
     except sheets.SheetError as e:
         return {"ok": False, "tin": str(e)}
+
+    if kieu in ("hoan_cong", "du_an"):
+        lam = _ghi_hoan_cong_tu_bang if kieu == "hoan_cong" else _ghi_du_an_tu_bang
+        kq = lam(db, cat.code, ky, header, rows, nguoi or "Tự động đọc sheet")
+        if not kq["ok"]:
+            return kq
+        cat.sheet_synced_at = models.now()
+        tin = f"Đọc {kq['dong']} dòng lúc {models.now():%H:%M %d/%m}"
+        if kq["loi"]:
+            tin += f" · {len(kq['loi'])} dòng bỏ qua: {kq['loi'][0]}"
+        return {"ok": True, "tin": tin, "dong": kq["dong"], "loi": kq["loi"]}
+
+    hang_muc = progress_items(db, cat.code)
+    if not hang_muc:
+        return {"ok": False, "tin": "Đầu việc chưa theo dõi theo cụm."}
     if "trung_tam" not in header or "ke_hoach" not in header:
         return {"ok": False, "tin": "Bảng tính thiếu cột trung_tam / ke_hoach."}
 
@@ -2841,15 +2926,48 @@ def dong_bo_sheet_nhieu(data: SheetNhieuIn, db: Session = Depends(get_db),
                                       if goi_y else "không có đầu việc nào tên như vậy"),
                            "goi_y": goi_y})
             continue
-        hang_muc = progress_items(db, ma_dv)
-        if not hang_muc:
-            bo_qua.append({"tab": ten_tab, "vi_sao": "đầu việc chưa theo dõi theo cụm"})
-            continue
         duong = sheets.url_tab(url, gid) if gid else sheets.url_tab_theo_ten(url, ten_tab)
         try:
             header, rows = sheets.read_rows(sheets.fetch_csv(duong))
         except sheets.SheetError as e:
             bo_qua.append({"tab": ten_tab, "vi_sao": str(e)})
+            continue
+
+        # Bảng tính do cổng xuất ra mang sẵn cột "dau_viec" ghi mã đầu việc.
+        # Tin vào cột đó trước tên tab: tên tab của Excel bị cắt còn 31 ký tự
+        # nên hai đầu việc tên gần giống nhau dễ lẫn, còn mã thì không lẫn.
+        if "dau_viec" in header and rows:
+            theo_cot = {str(r.get("dau_viec") or "").strip() for r in rows}
+            theo_cot = {x for x in theo_cot if x}
+            if len(theo_cot) == 1:
+                ma_cot, goi_y_cot = _tim_dau_viec_theo_ten(db, theo_cot.pop())
+                if ma_cot:
+                    ma_dv = ma_cot
+
+        cat_dv = db.query(models.TechCategory).filter(models.TechCategory.code == ma_dv).first()
+        kieu = (cat_dv.kieu if cat_dv else "cum") or "cum"
+
+        # Hoàn công và dự án có bảng riêng, không đi qua dòng cụm.
+        if kieu in ("hoan_cong", "du_an"):
+            ky_rieng = (data.period or "").strip() or ky_mac_dinh
+            lam = _ghi_hoan_cong_tu_bang if kieu == "hoan_cong" else _ghi_du_an_tu_bang
+            if not data.ghi:
+                thu = lam(db, ma_dv, ky_rieng, header, rows, _ten(user))
+                db.rollback()       # chỉ xem trước, không giữ lại gì
+            else:
+                thu = lam(db, ma_dv, ky_rieng, header, rows, _ten(user))
+            if not thu["ok"]:
+                bo_qua.append({"tab": ten_tab, "vi_sao": thu["tin"]})
+                continue
+            if data.ghi and cat_dv:
+                cat_dv.sheet_url, cat_dv.sheet_synced_at = url, models.now()
+            ket_qua.append({"tab": ten_tab, "category": ma_dv, "dong": thu["dong"],
+                            "loi": thu["loi"], "kieu": kieu})
+            continue
+
+        hang_muc = progress_items(db, ma_dv)
+        if not hang_muc:
+            bo_qua.append({"tab": ten_tab, "vi_sao": "đầu việc chưa theo dõi theo cụm"})
             continue
         if "trung_tam" not in header or "ke_hoach" not in header:
             bo_qua.append({"tab": ten_tab, "vi_sao": "thiếu cột trung_tam / ke_hoach"})

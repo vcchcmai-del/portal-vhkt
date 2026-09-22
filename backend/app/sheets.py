@@ -261,7 +261,9 @@ def _to_number(v):
 BI_DANH_COT = {
     "ky_bao_cao": "ky", "ki": "ky", "ky_bc": "ky", "thang": "ky",
     "trung_tam": "trung_tam", "cum": "trung_tam", "cum_trung_tam": "trung_tam",
-    "ma_trung_tam": "trung_tam", "don_vi": "trung_tam",
+    "ma_trung_tam": "trung_tam",
+    # KHÔNG quy "don_vi" về trung_tam: bảng dự án có cột don_vi riêng (PTO, SGN…),
+    # quy đổi thì bảng dự án mất mất cột khóa của nó.
     "ke_hoach": "ke_hoach", "kh": "ke_hoach", "chi_tieu": "ke_hoach",
     "thuc_hien": "thuc_hien", "th": "thuc_hien", "da_lam": "thuc_hien",
     "bkk": "bkk", "bat_kha_khang": "bkk",

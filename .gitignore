@@ -38,3 +38,8 @@ login_tmp*
 .DS_Store
 Thumbs.db
 .claude/
+
+# Bảng tính số liệu xuất ra để đồng bộ với Google Sheet — là DỮ LIỆU của phòng
+# (kế hoạch, thực hiện, ghi chú vướng mắc), không phải mã nguồn: để máy dùng,
+# không đưa lên kho chung.
+bang-tinh-dong-bo-*.xlsx
