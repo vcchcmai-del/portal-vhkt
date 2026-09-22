@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, Building2, CalendarClock, CheckCircle2, Layers, RefreshCw, Target, TrendingUp, X,
+  Activity, AlertTriangle, Building2, CalendarClock, CheckCircle2, Flag, Layers, RefreshCw,
+  Target, TrendingUp, X,
 } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart,
@@ -94,10 +95,11 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
   const [cumLoc, setCumLoc] = useState("");       // trung tâm đang xem, "" = toàn chi nhánh
   const [moNguoi, setMoNguoi] = useState("");
   const [moCum, setMoCum] = useState("");
+  const [nhipNgay, setNhipNgay] = useState(7);   // cửa sổ đếm lượt cập nhật
 
-  const tai = () => api.get("/api/admin/tech-tasks/phan-tich")
+  const tai = (ngay = nhipNgay) => api.get(`/api/admin/tech-tasks/phan-tich?nhip_ngay=${ngay}`)
     .then((x) => { setD(x); setErr(""); }).catch((e) => setErr(e.message));
-  useEffect(() => { tai(); }, []);
+  useEffect(() => { tai(nhipNgay); }, [nhipNgay]);
 
   const tenTT = (ma) => (ma === CHUA_CHIA ? "Chưa chia cụm"
     : d?.ten_trung_tam?.[ma] ? `${ma} — ${d.ten_trung_tam[ma]}` : ma);
@@ -140,11 +142,15 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
       b.plan += c.plan; b.done += c.done; b.bkk += c.bkk; b.so += 1;
       m.set(g, b);
     }
-    return [...m.values()].filter((g) => g.plan > 0)
+    return [...m.values()]
       .map((g) => ({ ...g, ten: rutGon(g.label, 22), con_lai: Math.max(g.plan - g.bkk - g.done, 0),
                      ty_le: tyLe(g.plan, g.done, g.bkk) }))
       .sort((a, b) => b.plan - a.plan);
   }, [dauViec]);
+
+  // Biểu đồ chỉ vẽ mảng có kế hoạch; bảng điều hành thì liệt kê cả mảng chưa
+  // có kế hoạch — chỉ huy cần thấy chỗ trắng chứ không chỉ chỗ đang chạy.
+  const nhomCoSo = useMemo(() => theoNhom.filter((g) => g.plan > 0), [theoNhom]);
 
   const theoCum = useMemo(() => {
     const m = new Map();
@@ -165,7 +171,7 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
     ? [...dauViec].filter((c) => c.plan > 0).sort((a, b) => b.plan - a.plan).slice(0, 14)
       .map((c) => ({ ten: rutGon(c.label, 30), plan: c.plan, done: c.done, bkk: c.bkk,
                      con_lai: Math.max(c.plan - c.bkk - c.done, 0), ty_le: c.ty_le }))
-    : theoNhom), [nhomLoc, dauViec, theoNhom]);
+    : nhomCoSo), [nhomLoc, dauViec, nhomCoSo]);
 
   const phanBo = useMemo(() => KHOANG.map(([nhan, mau, hop]) => ({
     khoang: nhan, mau,
@@ -217,6 +223,85 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
     }).sort((a, b) => thuTu[a.muc] - thuTu[b.muc] || b.chua_bao_gio - a.chua_bao_gio
                       || (b.im_lang_ngay || 0) - (a.im_lang_ngay || 0) || b.ton - a.ton);
   }, [dauViec, d]);
+
+  /** Đi được bao nhiêu phần đường của kỳ, so với bao nhiêu phần việc đã làm. */
+  const nhipThang = useMemo(() => {
+    const m = /^(\d{4})-(\d{2})$/.exec(d?.ky || "");
+    if (!m) return null;
+    const nam = +m[1], thang = +m[2];
+    const songay = new Date(nam, thang, 0).getDate();
+    const nay = new Date();
+    const daQua = (nay.getFullYear() === nam && nay.getMonth() + 1 === thang)
+      ? nay.getDate() : (new Date(nay.getFullYear(), nay.getMonth()) > new Date(nam, thang - 1) ? songay : 0);
+    return { songay, daQua, ty_le_thoi_gian: songay ? daQua / songay : null };
+  }, [d]);
+
+  /** Vài điều đáng nói nhất, tính thẳng từ số liệu — để chỉ huy khỏi phải tự dò. */
+  const diem = useMemo(() => {
+    if (!d) return [];
+    const ra = [];
+    const tyTG = nhipThang?.ty_le_thoi_gian;
+    if (tyTG != null && tong.plan > 0) {
+      const lech = (tong.ty_le ?? 0) - tyTG;
+      ra.push({
+        muc: lech < -0.25 ? "do" : lech < -0.1 ? "vang" : "xanh",
+        chu: lech < -0.1
+          ? `Chậm nhịp: đã qua ${pct(tyTG)} thời gian kỳ nhưng mới đạt ${pct(tong.ty_le)} khối lượng.`
+          : `Bám nhịp: qua ${pct(tyTG)} thời gian kỳ, đã đạt ${pct(tong.ty_le)} khối lượng.`,
+      });
+    }
+    const nangNhat = [...theoNhom].sort((a, b) => (a.ty_le ?? 0) - (b.ty_le ?? 0) || b.plan - a.plan)[0];
+    if (nangNhat && !nhomLoc && tong.plan) {
+      ra.push({
+        muc: (nangNhat.ty_le ?? 0) < 0.1 ? "do" : "vang",
+        chu: `${nangNhat.label} ôm ${pct(nangNhat.plan / tong.plan)} kế hoạch cả phòng `
+          + `(${so(nangNhat.plan)}) nhưng mới đạt ${pct(nangNhat.ty_le)}.`,
+        lam: () => { setNhomLoc(nangNhat.code); setMoCum(""); },
+        nut: "Xem mảng này",
+      });
+    }
+    const dvNang = [...dauViec].filter((c) => c.plan > 0)
+      .sort((a, b) => (a.ty_le ?? 0) - (b.ty_le ?? 0) || b.plan - a.plan)[0];
+    if (dvNang) {
+      ra.push({
+        muc: (dvNang.ty_le ?? 0) <= 0 ? "do" : "vang",
+        chu: `Nặng nhất: “${dvNang.label}” kế hoạch ${so(dvNang.plan)}, mới đạt ${pct(dvNang.ty_le)}`
+          + `${dvNang.owner ? ` — chủ trì ${dvNang.owner}` : " — chưa có chủ trì"}.`,
+        lam: onXemDauViec ? () => onXemDauViec(dvNang.category) : null,
+        nut: "Mở đầu việc",
+      });
+    }
+    const cumNang = theoCum.filter((c) => c.center !== CHUA_CHIA)[0];
+    if (cumNang && !cumLoc && tong.ton) {
+      ra.push({
+        muc: cumNang.ton / tong.ton > 0.2 ? "vang" : "xanh",
+        chu: `Tồn nhiều nhất: ${cumNang.ten} còn ${so(cumNang.ton)} `
+          + `(${pct(cumNang.ton / tong.ton)} tồn của phần đang xem).`,
+        lam: () => { setCumLoc(cumNang.center); setMoCum(""); },
+        nut: "Xem trung tâm",
+      });
+    }
+    const chuaChia = theoCum.find((c) => c.center === CHUA_CHIA);
+    if (chuaChia && chuaChia.plan > 0 && tong.plan) {
+      ra.push({
+        muc: chuaChia.plan / tong.plan > 0.15 ? "vang" : "xanh",
+        chu: `${so(chuaChia.plan)} khối lượng (${pct(chuaChia.plan / tong.plan)}) chưa chia về cụm nào.`,
+      });
+    }
+    const cham = nguoi.filter((p) => p.muc === "do" || p.muc === "vang");
+    if (cham.length) {
+      ra.push({
+        muc: cham.some((p) => p.muc === "do") ? "do" : "vang",
+        chu: `${cham.length} người chưa cập nhật đúng hạn, đang giữ ${so(cham.reduce((a, p) => a + p.ton, 0))} tồn: `
+          + cham.slice(0, 3).map((p) => p.name).join(", ") + (cham.length > 3 ? "…" : ""),
+      });
+    }
+    const trong = dauViec.filter((c) => !c.plan).length;
+    if (trong) {
+      ra.push({ muc: "xanh", chu: `${trong} đầu việc chưa có kế hoạch kỳ này — chưa tính vào tỷ lệ.` });
+    }
+    return ra;
+  }, [d, tong, theoNhom, theoCum, dauViec, nguoi, nhomLoc, cumLoc, nhipThang, onXemDauViec]);
 
   if (err) return <p style={{ color: RED }}>{err}</p>;
   if (!d) return <p className="muted">Đang tải phân tích…</p>;
@@ -291,16 +376,103 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
           phu={tong.plan ? `${pct(tong.ton / Math.max(tong.plan - tong.bkk, 1))} khối lượng phải làm` : "—"} />
         <O icon={AlertTriangle} nhan="BKK" so_lieu={so(tong.bkk)} mau={MAU.tim}
           phu="đã trừ khỏi kế hoạch khi tính tỷ lệ" />
-        <O icon={Activity} nhan="Lượt cập nhật 30 ngày" so_lieu={so(tongSua)} mau={MAU.lamNhat}
+        <O icon={Activity} nhan={`Lượt cập nhật ${nhipNgay} ngày`} so_lieu={so(tongSua)} mau={MAU.lamNhat}
           phu={canhBao.length ? `${canhBao.length} người cần nhắc` : "cả phòng đang bám số"} />
       </div>
+
+      {/* Tình hình chung: một dòng nhịp tháng và mấy điều đáng nói nhất. */}
+      <Card title="Điểm cần chỉ đạo" icon={Flag}
+        action={nhipThang && (
+          <span className="muted" style={{ fontSize: 12 }}>
+            kỳ {d.ky}: đã qua {nhipThang.daQua}/{nhipThang.songay} ngày
+          </span>
+        )}>
+        {nhipThang && tong.plan > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div className="flex items-center gap-2" style={{ fontSize: 12.5, marginBottom: 4, flexWrap: "wrap" }}>
+              <b>Nhịp kỳ:</b>
+              <span className="muted">thời gian đã qua {pct(nhipThang.ty_le_thoi_gian)}</span>
+              <span style={{ color: mauTyLe(tong.ty_le), fontWeight: 700 }}>
+                · khối lượng đạt {pct(tong.ty_le)}
+              </span>
+            </div>
+            {/* Hai thanh chồng nhau: nền là thời gian, thanh đậm là khối lượng —
+                nhìn một cái biết đang đi trước hay đi sau nhịp. */}
+            <div style={{ position: "relative", height: 14, borderRadius: 99, background: "#EFECED" }}>
+              <span style={{ position: "absolute", inset: 0, width: `${Math.min((nhipThang.ty_le_thoi_gian || 0) * 100, 100)}%`,
+                             background: "#DCE7F8", borderRadius: 99 }} />
+              <span style={{ position: "absolute", top: 3, left: 0, height: 8,
+                             width: `${Math.min((tong.ty_le || 0) * 100, 100)}%`,
+                             background: mauTyLe(tong.ty_le), borderRadius: 99 }} />
+            </div>
+          </div>
+        )}
+        {diem.map((x, i) => (
+          <div key={i} className="flex items-center gap-2"
+            style={{ fontSize: 13, padding: "6px 0", borderTop: i ? "1px solid #F4F1F2" : "none", flexWrap: "wrap" }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: MAU_MUC[x.muc], flex: "none" }} />
+            <span style={{ flex: 1, minWidth: 260 }}>{x.chu}</span>
+            {x.lam && (
+              <button className="btn btn-sm" style={{ padding: "2px 8px", fontSize: 11.5 }} onClick={x.lam}>
+                {x.nut}
+              </button>
+            )}
+          </div>
+        ))}
+        {!diem.length && <p className="muted" style={{ fontSize: 12.5 }}>Chưa đủ số liệu để nhận xét.</p>}
+      </Card>
+
+      {/* Bảng điều hành: mỗi mảng một dòng, bấm vào là lọc luôn. */}
+      {!nhomLoc && theoNhom.length > 1 && (
+        <Card title="Bảng điều hành theo mảng" pad={false}
+          action={<span className="muted" style={{ fontSize: 12 }}>bấm một mảng để xem riêng mảng đó</span>}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Mảng</th><th>Đầu việc</th><th>Kế hoạch</th><th>Thực hiện</th>
+                  <th>Tồn</th><th>Tỷ lệ hoàn thành</th><th>Chưa có kế hoạch</th><th>Người chậm</th>
+                </tr>
+              </thead>
+              <tbody>
+                {theoNhom.map((g) => {
+                  const cua = dauViec.filter((c) => (c.group || "") === g.code);
+                  const chuaNhap = cua.filter((c) => !c.plan).length;
+                  const nguoiCham = new Set(cua.filter((c) => c.plan
+                    && (c.im_lang_ngay == null || c.im_lang_ngay >= (d.nguong?.vang || 7)))
+                    .map((c) => (c.owner || "").trim()).filter(Boolean)).size;
+                  return (
+                    <tr key={g.code || "chua"} style={{ cursor: "pointer" }}
+                      onClick={() => { setNhomLoc(g.code); setMoCum(""); }}>
+                      <td><b>{g.label}</b></td>
+                      <td>{g.so}</td>
+                      <td>{so(g.plan)}</td>
+                      <td style={{ color: g.done ? MAU.xanh : undefined }}>{g.done ? so(g.done) : "—"}</td>
+                      <td style={{ fontWeight: 700, color: g.plan - g.bkk - g.done > 0 ? MAU.vang : MAU.xanh }}>
+                        {so(Math.max(g.plan - g.bkk - g.done, 0))}
+                      </td>
+                      <td style={{ color: mauTyLe(g.ty_le), fontWeight: 700 }}>
+                        {g.plan ? pct(g.ty_le) : <span className="muted">chưa có kế hoạch</span>}
+                      </td>
+                      <td style={{ color: chuaNhap ? MAU.vang : undefined }}>{chuaNhap || "—"}</td>
+                      <td style={{ color: nguoiCham ? MAU.do : undefined, fontWeight: nguoiCham ? 700 : 400 }}>
+                        {nguoiCham || "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* 2 + 3. Mảng nào kéo lùi, bao nhiêu đầu việc nhúc nhích */}
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
           <Khung tieuDe={nhomLoc ? `Tiến độ từng đầu việc — ${tenNhomLoc}` : "Tiến độ theo nhóm đầu việc"}
             phu={nhomLoc ? `${cot.length}/${tong.co_so_lieu} đầu việc có kế hoạch`
-              : `${theoNhom.length} nhóm có kế hoạch`}
+              : `${nhomCoSo.length} nhóm có kế hoạch`}
             cao={Math.max(240, 60 + cot.length * 32)}>
             <BarChart data={cot} layout="vertical" margin={{ top: 4, right: 70, left: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EEF1F6" />
@@ -423,9 +595,17 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
       </Card>
 
       {/* 5. Nhịp cập nhật + ai đang bỏ bẵng */}
-      <Khung tieuDe="Nhịp cập nhật số liệu"
-        phu={`${d.nguong?.nhip_ngay || 30} ngày gần nhất · cao nhất ${so(nhipCao)} lượt/ngày · tính cho cả phòng`}
-        cao={210}>
+      <Card title="Nhịp cập nhật số liệu"
+        action={(
+          <span className="flex items-center gap-2" style={{ fontSize: 12 }}>
+            <span className="muted">cao nhất {so(nhipCao)} lượt/ngày · tính cho cả phòng</span>
+            {[7, 14, 30].map((n) => (
+              <button key={n} className={`btn btn-sm ${nhipNgay === n ? "btn-red" : ""}`}
+                style={{ padding: "2px 8px" }} onClick={() => setNhipNgay(n)}>{n} ngày</button>
+            ))}
+          </span>
+        )}>
+        <ResponsiveContainer width="100%" height={210}>
         <AreaChart data={d.nhip || []} margin={{ top: 10, right: 12, left: -18, bottom: 0 }}>
           <defs>
             <linearGradient id="gr-nhip" x1="0" y1="0" x2="0" y2="1">
@@ -440,7 +620,8 @@ export function PhanTichKhoiLuong({ onXemNguoi, onXemDauViec }) {
           <Area isAnimationActive={false} type="monotone" dataKey="so_lan" name="Lượt cập nhật"
             stroke={MAU.lam} strokeWidth={2} fill="url(#gr-nhip)" />
         </AreaChart>
-      </Khung>
+        </ResponsiveContainer>
+      </Card>
 
       <Card title={canhBao.length
         ? `Cảnh báo cập nhật — ${canhBao.length}/${nguoi.length} người cần nhắc`

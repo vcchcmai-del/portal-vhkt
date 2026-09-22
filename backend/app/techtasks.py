@@ -1283,7 +1283,7 @@ KHOANG_HOAN_THANH = [
 ]
 IM_LANG_VANG = 7      # ngày không cập nhật thì nhắc
 IM_LANG_DO = 14       # ngày không cập nhật thì báo động
-NHIP_NGAY = 30        # bề dài biểu đồ nhịp cập nhật
+NHIP_NGAY = 7         # bề dài mặc định của nhịp cập nhật: một tuần vừa qua
 
 
 def _khoang_hoan_thanh(r):
@@ -1319,7 +1319,7 @@ def _lan_sua_gan_day(db: Session, tu_ngay):
 
 
 @admin_router.get("/tech-tasks/phan-tich")
-def phan_tich_khoi_luong(db: Session = Depends(get_db),
+def phan_tich_khoi_luong(nhip_ngay: int = NHIP_NGAY, db: Session = Depends(get_db),
                          user=Depends(require_module("tech_tasks", "view"))):
     """Bức tranh khối lượng của cả phòng: tổng, theo nhóm, phân bố mức hoàn
     thành, nhịp cập nhật 30 ngày và ai đang bỏ bẵng số liệu.
@@ -1404,10 +1404,11 @@ def phan_tich_khoi_luong(db: Session = Depends(get_db),
         tong[k] = round(tong[k], 1)
 
     # ---- nhịp cập nhật và ai đang bỏ bẵng ----
-    tu_ngay = hom_nay - dt.timedelta(days=NHIP_NGAY - 1)
+    nhip_ngay = max(1, min(int(nhip_ngay or NHIP_NGAY), 90))
+    tu_ngay = hom_nay - dt.timedelta(days=nhip_ngay - 1)
     lan_sua = _lan_sua_gan_day(db, tu_ngay)
     theo_ngay = {tu_ngay + dt.timedelta(days=i): {"so_lan": 0, "nguoi": set()}
-                 for i in range(NHIP_NGAY)}
+                 for i in range(nhip_ngay)}
     dem_nguoi = {}
     for ngay, ai, _ma in lan_sua:
         o = theo_ngay.get(ngay)
@@ -1479,7 +1480,7 @@ def phan_tich_khoi_luong(db: Session = Depends(get_db),
         "nguoi": sorted(nguoi.values(),
                         key=lambda p: (thu_tu_muc[p["muc"]], -p["chua_bao_gio"],
                                        -(p["im_lang_ngay"] or 0), -p["ton"])),
-        "nguong": {"vang": IM_LANG_VANG, "do": IM_LANG_DO, "nhip_ngay": NHIP_NGAY},
+        "nguong": {"vang": IM_LANG_VANG, "do": IM_LANG_DO, "nhip_ngay": nhip_ngay},
     }
 
 
