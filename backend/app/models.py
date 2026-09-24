@@ -812,7 +812,11 @@ class CumNhanSu(Base):
 
     id = Column(Integer, primary_key=True)
     center = Column(String(20), unique=True, nullable=False, index=True)   # mã cụm: THA, CHP...
-    so_nhan_su = Column(Integer, default=0)
+    # so_nhan_su giữ nguyên tên cột (đã có dữ liệu) nhưng đọc là "FT hiện tại"
+    # — quân số thật đang có. ft_toi_thieu là định biên tối thiểu của nhà trạm,
+    # nhập cùng nguồn; chênh lệch giữa hai số cho biết cụm đang thiếu bao nhiêu.
+    so_nhan_su = Column(Integer, default=0)      # FT hiện tại
+    ft_toi_thieu = Column(Integer, default=0)    # số FT tối thiểu
     ghi_chu = Column(Text)
     updated_by = Column(String(160))
     updated_at = Column(DateTime, default=now, onupdate=now)
@@ -834,6 +838,13 @@ class KeHoachNgay(Base):
     # Quân số cụm chép lại lúc đăng ký. Giữ bản chụp thay vì tra sang cum_nhan_su
     # khi đọc báo cáo, để số liệu cũ không đổi theo khi quân số cụm thay đổi.
     so_nhan_su = Column(Integer, default=0)
+    # Quân số trong ngày: trực / nghỉ phép / nghỉ ca. Ghi ở mức cụm chứ không
+    # theo từng mảng, vì một người nghỉ là nghỉ cả ngày chứ không nghỉ riêng
+    # một mảng. ghi_chu_nghi ghi mã user của người nghỉ để đối chiếu.
+    ft_truc = Column(Integer, default=0)
+    ft_nghi_phep = Column(Integer, default=0)
+    ft_nghi_ca = Column(Integer, default=0)
+    ghi_chu_nghi = Column(Text)
     ghi_chu = Column(Text)
     created_by = Column(String(160))
     created_at = Column(DateTime, default=now)
@@ -858,6 +869,10 @@ class KeHoachNgayDong(Base):
     ke_hoach_id = Column(Integer, ForeignKey("ke_hoach_ngay.id", ondelete="CASCADE"),
                          nullable=False, index=True)
     mang = Column(String(40), nullable=False, index=True)
+    # Mã user của các FT làm mảng này, ngăn bởi "; ". Số nhân sự thực hiện tự
+    # đếm từ ô này (sửa tay được) — ghi tên người thay vì chỉ ghi số thì mới
+    # đối chiếu được ai đang ở đâu, và bớt được một ô phải gõ.
+    ft_user = Column(Text)
     so_ns = Column(Integer, default=0)          # số nhân sự thực hiện
     tram = Column(Text)                         # trạm thực hiện, nhiều trạm ngăn bởi "; "
     so_tram = Column(Integer, default=0)        # số trạm, tự đếm từ ô trạm, sửa tay được
