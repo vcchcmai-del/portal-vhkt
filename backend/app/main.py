@@ -29,7 +29,7 @@ from .recruitment import admin_router as recruitment_admin_router, public_router
 from .techtasks import admin_router as techtasks_admin_router
 from .csdlht import admin_router as csdlht_admin_router
 from .dailyplan import admin_router as dailyplan_admin_router
-from .suckhoesolieu import admin_router as suckhoe_admin_router
+from .kiemsoatsolieu import admin_router as kiemsoat_admin_router
 from .auditlog import log_action
 from .auth import create_token, current_user, current_user_optional, verify_password
 from .database import Base, engine, get_db
@@ -46,7 +46,7 @@ API_VERSION = 12
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-09-24.v65"
+PORTAL_BUILD = "2026-09-24.v66"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -124,7 +124,7 @@ app.include_router(dutyroster_admin_router)
 app.include_router(techtasks_admin_router)
 app.include_router(csdlht_admin_router)
 app.include_router(dailyplan_admin_router)
-app.include_router(suckhoe_admin_router)
+app.include_router(kiemsoat_admin_router)
 
 
 @app.exception_handler(SQLAlchemyError)

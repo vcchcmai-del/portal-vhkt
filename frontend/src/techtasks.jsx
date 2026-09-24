@@ -3,7 +3,7 @@ import { TaskListTab } from "./techtasks-list";
 import { TheoNhanVienTab } from "./techtasks-person";
 import { BaoCaoCongViec } from "./techtasks-report";
 import { DanhGiaTrungTamTab, KeHoachNgayTab } from "./techtasks-kehoach";
-import { SucKhoeSoLieuTab } from "./techtasks-suckhoe";
+import { KiemSoatSoLieuTab } from "./techtasks-kiemsoat";
 
 // Đầu việc KHÔNG còn khai báo cứng ở đây nữa: danh sách lấy từ
 // /api/admin/tech-tasks/categories (bảng tech_categories). Trước đây cùng một
@@ -29,7 +29,7 @@ export function AdminTechTasks() {
         {nutTab("kehoach", "Kế hoạch ngày")}
         {nutTab("danhgia", "Đánh giá trung tâm")}
         {nutTab("report", "Báo cáo")}
-        {nutTab("suckhoe", "Sức khoẻ số liệu")}
+        {nutTab("kiemsoat", "Kiểm soát số liệu")}
       </div>
       {/* Không còn tab Tiến độ riêng: số liệu Kế hoạch/Thực hiện theo cụm và FT
           nằm ngay trong màn hình từng đầu việc, xem ở đó là đủ. */}
@@ -42,7 +42,7 @@ export function AdminTechTasks() {
       )}
       {tab === "kehoach" && <KeHoachNgayTab />}
       {tab === "danhgia" && <DanhGiaTrungTamTab />}
-      {tab === "suckhoe" && <SucKhoeSoLieuTab />}
+      {tab === "kiemsoat" && <KiemSoatSoLieuTab />}
       {tab === "report" && (
         <BaoCaoCongViec onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }}
           onXemDauViec={(category) => { setLocDauViec(category); setLocNguoi({ ten: "", luc: Date.now() }); setTab("list"); }} />

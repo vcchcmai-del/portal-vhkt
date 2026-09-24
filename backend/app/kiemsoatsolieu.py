@@ -1,5 +1,5 @@
 """
-Sức khoẻ số liệu: soi chính các con số mà cổng thông tin đang dùng để báo cáo.
+Kiểm soát số liệu: soi chính các con số mà cổng thông tin đang dùng để báo cáo.
 
 Vì sao cần: các màn hình báo cáo đều vẽ đẹp kể cả khi số liệu rỗng hoặc đã cũ
 — biểu đồ vẫn có trục, bảng vẫn có dòng, tỷ lệ hoàn thành vẫn ra 0%. Nhìn vào
@@ -22,7 +22,7 @@ from . import models
 from .database import get_db
 from .permissions import require_module
 
-admin_router = APIRouter(prefix="/api/admin", tags=["Sức khoẻ số liệu"])
+admin_router = APIRouter(prefix="/api/admin", tags=["Kiểm soát số liệu"])
 
 # Ngưỡng đánh giá độ tươi.
 IM_LANG_VANG = 7        # ngày không ai cập nhật -> nhắc
@@ -122,8 +122,8 @@ def _nguon_theo_ngay(ten: str, mo_ta: str, so_dong: int, luc, moc: dt.date,
             "muc": "do" if not so_dong else _muc(ngay, IM_LANG_VANG, IM_LANG_DO)}
 
 
-@admin_router.get("/suc-khoe-so-lieu")
-def suc_khoe_so_lieu(db: Session = Depends(get_db),
+@admin_router.get("/kiem-soat-so-lieu")
+def kiem_soat_so_lieu(db: Session = Depends(get_db),
                      _=Depends(require_module("tech_tasks", "view"))):
     hom_nay = models.today()
     M = models

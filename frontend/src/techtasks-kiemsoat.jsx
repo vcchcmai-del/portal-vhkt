@@ -4,10 +4,10 @@ import { api } from "./api";
 import { Card, Empty, RED } from "./ui";
 
 /*
- * Tab "Sức khoẻ số liệu": nhìn vào chính những con số mà các màn hình báo cáo
+ * Tab "Kiểm soát số liệu": nhìn vào chính những con số mà các màn hình báo cáo
  * đang dùng, để phân biệt "đơn vị làm chưa xong" với "chưa ai nhập số".
  *
- * Toàn bộ nội dung lấy từ /api/admin/suc-khoe-so-lieu, tính lại từ dữ liệu
+ * Toàn bộ nội dung lấy từ /api/admin/kiem-soat-so-lieu, tính lại từ dữ liệu
  * đang có — không có bảng tổng hợp riêng nên không bao giờ lệch với màn hình
  * khác.
  */
@@ -36,11 +36,11 @@ function Cham({ muc }) {
   );
 }
 
-export function SucKhoeSoLieuTab() {
+export function KiemSoatSoLieuTab() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState("");
 
-  const load = () => api.get("/api/admin/suc-khoe-so-lieu")
+  const load = () => api.get("/api/admin/kiem-soat-so-lieu")
     .then((x) => { setData(x); setErr(""); }).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
 
@@ -54,7 +54,7 @@ export function SucKhoeSoLieuTab() {
     <div className="flex flex-col gap-4">
       <div className="card flex items-center gap-2" style={{ flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
-          <b>Sức khoẻ số liệu — {data.hom_nay}</b>
+          <b>Kiểm soát số liệu — {data.hom_nay}</b>
           <p className="muted" style={{ fontSize: 12, marginTop: 3 }}>
             Mọi màn hình báo cáo đều vẽ ra biểu đồ kể cả khi chưa ai nhập số, nên nhìn vào không phân biệt được
             “đơn vị làm chưa xong” với “chưa có dữ liệu”. Bảng này soi đúng chỗ đó: nguồn nào đang cũ,
