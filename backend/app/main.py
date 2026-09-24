@@ -6,6 +6,7 @@ Chạy thử:  uvicorn app.main:app --reload
 Tài liệu API tự sinh:  http://localhost:8000/docs
 """
 import datetime as dt
+import logging
 import os
 import unicodedata
 from typing import List, Optional
@@ -13,7 +14,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -32,6 +33,8 @@ from .auth import create_token, current_user, current_user_optional, verify_pass
 from .database import Base, engine, get_db
 from .permissions import effective_permission_matrix, effective_permissions_list, require_module
 
+log = logging.getLogger("portal.main")
+
 # Số hiệu phiên bản API. Tăng lên mỗi khi bổ sung đường dẫn mới.
 # Giao diện đối chiếu số này để phát hiện trường hợp giao diện mới hơn máy chủ.
 API_VERSION = 12
@@ -41,7 +44,7 @@ API_VERSION = 12
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-09-08.v61"
+PORTAL_BUILD = "2026-09-24.v62"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -123,6 +126,20 @@ app.include_router(csdlht_admin_router)
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError):
     """Không để lỗi CSDL chưa bắt được làm request rơi thành lỗi proxy khó hiểu."""
+    # Luôn ghi lại lỗi thật kèm vết gọi. Trước đây không ghi gì, nên mọi lỗi CSDL
+    # đều hiện ra như nhau ("CSDL đang bận") và phải đoán mò mới tìm được nguyên nhân.
+    log.error("Lỗi CSDL ở %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+
+    # Dữ liệu quá dài hay sai kiểu là lỗi của yêu cầu, không phải máy chủ bận.
+    # Ví dụ đã gặp: mô tả ứng dụng dài hơn giới hạn cột nên PostgreSQL từ chối,
+    # người dùng bấm Lưu lại mãi không được mà không biết vì sao.
+    if isinstance(exc, DataError):
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Dữ liệu nhập vào dài hơn hoặc sai kiểu so với ô lưu trữ. "
+                               "Rút ngắn phần mô tả/đường dẫn rồi thử lại."},
+        )
+
     # Vi phạm ràng buộc là lỗi của yêu cầu, không phải máy chủ bận: xoá một
     # người còn đứng tên ở sáng kiến hay tài khoản thì báo "CSDL đang bận" khiến
     # người dùng thử đi thử lại mãi không ra — đã mất hai phiên mới tìm ra.

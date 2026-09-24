@@ -526,7 +526,9 @@ export function AdminApps() {
         <Modal title={edit.id ? "Sửa ứng dụng" : "Thêm ứng dụng"} saving={saving} onSave={save} onClose={() => setEdit(null)}>
           {msg && <p style={{ background: "#FBF4F5", color: RED_DARK, padding: "9px 12px", borderRadius: 9, fontSize: 13, marginBottom: 14 }}>{msg}</p>}
           <Field label="Tên ứng dụng"><input className="inp" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} autoFocus /></Field>
-          <Field label="Mô tả ngắn"><input className="inp" value={edit.description || ""} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
+          {/* Ô nhiều dòng: mô tả ứng dụng thường là cả một đoạn hướng dẫn, gõ trên
+              một dòng thì không đọc lại được phần đã nhập. Không giới hạn ký tự. */}
+          <Field label="Mô tả ngắn"><textarea className="inp" rows={3} value={edit.description || ""} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
           <Field label="Đường dẫn mở ứng dụng"><input className="inp" value={edit.url || ""} onChange={(e) => setEdit({ ...edit, url: e.target.value })} placeholder="http://gnoc.viettel.local" /></Field>
           <ImagePicker label="Biểu tượng ứng dụng" value={edit.icon_url || ""}
             onChange={(url) => setEdit({ ...edit, icon_url: url })}

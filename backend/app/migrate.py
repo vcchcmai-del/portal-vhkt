@@ -111,12 +111,75 @@ def sync_schema(verbose: bool = True):
                                 "column": col.name, "error": str(loi_cuoi)})
                 log.error("Không thêm được cột %s.%s: %s", table_name, col.name, loi_cuoi)
 
+    # Bước 3: nới rộng những cột chữ đang hẹp hơn khai báo trong mã nguồn
+    _noi_rong_cot_chu(inspector, existing_tables, actions, verbose)
+
     if verbose and actions:
         added = [a for a in actions if a["action"] == "added_column"]
         if added:
             log.warning("Cập nhật cấu trúc: đã thêm %d cột còn thiếu.", len(added))
 
     return actions
+
+
+def _noi_rong_cot_chu(inspector, existing_tables, actions, verbose):
+    """
+    Nới rộng cột chữ khi mã nguồn khai báo dài hơn (hoặc bỏ giới hạn) so với
+    cấu trúc thật trong cơ sở dữ liệu.
+
+    Vì sao cần: `sync_schema` chỉ THÊM cột còn thiếu, không đụng tới cột đã có.
+    Khi một cột được nới từ VARCHAR(300) lên TEXT trong mã nguồn, máy chủ vẫn
+    giữ giới hạn cũ. PostgreSQL từ chối giá trị dài hơn giới hạn, còn SQLite thì
+    không kiểm tra — nên lỗi chỉ xuất hiện trên máy chủ thật, dưới dạng thông báo
+    "Cơ sở dữ liệu đang bận" hoàn toàn không liên quan. Đã mất một phiên vì
+    chuyện này với mô tả ứng dụng ở Trung tâm ứng dụng.
+
+    Chỉ nới rộng, không bao giờ thu hẹp, nên không có nguy cơ cắt mất dữ liệu.
+    SQLite được bỏ qua: nó không áp giới hạn độ dài và cũng không hỗ trợ
+    ALTER COLUMN ... TYPE.
+    """
+    if engine.dialect.name == "sqlite":
+        return
+
+    for table_name, table in Base.metadata.tables.items():
+        if table_name not in existing_tables:
+            continue
+
+        thuc_te = {c["name"]: c for c in inspector.get_columns(table_name)}
+        for col in table.columns:
+            hien_co = thuc_te.get(col.name)
+            if hien_co is None:
+                continue
+
+            try:
+                if col.type.python_type is not str:
+                    continue
+            except Exception:  # noqa: BLE001 — kiểu không có python_type thì bỏ qua
+                continue
+
+            do_dai_db = getattr(hien_co["type"], "length", None)
+            if do_dai_db is None:
+                continue  # đã là TEXT/không giới hạn, rộng hơn mọi khai báo
+
+            do_dai_ma_nguon = getattr(col.type, "length", None)
+            if do_dai_ma_nguon is not None and do_dai_ma_nguon <= do_dai_db:
+                continue
+
+            ddl = (f'ALTER TABLE {table_name} ALTER COLUMN {col.name} '
+                   f'TYPE {_sql_type(col)}')
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+                actions.append({"table": table_name, "action": "widened_column",
+                                "column": col.name, "sql": ddl})
+                if verbose:
+                    log.warning("Đã nới rộng cột %s.%s: %s -> %s",
+                                table_name, col.name, do_dai_db,
+                                do_dai_ma_nguon or "TEXT")
+            except Exception as e:  # noqa: BLE001
+                actions.append({"table": table_name, "action": "error",
+                                "column": col.name, "error": str(e)})
+                log.error("Không nới rộng được cột %s.%s: %s", table_name, col.name, e)
 
 
 def schema_report():

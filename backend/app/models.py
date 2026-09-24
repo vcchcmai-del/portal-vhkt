@@ -141,12 +141,17 @@ class AppLink(Base):
     __tablename__ = "app_links"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(80), nullable=False)
-    description = Column(String(300))
-    url = Column(String(500))
+    name = Column(String(200), nullable=False)
+    # Mô tả, đường dẫn và ảnh biểu tượng để kiểu Text (không giới hạn độ dài).
+    # Trước đây giới hạn 300/500 ký tự: SQLite ở máy làm việc không kiểm tra nên
+    # lưu được, còn PostgreSQL trên máy chủ từ chối và người dùng chỉ thấy báo
+    # "CSDL đang bận". Mô tả ứng dụng hay là cả một đoạn hướng dẫn dùng chatbot,
+    # còn đường dẫn dán từ trình duyệt thường rất dài.
+    description = Column(Text)
+    url = Column(Text)
     category = Column(String(60))                        # Vận hành | Điều hành | Văn phòng | Chi nhánh
-    color = Column(String(10), default="#EA0A2A")
-    icon_url = Column(String(300))
+    color = Column(String(20), default="#EA0A2A")
+    icon_url = Column(Text)
     order_no = Column(Integer, default=0)
 
 
