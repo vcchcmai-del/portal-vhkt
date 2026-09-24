@@ -6,6 +6,7 @@ import datetime as dt
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import deferred, relationship
 
@@ -797,3 +798,75 @@ class ProgressEntry(Base):
     updated_by = Column(String(160))
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
+
+
+class CumNhanSu(Base):
+    """Số nhân sự của từng cụm kỹ thuật — dữ liệu cứng, ít thay đổi.
+
+    Tách riêng khỏi center_staffing (định biên/tuyển dụng, chốt theo từng đợt
+    báo cáo): ở đây chỉ cần đúng một con số hiện hành cho mỗi cụm, để màn hình
+    đăng ký kế hoạch ngày đối chiếu tổng nhân sự các mảng huy động có vượt quân
+    số thật của cụm hay không.
+    """
+    __tablename__ = "cum_nhan_su"
+
+    id = Column(Integer, primary_key=True)
+    center = Column(String(20), unique=True, nullable=False, index=True)   # mã cụm: THA, CHP...
+    so_nhan_su = Column(Integer, default=0)
+    ghi_chu = Column(Text)
+    updated_by = Column(String(160))
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
+class KeHoachNgay(Base):
+    """Đăng ký kế hoạch làm việc trong ngày của một cụm kỹ thuật.
+
+    Mỗi cụm mỗi ngày đúng một bản đăng ký (ràng buộc duy nhất theo ngày + cụm),
+    đăng ký lại là sửa bản cũ chứ không tạo thêm — nếu không, bảng đánh giá
+    đếm số ngày có đăng ký sẽ nhân đôi và mọi cảnh báo đều sai.
+    """
+    __tablename__ = "ke_hoach_ngay"
+    __table_args__ = (UniqueConstraint("plan_date", "center", name="uq_ke_hoach_ngay_cum"),)
+
+    id = Column(Integer, primary_key=True)
+    plan_date = Column(Date, nullable=False, index=True)
+    center = Column(String(20), nullable=False, index=True)
+    # Quân số cụm chép lại lúc đăng ký. Giữ bản chụp thay vì tra sang cum_nhan_su
+    # khi đọc báo cáo, để số liệu cũ không đổi theo khi quân số cụm thay đổi.
+    so_nhan_su = Column(Integer, default=0)
+    ghi_chu = Column(Text)
+    created_by = Column(String(160))
+    created_at = Column(DateTime, default=now)
+    updated_by = Column(String(160))
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    dong = relationship("KeHoachNgayDong", back_populates="ke_hoach",
+                        cascade="all, delete-orphan",
+                        order_by="KeHoachNgayDong.order_no, KeHoachNgayDong.id")
+
+
+class KeHoachNgayDong(Base):
+    """Một mảng công việc trong bản đăng ký ngày: cơ điện, truyền dẫn, kiểm
+    soát, bảo dưỡng, ứng cứu thông tin, tích hợp 4G/5G, việc phát sinh nóng.
+
+    Danh mục mảng nằm ở dailyplan.MANG (một nguồn duy nhất, giao diện đọc qua
+    API) chứ không khai báo lại ở phía web.
+    """
+    __tablename__ = "ke_hoach_ngay_dong"
+
+    id = Column(Integer, primary_key=True)
+    ke_hoach_id = Column(Integer, ForeignKey("ke_hoach_ngay.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    mang = Column(String(40), nullable=False, index=True)
+    so_ns = Column(Integer, default=0)          # số nhân sự thực hiện
+    tram = Column(Text)                         # trạm thực hiện, nhiều trạm ngăn bởi "; "
+    so_tram = Column(Integer, default=0)        # số trạm, tự đếm từ ô trạm, sửa tay được
+    cong_viec = Column(Text)                    # bảo dưỡng; ứng cứu; lắp đặt...
+    ghi_chu = Column(Text)
+    # Cập nhật cuối ngày, để bảng đánh giá nói được kết quả chứ không chỉ nói
+    # cụm có đăng ký hay không.
+    trang_thai = Column(String(20), default="chua_lam")   # chua_lam | dang_lam | xong
+    so_tram_xong = Column(Integer, default=0)
+    order_no = Column(Integer, default=0)
+
+    ke_hoach = relationship("KeHoachNgay", back_populates="dong")

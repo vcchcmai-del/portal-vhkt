@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { TaskListTab } from "./techtasks-list";
 import { TheoNhanVienTab } from "./techtasks-person";
 import { BaoCaoCongViec } from "./techtasks-report";
+import { DanhGiaTrungTamTab, KeHoachNgayTab } from "./techtasks-kehoach";
 
 // Đầu việc KHÔNG còn khai báo cứng ở đây nữa: danh sách lấy từ
 // /api/admin/tech-tasks/categories (bảng tech_categories). Trước đây cùng một
@@ -24,6 +25,8 @@ export function AdminTechTasks() {
       <div className="card flex gap-2" style={{ padding: 8, flexWrap: "wrap" }}>
         {nutTab("list", "Danh sách công việc")}
         {nutTab("person", "Theo nhân viên")}
+        {nutTab("kehoach", "Kế hoạch ngày")}
+        {nutTab("danhgia", "Đánh giá trung tâm")}
         {nutTab("report", "Báo cáo")}
       </div>
       {/* Không còn tab Tiến độ riêng: số liệu Kế hoạch/Thực hiện theo cụm và FT
@@ -35,6 +38,8 @@ export function AdminTechTasks() {
       {tab === "person" && (
         <TheoNhanVienTab onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }} />
       )}
+      {tab === "kehoach" && <KeHoachNgayTab />}
+      {tab === "danhgia" && <DanhGiaTrungTamTab />}
       {tab === "report" && (
         <BaoCaoCongViec onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }}
           onXemDauViec={(category) => { setLocDauViec(category); setLocNguoi({ ten: "", luc: Date.now() }); setTab("list"); }} />

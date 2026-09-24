@@ -32,6 +32,7 @@ MODULES = [
     ("duty_roster", "Lịch trực vận hành"),
     ("recruitment", "Quản lý tuyển dụng"),
     ("tech_tasks", "Quản lý công việc kỹ thuật"),
+    ("daily_plan", "Kế hoạch ngày của cụm"),
     ("csdl_ht", "Tra cứu CSDL hạ tầng"),
 ]
 MODULE_IDS = {m[0] for m in MODULES}
@@ -74,7 +75,7 @@ ALL_MODULE_LABELS = {**MODULE_LABELS, **dict(ADMIN_ONLY_MODULES)}
 # quản trị viên cấp riêng từng tài khoản — đây là dữ liệu để cả phòng tra, giữ
 # kín chỉ làm mọi người phải đi hỏi nhau. Thêm/sửa/xoá thì vẫn phải cấp riêng,
 # và vẫn bật/tắt được cho từng tài khoản ở màn hình Quản lý tài khoản.
-MODULE_AI_CUNG_XEM = {"csdl_ht", "tech_tasks"}
+MODULE_AI_CUNG_XEM = {"csdl_ht", "tech_tasks", "daily_plan"}
 
 ACTIONS = ("view", "create", "update", "delete")
 ACTION_LABELS = {
@@ -92,6 +93,7 @@ ROLE_DEFAULT_PERMISSIONS = {
         "uploads": ["view", "create", "delete"],
         "csdl_ht": FULL_ACCESS,
         "tech_tasks": FULL_ACCESS,
+        "daily_plan": FULL_ACCESS,
     },
     "staff": {},
 }

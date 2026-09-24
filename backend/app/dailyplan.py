@@ -1,0 +1,606 @@
+"""
+Đăng ký kế hoạch ngày của các cụm kỹ thuật, nằm trong module Công việc.
+
+Ba phần gắn với nhau:
+
+1. Quân số cụm (dữ liệu cứng, bảng cum_nhan_su) — mốc để đối chiếu số nhân sự
+   các mảng huy động trong ngày có vượt quân số thật hay không.
+
+2. Bản đăng ký ngày: mỗi cụm mỗi ngày một bản, chia theo mảng công việc (cơ
+   điện, truyền dẫn, kiểm soát, bảo dưỡng, ứng cứu thông tin, tích hợp 4G/5G,
+   việc phát sinh nóng). Mỗi mảng ghi: số nhân sự thực hiện, trạm thực hiện,
+   công việc thực hiện, ghi chú; cuối ngày cập nhật thêm trạng thái và số trạm
+   đã xong để bảng đánh giá nói được kết quả chứ không chỉ nói có đăng ký.
+
+3. Đề xuất việc nóng: đọc khối lượng còn tồn theo từng trung tâm (bảng tiến độ
+   của module Công việc) và các nhiệm vụ đã quá hạn, xếp trung tâm nào đang
+   nóng nhất lên đầu để cụm biết nên ưu tiên gì khi đăng ký.
+
+Đánh giá và cảnh báo: không có bảng riêng, tất cả tính lại từ bản đăng ký —
+thêm bảng tổng hợp sẵn là tự chuốc lấy hai nguồn số liệu lệch nhau.
+"""
+import datetime as dt
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.orm import Session, selectinload
+
+from . import models
+from .auditlog import log_action
+from .database import get_db
+from .permissions import require_module
+
+admin_router = APIRouter(prefix="/api/admin", tags=["Kế hoạch ngày của cụm"])
+
+# Danh mục mảng công việc. Khai báo một nơi duy nhất ở đây, giao diện đọc qua
+# /ke-hoach-ngay/meta — chép sang phía web là kiểu lỗi đã gặp với danh sách đầu
+# việc: sửa một bên, bên kia lệch, không ai biết.
+MANG = [
+    ("co_dien", "Cơ điện"),
+    ("truyen_dan", "Truyền dẫn"),
+    ("kiem_soat", "Kiểm soát"),
+    ("bao_duong", "Bảo dưỡng"),
+    ("ung_cuu", "Ứng cứu thông tin"),
+    ("tich_hop_45g", "Tích hợp 4G/5G"),
+    ("phat_sinh", "Phát sinh nóng / khác"),
+]
+MA_MANG = [m[0] for m in MANG]
+TEN_MANG = dict(MANG)
+
+# Gợi ý loại công việc cho ô "Công việc thực hiện". Chỉ là gợi ý bấm nhanh,
+# người đăng ký vẫn gõ tự do được.
+LOAI_CONG_VIEC = ["Bảo dưỡng", "Ứng cứu", "Lắp đặt", "Xử lý sự cố",
+                  "Tối ưu", "Kiểm tra", "Thu hồi", "Khác"]
+
+TRANG_THAI = [("chua_lam", "Chưa làm"), ("dang_lam", "Đang làm"), ("xong", "Hoàn thành")]
+MA_TRANG_THAI = [t[0] for t in TRANG_THAI]
+
+# Quá bao nhiêu ngày liên tiếp không đăng ký thì chuyển từ nhắc nhở sang phê
+# bình. Theo yêu cầu điều hành: quá 3 ngày.
+NGAY_PHE_BINH = 3
+
+# Từ khoá nhận mảng cho một đầu việc kỹ thuật. Đầu việc do quản trị viên tự đặt
+# tên nên không ghép cứng theo mã được; đoán theo tên, không đoán ra thì để
+# trống chứ không gán bừa vào một mảng.
+TU_KHOA_MANG = [
+    ("co_dien", ("cơ điện", "co dien", "điện", "ắc quy", "ac quy", "máy phát", "may phat", "cđbr")),
+    ("truyen_dan", ("truyền dẫn", "truyen dan", "cáp quang", "cap quang", "quang", "vô tuyến")),
+    ("kiem_soat", ("kiểm soát", "kiem soat", "giám sát", "giam sat", "chất lượng", "kpi")),
+    ("bao_duong", ("bảo dưỡng", "bao duong", "bdđk", "định kỳ", "dinh ky")),
+    ("ung_cuu", ("ứng cứu", "ung cuu", "sự cố", "su co", "mất liên lạc", "ml", "wo")),
+    ("tich_hop_45g", ("4g", "5g", "tích hợp", "tich hop", "phát sóng", "phat song", "srt")),
+]
+
+
+def _doan_mang(nhan: str) -> str:
+    t = (nhan or "").casefold()
+    for ma, tu_khoa in TU_KHOA_MANG:
+        if any(k in t for k in tu_khoa):
+            return ma
+    return ""
+
+
+def _chuoi(v) -> str:
+    return (v or "").strip()
+
+
+def _so(v, mac_dinh: int = 0) -> int:
+    try:
+        return max(int(v), 0)
+    except (TypeError, ValueError):
+        return mac_dinh
+
+
+def _dem_tram(tram: str) -> int:
+    """Đếm số trạm trong ô "trạm thực hiện" — ngăn nhau bởi ; , hoặc xuống dòng."""
+    if not tram:
+        return 0
+    tach = tram.replace("\n", ";").replace(",", ";").split(";")
+    return len([t for t in tach if t.strip()])
+
+
+def _ten_trung_tam(db: Session) -> dict:
+    return {c.code: c.name for c in db.query(models.InfraCenterCode).all()}
+
+
+def _ds_cum(db: Session) -> List[str]:
+    return [c.code for c in db.query(models.InfraCenterCode).order_by(models.InfraCenterCode.code).all()]
+
+
+def _ngay(v: Optional[str], mac_dinh: Optional[dt.date] = None) -> dt.date:
+    if not v:
+        return mac_dinh or models.today()
+    try:
+        return dt.date.fromisoformat(v)
+    except ValueError:
+        raise HTTPException(400, f"Ngày “{v}” không đúng dạng YYYY-MM-DD.")
+
+
+# ------------------------------------------------------------ Khuôn dữ liệu
+
+class NhanSuIn(BaseModel):
+    so_nhan_su: Optional[int] = None
+    ghi_chu: Optional[str] = None
+
+
+class DongIn(BaseModel):
+    mang: str
+    so_ns: Optional[int] = 0
+    tram: Optional[str] = ""
+    so_tram: Optional[int] = None       # bỏ trống thì tự đếm từ ô trạm
+    cong_viec: Optional[str] = ""
+    ghi_chu: Optional[str] = ""
+    trang_thai: Optional[str] = "chua_lam"
+    so_tram_xong: Optional[int] = 0
+
+
+class KeHoachIn(BaseModel):
+    ngay: str
+    center: str
+    ghi_chu: Optional[str] = ""
+    dong: List[DongIn] = []
+
+
+# ------------------------------------------------------------ Quân số cụm
+
+@admin_router.get("/ke-hoach-ngay/meta")
+def meta(_=Depends(require_module("daily_plan", "view"))):
+    """Danh mục dùng chung cho màn hình đăng ký — mảng, loại công việc, trạng thái."""
+    return {
+        "mang": [{"ma": m, "ten": t} for m, t in MANG],
+        "loai_cong_viec": LOAI_CONG_VIEC,
+        "trang_thai": [{"ma": m, "ten": t} for m, t in TRANG_THAI],
+        "ngay_phe_binh": NGAY_PHE_BINH,
+    }
+
+
+@admin_router.get("/ke-hoach-ngay/nhan-su")
+def xem_nhan_su(db: Session = Depends(get_db), _=Depends(require_module("daily_plan", "view"))):
+    """Quân số từng cụm. Cụm chưa nhập vẫn hiện, số 0 — để nhìn ra chỗ còn thiếu."""
+    ten = _ten_trung_tam(db)
+    da_co = {r.center: r for r in db.query(models.CumNhanSu).all()}
+    ra = []
+    for code in _ds_cum(db):
+        r = da_co.get(code)
+        ra.append({
+            "center": code,
+            "ten": ten.get(code, code),
+            "so_nhan_su": (r.so_nhan_su or 0) if r else 0,
+            "ghi_chu": (r.ghi_chu or "") if r else "",
+            "updated_by": (r.updated_by or "") if r else "",
+            "updated_at": r.updated_at.isoformat() if r and r.updated_at else None,
+        })
+    # Cụm đã nhập quân số nhưng không còn trong danh mục mã cụm: vẫn trả về,
+    # không giấu dữ liệu đã nhập.
+    for code, r in da_co.items():
+        if code not in {x["center"] for x in ra}:
+            ra.append({"center": code, "ten": ten.get(code, code),
+                       "so_nhan_su": r.so_nhan_su or 0, "ghi_chu": r.ghi_chu or "",
+                       "updated_by": r.updated_by or "",
+                       "updated_at": r.updated_at.isoformat() if r.updated_at else None})
+    return ra
+
+
+@admin_router.put("/ke-hoach-ngay/nhan-su/{center}")
+def dat_nhan_su(center: str, data: NhanSuIn, db: Session = Depends(get_db),
+                user=Depends(require_module("daily_plan", "update")), request: Request = None):
+    code = _chuoi(center).upper()
+    if not code:
+        raise HTTPException(400, "Chưa chọn cụm.")
+    row = db.query(models.CumNhanSu).filter(models.CumNhanSu.center == code).first()
+    if row is None:
+        row = models.CumNhanSu(center=code)
+        db.add(row)
+    if data.so_nhan_su is not None:
+        row.so_nhan_su = _so(data.so_nhan_su)
+    if data.ghi_chu is not None:
+        row.ghi_chu = _chuoi(data.ghi_chu)
+    row.updated_by = getattr(user, "full_name", "") or getattr(user, "username", "")
+    db.commit()
+    db.refresh(row)
+    log_action(db, user, "update", "daily_plan", row.id, f"Quân số cụm {code}", request=request)
+    return {"center": row.center, "so_nhan_su": row.so_nhan_su or 0, "ghi_chu": row.ghi_chu or ""}
+
+
+# ------------------------------------------------------------ Bản đăng ký
+
+def _out_dong(d: models.KeHoachNgayDong) -> dict:
+    return {
+        "id": d.id,
+        "mang": d.mang,
+        "ten_mang": TEN_MANG.get(d.mang, d.mang),
+        "so_ns": d.so_ns or 0,
+        "tram": d.tram or "",
+        "so_tram": d.so_tram or 0,
+        "cong_viec": d.cong_viec or "",
+        "ghi_chu": d.ghi_chu or "",
+        "trang_thai": d.trang_thai or "chua_lam",
+        "so_tram_xong": d.so_tram_xong or 0,
+        "order_no": d.order_no or 0,
+    }
+
+
+def _out(row: models.KeHoachNgay, ten: dict) -> dict:
+    dong = [_out_dong(d) for d in row.dong]
+    tong_ns = sum(d["so_ns"] for d in dong)
+    tong_tram = sum(d["so_tram"] for d in dong)
+    tram_xong = sum(d["so_tram_xong"] for d in dong)
+    return {
+        "id": row.id,
+        "ngay": row.plan_date.isoformat(),
+        "center": row.center,
+        "ten": ten.get(row.center, row.center),
+        "so_nhan_su": row.so_nhan_su or 0,
+        "ghi_chu": row.ghi_chu or "",
+        "dong": dong,
+        "tong_ns": tong_ns,
+        "tong_tram": tong_tram,
+        "tram_xong": tram_xong,
+        # Huy động quá quân số cụm thì báo ngay trên màn hình; không chặn lưu,
+        # vì cụm có thể được tăng cường người từ nơi khác.
+        "vuot_quan_so": bool(row.so_nhan_su and tong_ns > row.so_nhan_su),
+        "created_by": row.created_by or "",
+        "updated_by": row.updated_by or "",
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _truy_van(db: Session):
+    return db.query(models.KeHoachNgay).options(selectinload(models.KeHoachNgay.dong))
+
+
+@admin_router.get("/ke-hoach-ngay")
+def danh_sach(ngay: Optional[str] = None, center: Optional[str] = None,
+              db: Session = Depends(get_db), _=Depends(require_module("daily_plan", "view"))):
+    """Toàn bộ bản đăng ký của một ngày, kèm danh sách cụm chưa đăng ký."""
+    d = _ngay(ngay)
+    q = _truy_van(db).filter(models.KeHoachNgay.plan_date == d)
+    if center:
+        q = q.filter(models.KeHoachNgay.center == _chuoi(center).upper())
+    rows = q.order_by(models.KeHoachNgay.center).all()
+    ten = _ten_trung_tam(db)
+    da_dk = {r.center for r in rows}
+    cum = _ds_cum(db)
+    return {
+        "ngay": d.isoformat(),
+        "danh_sach": [_out(r, ten) for r in rows],
+        "tong_cum": len(cum),
+        "da_dang_ky": len(da_dk),
+        "chua_dang_ky": [{"center": c, "ten": ten.get(c, c)} for c in cum if c not in da_dk],
+    }
+
+
+@admin_router.get("/ke-hoach-ngay/chi-tiet")
+def chi_tiet(center: str, ngay: Optional[str] = None, db: Session = Depends(get_db),
+             _=Depends(require_module("daily_plan", "view"))):
+    """Bản đăng ký của một cụm trong một ngày.
+
+    Chưa đăng ký thì trả về khuôn trống đủ 7 mảng kèm quân số cụm, để màn hình
+    mở ra là điền được ngay, không phải tự dựng khuôn ở phía web.
+    """
+    code = _chuoi(center).upper()
+    d = _ngay(ngay)
+    ten = _ten_trung_tam(db)
+    row = _truy_van(db).filter(models.KeHoachNgay.plan_date == d,
+                               models.KeHoachNgay.center == code).first()
+    if row:
+        return _out(row, ten)
+    ns = db.query(models.CumNhanSu).filter(models.CumNhanSu.center == code).first()
+    return {
+        "id": None, "ngay": d.isoformat(), "center": code, "ten": ten.get(code, code),
+        "so_nhan_su": (ns.so_nhan_su or 0) if ns else 0, "ghi_chu": "",
+        "dong": [{"id": None, "mang": m, "ten_mang": t, "so_ns": 0, "tram": "", "so_tram": 0,
+                  "cong_viec": "", "ghi_chu": "", "trang_thai": "chua_lam",
+                  "so_tram_xong": 0, "order_no": i}
+                 for i, (m, t) in enumerate(MANG)],
+        "tong_ns": 0, "tong_tram": 0, "tram_xong": 0, "vuot_quan_so": False,
+        "created_by": "", "updated_by": "", "updated_at": None,
+    }
+
+
+@admin_router.put("/ke-hoach-ngay")
+def ghi(data: KeHoachIn, db: Session = Depends(get_db),
+        user=Depends(require_module("daily_plan", "create")), request: Request = None):
+    """Đăng ký mới hoặc sửa bản đăng ký của cụm trong ngày (ghi đè cả bản).
+
+    Mảng để trống hoàn toàn thì không lưu dòng nào — bản đăng ký chỉ gồm những
+    mảng thật sự có việc, nhờ vậy bảng đánh giá không đếm nhầm 7 mảng cho mọi
+    cụm.
+    """
+    code = _chuoi(data.center).upper()
+    if not code:
+        raise HTTPException(400, "Chưa chọn cụm.")
+    d = _ngay(data.ngay)
+    ds_cum = set(_ds_cum(db))
+    if ds_cum and code not in ds_cum:
+        raise HTTPException(400, f"Mã cụm “{code}” không có trong danh mục mã cụm.")
+
+    sach = []
+    for i, dg in enumerate(data.dong or []):
+        ma = _chuoi(dg.mang)
+        if ma not in MA_MANG:
+            raise HTTPException(400, f"Mảng công việc “{ma}” không hợp lệ.")
+        tram = _chuoi(dg.tram)
+        cv = _chuoi(dg.cong_viec)
+        ghi_chu = _chuoi(dg.ghi_chu)
+        so_ns = _so(dg.so_ns)
+        if not (tram or cv or ghi_chu or so_ns):
+            continue
+        tt = _chuoi(dg.trang_thai) or "chua_lam"
+        if tt not in MA_TRANG_THAI:
+            tt = "chua_lam"
+        so_tram = _so(dg.so_tram) if dg.so_tram is not None else _dem_tram(tram)
+        sach.append({"mang": ma, "so_ns": so_ns, "tram": tram,
+                     "so_tram": so_tram, "cong_viec": cv, "ghi_chu": ghi_chu,
+                     "trang_thai": tt,
+                     "so_tram_xong": min(_so(dg.so_tram_xong), so_tram) if so_tram else _so(dg.so_tram_xong),
+                     "order_no": i})
+    if not sach:
+        raise HTTPException(400, "Bản đăng ký chưa có mảng nào — nhập ít nhất một mảng công việc.")
+
+    ten_nguoi = getattr(user, "full_name", "") or getattr(user, "username", "")
+    row = _truy_van(db).filter(models.KeHoachNgay.plan_date == d,
+                               models.KeHoachNgay.center == code).first()
+    moi = row is None
+    if moi:
+        row = models.KeHoachNgay(plan_date=d, center=code, created_by=ten_nguoi)
+        db.add(row)
+    ns = db.query(models.CumNhanSu).filter(models.CumNhanSu.center == code).first()
+    row.so_nhan_su = (ns.so_nhan_su or 0) if ns else 0
+    row.ghi_chu = _chuoi(data.ghi_chu)
+    row.updated_by = ten_nguoi
+    row.dong.clear()
+    db.flush()
+    for d_ in sach:
+        row.dong.append(models.KeHoachNgayDong(**d_))
+    db.commit()
+    db.refresh(row)
+    log_action(db, user, "create" if moi else "update", "daily_plan", row.id,
+               f"Kế hoạch ngày {d.isoformat()} — cụm {code}", request=request)
+    return _out(row, _ten_trung_tam(db))
+
+
+@admin_router.delete("/ke-hoach-ngay/{plan_id}")
+def xoa(plan_id: int, db: Session = Depends(get_db),
+        user=Depends(require_module("daily_plan", "delete")), request: Request = None):
+    row = db.query(models.KeHoachNgay).filter(models.KeHoachNgay.id == plan_id).first()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy bản đăng ký.")
+    ten = f"Kế hoạch ngày {row.plan_date.isoformat()} — cụm {row.center}"
+    db.delete(row)
+    db.commit()
+    log_action(db, user, "delete", "daily_plan", plan_id, ten, request=request)
+    return {"deleted": plan_id}
+
+
+# ------------------------------------------------------- Đề xuất việc nóng
+
+def _ton_theo_trung_tam(db: Session) -> dict:
+    """Khối lượng còn tồn của kỳ gần nhất, gom theo trung tâm rồi theo đầu việc.
+
+    Đọc đúng cách mà tab Phân tích của module Công việc đang đọc: chỉ lấy dòng
+    tổng theo trung tâm (ft_name rỗng), và chỉ lấy kỳ mới nhất của từng đầu
+    việc — đầu việc cập nhật chậm hơn không bị hiểu là tồn bằng 0.
+    """
+    from .techtasks import categories, item_category
+
+    thuoc = item_category(db)
+    nhan = {c.code: c.label for c in categories(db)}
+    dong = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None)).all()
+
+    ky_moi = {}
+    for r in dong:
+        dv = thuoc.get(r.item)
+        if dv and r.period and r.period > ky_moi.get(dv, ""):
+            ky_moi[dv] = r.period
+
+    ra = {}
+    for r in dong:
+        dv = thuoc.get(r.item)
+        if not dv or r.period != ky_moi.get(dv):
+            continue
+        ton = max((r.plan_qty or 0) - (r.bkk_qty or 0) - (r.done_qty or 0), 0)
+        if ton <= 0:
+            continue
+        o = ra.setdefault(r.center, {})
+        m = o.setdefault(dv, {"category": dv, "label": nhan.get(dv, dv), "ton": 0.0,
+                              "period": r.period, "mang": _doan_mang(nhan.get(dv, dv))})
+        m["ton"] += ton
+    return ra
+
+
+def _viec_qua_han(db: Session, hom_nay: dt.date) -> dict:
+    """Nhiệm vụ đã quá hạn mà chưa xong, gom theo đơn vị được chia việc.
+
+    Việc không chia cho đơn vị nào gom vào khoá "" (mức chi nhánh) — vẫn phải
+    hiện ra, nếu không thì việc quá hạn của cả phòng biến mất khỏi đề xuất.
+    """
+    q = (db.query(models.TechTask)
+         .options(selectinload(models.TechTask.units))
+         .filter(models.TechTask.deleted_at.is_(None),
+                 models.TechTask.status != "done",
+                 models.TechTask.due_at.isnot(None),
+                 models.TechTask.due_at < hom_nay))
+    ra = {}
+    for t in q.all():
+        tre = (hom_nay - t.due_at).days
+        chung = {"id": t.id, "title": t.title, "category": t.category,
+                 "due_at": t.due_at.isoformat(), "tre_ngay": tre,
+                 "priority": t.priority or "trung_binh",
+                 "assignee": t.assignee or "", "mang": _doan_mang(t.title)}
+        don_vi = [u.unit_name for u in t.units if _chuoi(u.unit_name)]
+        for dv in don_vi or [""]:
+            ra.setdefault(_chuoi(dv).upper() if dv else "", []).append(chung)
+    return ra
+
+
+@admin_router.get("/ke-hoach-ngay/de-xuat")
+def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
+            _=Depends(require_module("daily_plan", "view"))):
+    """Trung tâm/khu vực nào nên ưu tiên việc gì trong ngày.
+
+    Căn cứ: khối lượng còn tồn theo trung tâm và các nhiệm vụ đã quá hạn. Trung
+    tâm đã đăng ký trong ngày vẫn hiện, có cờ "da_dang_ky" để người điều hành
+    biết đề xuất này đã được tiếp nhận hay chưa.
+    """
+    d = _ngay(ngay)
+    ten = _ten_trung_tam(db)
+    ton = _ton_theo_trung_tam(db)
+    qua_han = _viec_qua_han(db, d)
+    da_dk = {r.center for r in db.query(models.KeHoachNgay)
+             .filter(models.KeHoachNgay.plan_date == d).all()}
+
+    ra = []
+    for code in sorted(set(list(ton.keys()) + [k for k in qua_han if k])):
+        dau_viec = sorted(ton.get(code, {}).values(), key=lambda x: -x["ton"])
+        viec = sorted(qua_han.get(code, []), key=lambda x: -x["tre_ngay"])
+        tong_ton = round(sum(x["ton"] for x in dau_viec), 1)
+        if not tong_ton and not viec:
+            continue
+        # Nóng: còn việc quá hạn, hoặc tồn lớn. Ngưỡng tồn lấy theo mặt bằng
+        # chung của chính ngày đó (tính sau), tạm ghi số để xếp hạng.
+        ra.append({
+            "center": code, "ten": ten.get(code, code),
+            "ton": tong_ton,
+            "so_viec_qua_han": len(viec),
+            "tre_nhat": max((x["tre_ngay"] for x in viec), default=0),
+            "dau_viec": [{**x, "ton": round(x["ton"], 1),
+                          "ten_mang": TEN_MANG.get(x["mang"], "")} for x in dau_viec[:5]],
+            "viec_qua_han": [{**x, "ten_mang": TEN_MANG.get(x["mang"], "")} for x in viec[:5]],
+            "da_dang_ky": code in da_dk,
+        })
+
+    # Xếp hạng nóng: việc quá hạn nặng hơn tồn, vì đã trễ hạn cam kết.
+    ra.sort(key=lambda x: (-x["so_viec_qua_han"], -x["tre_nhat"], -x["ton"]))
+    nguong = 0.0
+    if ra:
+        ds_ton = sorted((x["ton"] for x in ra), reverse=True)
+        nguong = ds_ton[max(len(ds_ton) // 3 - 1, 0)]      # tốp 1/3 tồn cao nhất
+    for x in ra:
+        x["muc_do"] = ("nong" if x["so_viec_qua_han"] else
+                       "canh_bao" if x["ton"] >= nguong > 0 else "binh_thuong")
+        phan = []
+        if x["so_viec_qua_han"]:
+            phan.append(f"{x['so_viec_qua_han']} việc quá hạn (trễ nhất {x['tre_nhat']} ngày)")
+        if x["ton"]:
+            dv = ", ".join(f"{i['label']} ({round(i['ton'], 1)})" for i in x["dau_viec"][:2])
+            phan.append(f"tồn {x['ton']} — {dv}" if dv else f"tồn {x['ton']}")
+        x["de_xuat"] = "Ưu tiên: " + "; ".join(phan) if phan else ""
+
+    chung = sorted(qua_han.get("", []), key=lambda x: -x["tre_ngay"])
+    return {
+        "ngay": d.isoformat(),
+        "trung_tam": ra,
+        # Việc quá hạn chưa chia về trung tâm nào — của cả chi nhánh.
+        "chua_chia_don_vi": [{**x, "ten_mang": TEN_MANG.get(x["mang"], "")} for x in chung[:10]],
+    }
+
+
+# --------------------------------------------------- Đánh giá các trung tâm
+
+@admin_router.get("/ke-hoach-ngay/danh-gia")
+def danh_gia(tu: Optional[str] = None, den: Optional[str] = None,
+             db: Session = Depends(get_db), _=Depends(require_module("daily_plan", "view"))):
+    """Bảng đánh giá kết quả đăng ký của các trung tâm trong một khoảng ngày.
+
+    Cảnh báo theo đúng quy định điều hành: chưa đăng ký ngày gần nhất thì nhắc
+    nhở; quá NGAY_PHE_BINH ngày liên tiếp không đăng ký thì phê bình.
+
+    Số ngày không đăng ký liên tiếp đếm lùi từ ngày cuối khoảng, kể cả khi lần
+    đăng ký gần nhất nằm trước khoảng đang xem — nếu chỉ đếm trong khoảng thì
+    cụm bỏ bẵng cả tháng lại hiện y như cụm mới nghỉ một hôm.
+    """
+    d2 = _ngay(den)
+    d1 = _ngay(tu, d2 - dt.timedelta(days=6))
+    if d1 > d2:
+        d1, d2 = d2, d1
+    if (d2 - d1).days > 366:
+        raise HTTPException(400, "Khoảng ngày quá dài — chọn tối đa 1 năm.")
+
+    ten = _ten_trung_tam(db)
+    cum = _ds_cum(db)
+    so_ngay = (d2 - d1).days + 1
+
+    rows = (_truy_van(db)
+            .filter(models.KeHoachNgay.plan_date >= d1, models.KeHoachNgay.plan_date <= d2)
+            .all())
+    theo_cum = {}
+    for r in rows:
+        theo_cum.setdefault(r.center, []).append(r)
+
+    # Ngày đăng ký gần nhất tính tới d2, kể cả trước khoảng đang xem.
+    gan_nhat = {}
+    for c, ngay_max in (db.query(models.KeHoachNgay.center,
+                                 models.KeHoachNgay.plan_date)
+                        .filter(models.KeHoachNgay.plan_date <= d2).all()):
+        if c not in gan_nhat or ngay_max > gan_nhat[c]:
+            gan_nhat[c] = ngay_max
+
+    ra = []
+    for code in sorted(set(cum) | set(theo_cum.keys())):
+        ds = theo_cum.get(code, [])
+        ngay_dk = {r.plan_date for r in ds}
+        tong_ns = tong_tram = tram_xong = 0
+        mang_dung = set()
+        for r in ds:
+            for d_ in r.dong:
+                tong_ns += d_.so_ns or 0
+                tong_tram += d_.so_tram or 0
+                tram_xong += d_.so_tram_xong or 0
+                mang_dung.add(d_.mang)
+        lan_cuoi = gan_nhat.get(code)
+        khong_dk = (d2 - lan_cuoi).days if lan_cuoi else None
+        ty_le_dk = round(len(ngay_dk) / so_ngay, 4) if so_ngay else 0.0
+        ty_le_xong = round(tram_xong / tong_tram, 4) if tong_tram else None
+
+        if khong_dk is None or khong_dk > NGAY_PHE_BINH:
+            canh_bao = "phe_binh"
+        elif khong_dk > 0:
+            canh_bao = "nhac_nho"
+        else:
+            canh_bao = "ok"
+
+        ra.append({
+            "center": code, "ten": ten.get(code, code),
+            "so_ngay": so_ngay,
+            "so_ngay_dang_ky": len(ngay_dk),
+            "ty_le_dang_ky": ty_le_dk,
+            "khong_dang_ky_ngay": khong_dk,          # None = chưa đăng ký lần nào
+            "lan_cuoi": lan_cuoi.isoformat() if lan_cuoi else None,
+            "tong_ns": tong_ns,
+            "tong_tram": tong_tram,
+            "tram_xong": tram_xong,
+            "ty_le_hoan_thanh": ty_le_xong,
+            "so_mang": len(mang_dung),
+            "canh_bao": canh_bao,
+            "xep_loai": _xep_loai(ty_le_dk, ty_le_xong, canh_bao),
+        })
+
+    ra.sort(key=lambda x: (-x["ty_le_dang_ky"], -(x["ty_le_hoan_thanh"] or 0), x["center"]))
+    return {
+        "tu": d1.isoformat(), "den": d2.isoformat(), "so_ngay": so_ngay,
+        "ngay_phe_binh": NGAY_PHE_BINH,
+        "trung_tam": ra,
+        "tong_hop": {
+            "so_cum": len(ra),
+            "phe_binh": len([x for x in ra if x["canh_bao"] == "phe_binh"]),
+            "nhac_nho": len([x for x in ra if x["canh_bao"] == "nhac_nho"]),
+            "du_ngay": len([x for x in ra if x["so_ngay_dang_ky"] >= so_ngay]),
+        },
+    }
+
+
+def _xep_loai(ty_le_dk: float, ty_le_xong: Optional[float], canh_bao: str) -> str:
+    """Xếp loại gộp: đăng ký đều và làm xong nhiều thì tốt; đang bị phê bình
+    thì không xếp trên mức "cần chấn chỉnh" dù các số khác có đẹp."""
+    if canh_bao == "phe_binh":
+        return "can_chan_chinh"
+    diem = ty_le_dk * 0.6 + (ty_le_xong if ty_le_xong is not None else ty_le_dk) * 0.4
+    if diem >= 0.9:
+        return "tot"
+    if diem >= 0.7:
+        return "kha"
+    if diem >= 0.5:
+        return "trung_binh"
+    return "can_chan_chinh"
