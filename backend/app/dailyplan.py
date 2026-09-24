@@ -451,12 +451,22 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
     da_dk = {r.center for r in db.query(models.KeHoachNgay)
              .filter(models.KeHoachNgay.plan_date == d).all()}
 
-    ra = []
+    # Bảng tiến độ có mã "CN" giữ phần kế hoạch chưa chia về cụm nào, và có thể
+    # còn mã lạ do nhập tay. Không xếp chúng lẫn vào danh sách trung tâm: nút
+    # "Đăng ký" ở dòng đó chắc chắn lỗi vì không phải cụm thật. Gom riêng ở
+    # dưới, vẫn hiện ra chứ không giấu khối lượng đi.
+    la_cum = set(_ds_cum(db))
+    ra, ngoai_cum = [], []
     for code in sorted(set(list(ton.keys()) + [k for k in qua_han if k])):
         dau_viec = sorted(ton.get(code, {}).values(), key=lambda x: -x["ton"])
         viec = sorted(qua_han.get(code, []), key=lambda x: -x["tre_ngay"])
         tong_ton = round(sum(x["ton"] for x in dau_viec), 1)
         if not tong_ton and not viec:
+            continue
+        if la_cum and code not in la_cum:
+            ngoai_cum.append({"center": code, "ton": tong_ton,
+                              "so_viec_qua_han": len(viec),
+                              "dau_viec": [{**x, "ton": round(x["ton"], 1)} for x in dau_viec[:5]]})
             continue
         # Nóng: còn việc quá hạn, hoặc tồn lớn. Ngưỡng tồn lấy theo mặt bằng
         # chung của chính ngày đó (tính sau), tạm ghi số để xếp hạng.
@@ -494,6 +504,8 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
         "trung_tam": ra,
         # Việc quá hạn chưa chia về trung tâm nào — của cả chi nhánh.
         "chua_chia_don_vi": [{**x, "ten_mang": TEN_MANG.get(x["mang"], "")} for x in chung[:10]],
+        # Khối lượng mang mã không phải cụm ("CN" — chưa chia cụm, hoặc mã lạ).
+        "ngoai_cum": sorted(ngoai_cum, key=lambda x: -x["ton"]),
     }
 
 

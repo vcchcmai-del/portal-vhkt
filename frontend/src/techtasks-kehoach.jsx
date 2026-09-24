@@ -193,6 +193,14 @@ export function KeHoachNgayTab() {
                 </table>
               </div>
             )}
+            {!!deXuat?.ngoai_cum?.length && (
+              <p style={{ fontSize: 12.5, marginTop: 10 }}>
+                <AlertTriangle size={13} style={{ color: MAU.vang }} />{" "}
+                <b>Còn {so(deXuat.ngoai_cum.reduce((a, x) => a + x.ton, 0))} khối lượng chưa chia về cụm nào</b>{" "}
+                ({deXuat.ngoai_cum.map((x) => `${x.center}: ${so(x.ton)}`).join(", ")}) — chia về cụm ở màn hình
+                đầu việc thì mới đưa vào đề xuất được.
+              </p>
+            )}
             {!!deXuat?.chua_chia_don_vi?.length && (
               <p style={{ fontSize: 12.5, marginTop: 10 }}>
                 <AlertTriangle size={13} style={{ color: MAU.vang }} />{" "}
