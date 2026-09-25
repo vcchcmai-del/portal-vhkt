@@ -151,6 +151,7 @@ class NhanSuIn(BaseModel):
 
 class DongIn(BaseModel):
     mang: str
+    hang_muc: Optional[str] = ""        # mã hạng mục để đẩy số lên báo cáo tháng
     ft_user: Optional[str] = ""
     so_ns: Optional[int] = None             # bỏ trống thì đếm theo ô mã user
     tram: Optional[str] = ""
@@ -184,6 +185,31 @@ def meta(_=Depends(require_module("daily_plan", "view"))):
         "trang_thai": [{"ma": m, "ten": t} for m, t in TRANG_THAI],
         "ngay_phe_binh": NGAY_PHE_BINH,
     }
+
+
+@admin_router.get("/ke-hoach-ngay/hang-muc")
+def hang_muc_theo_mang(db: Session = Depends(get_db),
+                       _=Depends(require_module("daily_plan", "view"))):
+    """Hạng mục định lượng để cụm gắn vào việc làm trong ngày, gom theo mảng.
+
+    Hạng mục thuộc đầu việc nào thì theo mảng của nhóm đầu việc đó, nên ô chọn
+    ở mỗi dòng chỉ hiện đúng hạng mục của mảng ấy — 82 hạng mục đổ hết vào một
+    ô thì không ai tìm nổi. Hạng mục thuộc nhóm ngoài ba mảng chính vẫn trả về
+    dưới khoá "khac" để mảng phụ dùng được.
+    """
+    from .techtasks import categories, progress_items
+
+    mang_cua = _mang_cua_dau_viec(db)
+    nhan_dv = {c.code: c.label for c in categories(db)}
+    ra = {m: [] for m in MA_MANG}
+    ra["khac"] = []
+    for it in progress_items(db):
+        dv = it.category_code
+        m = mang_cua.get(dv, "")
+        khoa = m if m in ra else "khac"
+        ra[khoa].append({"ma": it.code, "ten": it.label,
+                         "dau_viec": dv, "ten_dau_viec": nhan_dv.get(dv, dv)})
+    return ra
 
 
 @admin_router.get("/ke-hoach-ngay/nhan-su")
@@ -249,6 +275,7 @@ def _out_dong(d: models.KeHoachNgayDong) -> dict:
         "id": d.id,
         "mang": d.mang,
         "ten_mang": TEN_MANG.get(d.mang, d.mang),
+        "hang_muc": d.hang_muc or "",
         "ft_user": d.ft_user or "",
         "so_ns": d.so_ns or 0,
         "tram": d.tram or "",
@@ -343,7 +370,7 @@ def chi_tiet(center: str, ngay: Optional[str] = None, db: Session = Depends(get_
         # Mặc định coi như cả cụm đi trực, người nhập chỉ phải sửa số nghỉ.
         "ft_truc": quan_so, "ft_nghi_phep": 0, "ft_nghi_ca": 0, "ft_nghi": 0,
         "ghi_chu_nghi": "", "lech_quan_so": False, "ghi_chu": "",
-        "dong": [{"id": None, "mang": m, "ten_mang": t, "ft_user": "", "so_ns": 0,
+        "dong": [{"id": None, "mang": m, "ten_mang": t, "hang_muc": "", "ft_user": "", "so_ns": 0,
                   "tram": "", "so_tram": 0, "cong_viec": "", "ghi_chu": "",
                   "trang_thai": "chua_lam", "so_tram_xong": 0, "order_no": i}
                  for i, (m, t) in enumerate(MANG)],
@@ -378,16 +405,18 @@ def ghi(data: KeHoachIn, db: Session = Depends(get_db),
         cv = _chuoi(dg.cong_viec)
         ghi_chu = _chuoi(dg.ghi_chu)
         ft_user = _chuoi(dg.ft_user)
+        hang_muc = _chuoi(dg.hang_muc)
         # Số người tự đếm theo ô mã user; nhập số tay thì lấy số tay (có người
         # đi cùng mà chưa có tài khoản).
         so_ns = _so(dg.so_ns) if dg.so_ns is not None else _dem_user(ft_user)
-        if not (tram or cv or ghi_chu or ft_user or so_ns):
+        if not (tram or cv or ghi_chu or ft_user or so_ns or hang_muc):
             continue
         tt = _chuoi(dg.trang_thai) or "chua_lam"
         if tt not in MA_TRANG_THAI:
             tt = "chua_lam"
         so_tram = _so(dg.so_tram) if dg.so_tram is not None else _dem_tram(tram)
-        sach.append({"mang": ma, "ft_user": ft_user, "so_ns": so_ns, "tram": tram,
+        sach.append({"mang": ma, "hang_muc": hang_muc, "ft_user": ft_user,
+                     "so_ns": so_ns, "tram": tram,
                      "so_tram": so_tram, "cong_viec": cv, "ghi_chu": ghi_chu,
                      "trang_thai": tt,
                      "so_tram_xong": min(_so(dg.so_tram_xong), so_tram) if so_tram else _so(dg.so_tram_xong),
@@ -417,11 +446,18 @@ def ghi(data: KeHoachIn, db: Session = Depends(get_db),
     db.flush()
     for d_ in sach:
         row.dong.append(models.KeHoachNgayDong(**d_))
+    db.flush()
+    # Đẩy số trạm đã xong lên số Thực hiện của tháng ngay trong cùng một lần
+    # ghi: tách ra chạy sau thì có lúc ghi được bản đăng ký mà không cộng được
+    # số tháng, và không ai biết để chạy lại.
+    day_len = _don_lai_so_thang(db, code, d)
     db.commit()
     db.refresh(row)
     log_action(db, user, "create" if moi else "update", "daily_plan", row.id,
                f"Kế hoạch ngày {d.isoformat()} — cụm {code}", request=request)
-    return _out(row, _ten_trung_tam(db))
+    ra = _out(row, _ten_trung_tam(db))
+    ra["day_len_bao_cao_thang"] = day_len
+    return ra
 
 
 @admin_router.delete("/ke-hoach-ngay/{plan_id}")
@@ -431,10 +467,102 @@ def xoa(plan_id: int, db: Session = Depends(get_db),
     if not row:
         raise HTTPException(404, "Không tìm thấy bản đăng ký.")
     ten = f"Kế hoạch ngày {row.plan_date.isoformat()} — cụm {row.center}"
+    center, ngay = row.center, row.plan_date
     db.delete(row)
+    db.flush()
+    # Xoá bản đăng ký thì phải trả lại phần số tháng đã cộng từ nó, nếu không
+    # số thực hiện của tháng còn lại phần của một ngày không còn tồn tại.
+    _don_lai_so_thang(db, center, ngay)
     db.commit()
     log_action(db, user, "delete", "daily_plan", plan_id, ten, request=request)
     return {"deleted": plan_id}
+
+
+def _dau_thang(d: dt.date) -> dt.date:
+    return d.replace(day=1)
+
+
+def _cuoi_thang(d: dt.date) -> dt.date:
+    return (d.replace(day=28) + dt.timedelta(days=4)).replace(day=1) - dt.timedelta(days=1)
+
+
+def _don_lai_so_thang(db: Session, center: str, trong_ngay: dt.date) -> list:
+    """Cộng số trạm làm xong trong tháng của một cụm lên số Thực hiện của tháng.
+
+    Vì sao phải có: số Thực hiện theo tháng trước nay phải có người ngồi chốt
+    tay, nên thực tế không ai chốt — bốn nhóm đầu việc có kế hoạch 24.186 mà
+    Thực hiện bằng 0. Nay cụm chỉ nhập một lần lúc chốt kết quả cuối ngày, số
+    tháng tự cộng lên từ đó.
+
+    Cách cộng để lưu bao nhiêu lần cũng ra một con số: mỗi dòng số liệu tháng
+    ghi riêng ở cột done_ngay phần đã nhận từ kế hoạch ngày. Mỗi lần tính lại,
+    chỉ cộng vào done_qty đúng phần CHÊNH so với lần trước. Nhờ vậy sửa đi sửa
+    lại bản đăng ký không nhân đôi số, và phần ai đó nhập tay/nhập Excel vẫn
+    còn nguyên.
+
+    Trả về danh sách thay đổi để ghi nhật ký và hiện lại cho người nhập.
+    """
+    from .techtasks import item_category
+
+    ky = trong_ngay.strftime("%Y-%m")
+    d1, d2 = _dau_thang(trong_ngay), _cuoi_thang(trong_ngay)
+    thuoc = item_category(db)
+
+    # Tổng số trạm đã xong trong tháng, theo từng hạng mục
+    tong = {}
+    dong = (db.query(models.KeHoachNgayDong)
+            .join(models.KeHoachNgay,
+                  models.KeHoachNgayDong.ke_hoach_id == models.KeHoachNgay.id)
+            .filter(models.KeHoachNgay.center == center,
+                    models.KeHoachNgay.plan_date >= d1,
+                    models.KeHoachNgay.plan_date <= d2,
+                    models.KeHoachNgayDong.hang_muc.isnot(None),
+                    models.KeHoachNgayDong.hang_muc != "")
+            .all())
+    for d in dong:
+        tong[d.hang_muc] = tong.get(d.hang_muc, 0.0) + (d.so_tram_xong or 0)
+
+    # Cả những hạng mục THÁNG TRƯỚC ĐÓ đã nhận số từ ngày nhưng nay không còn
+    # dòng nào trỏ tới (người nhập đổi hạng mục, hoặc xoá bản đăng ký) — phải
+    # trả lại phần đã cộng, nếu không số cũ nằm lại vĩnh viễn.
+    da_nhan = (db.query(models.ProgressEntry)
+               .filter(models.ProgressEntry.center == center,
+                       models.ProgressEntry.period == ky,
+                       models.ProgressEntry.ft_name.is_(None),
+                       models.ProgressEntry.done_ngay.isnot(None),
+                       models.ProgressEntry.done_ngay != 0)
+               .all())
+
+    thay_doi = []
+    for item in set(tong) | {r.item for r in da_nhan}:
+        moi = round(tong.get(item, 0.0), 1)
+        row = next((r for r in da_nhan if r.item == item), None)
+        if row is None:
+            row = (db.query(models.ProgressEntry)
+                   .filter(models.ProgressEntry.center == center,
+                           models.ProgressEntry.period == ky,
+                           models.ProgressEntry.item == item,
+                           models.ProgressEntry.ft_name.is_(None))
+                   .first())
+        if row is None:
+            if not moi:
+                continue
+            cat = thuoc.get(item)
+            if not cat:
+                continue      # hạng mục không còn thuộc đầu việc nào -> bỏ qua
+            row = models.ProgressEntry(category=cat, item=item, period=ky,
+                                       center=center, plan_qty=0, done_qty=0,
+                                       bkk_qty=0, done_ngay=0,
+                                       note="Tự cộng từ kế hoạch ngày của cụm")
+            db.add(row)
+        cu = row.done_ngay or 0
+        if abs(moi - cu) < 0.001:
+            continue
+        row.done_qty = round(max((row.done_qty or 0) + (moi - cu), 0), 1)
+        row.done_ngay = moi
+        thay_doi.append({"item": item, "truoc": cu, "sau": moi,
+                         "thuc_hien": row.done_qty})
+    return thay_doi
 
 
 # ------------------------------------------------------- Đề xuất việc nóng
@@ -474,8 +602,9 @@ def _ton_theo_trung_tam(db: Session) -> dict:
             continue
         o = ra.setdefault(r.center, {})
         m = o.setdefault(dv, {"category": dv, "label": nhan.get(dv, dv), "ton": 0.0,
-                              "period": r.period, "mang": mang})
+                              "period": r.period, "mang": mang, "hang_muc": {}})
         m["ton"] += ton
+        m["hang_muc"][r.item] = m["hang_muc"].get(r.item, 0.0) + ton
     return ra
 
 
@@ -545,7 +674,8 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
                               "so_viec_qua_han": len(viec),
                               "theo_mang": [{"mang": m, "ten_mang": TEN_MANG[m], "ton": round(v, 1)}
                                             for m, v in gom.items() if v],
-                              "dau_viec": [{**x, "ton": round(x["ton"], 1)} for x in dau_viec[:5]]})
+                              "dau_viec": [{k: v for k, v in x.items() if k != "hang_muc"}
+                                           | {"ton": round(x["ton"], 1)} for x in dau_viec[:5]]})
             continue
         # Nóng: còn việc quá hạn, hoặc tồn lớn. Ngưỡng tồn lấy theo mặt bằng
         # chung của chính ngày đó (tính sau), tạm ghi số để xếp hạng.
@@ -555,15 +685,28 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
         for x in dau_viec:
             if x["mang"] in theo_mang:
                 theo_mang[x["mang"]] += x["ton"]
+        # Hạng mục tồn nhiều nhất của từng mảng: mở form đăng ký từ dòng này
+        # thì ô Hạng mục được chọn sẵn, người nhập chỉ còn điền người và trạm.
+        # Không có nó thì 82 hạng mục nằm trong ô xổ xuống, không ai chọn, và
+        # số ngày lại không đẩy lên được số tháng.
+        goi_y = {}
+        for x in dau_viec:
+            if x["mang"] not in MANG_CHINH or not x.get("hang_muc"):
+                continue
+            hm, sl = max(x["hang_muc"].items(), key=lambda kv: kv[1])
+            if sl > goi_y.get(x["mang"], (None, 0))[1]:
+                goi_y[x["mang"]] = (hm, sl)
         ra.append({
             "center": code, "ten": ten.get(code, code),
             "ton": tong_ton,
+            "goi_y_hang_muc": {m: hm for m, (hm, _sl) in goi_y.items()},
             "theo_mang": [{"mang": m, "ten_mang": TEN_MANG[m], "ton": round(v, 1)}
                           for m, v in theo_mang.items()],
             "so_viec_qua_han": len(viec),
             "tre_nhat": max((x["tre_ngay"] for x in viec), default=0),
-            "dau_viec": [{**x, "ton": round(x["ton"], 1),
-                          "ten_mang": TEN_MANG.get(x["mang"], "")} for x in dau_viec[:5]],
+            "dau_viec": [{k: v for k, v in x.items() if k != "hang_muc"}
+                         | {"ton": round(x["ton"], 1), "ten_mang": TEN_MANG.get(x["mang"], "")}
+                         for x in dau_viec[:5]],
             "viec_qua_han": [{**x, "ten_mang": TEN_MANG.get(x["mang"], "")} for x in viec[:5]],
             "da_dang_ky": code in da_dk,
         })

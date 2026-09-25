@@ -788,7 +788,12 @@ class ProgressEntry(Base):
     center = Column(String(120), nullable=False, index=True)
     ft_name = Column(String(160), nullable=True)
     plan_qty = Column(Float, default=0)     # Kế hoạch
-    done_qty = Column(Float, default=0)     # Thực hiện
+    done_qty = Column(Float, default=0)     # Thực hiện (nhập tay/Excel + phần từ kế hoạch ngày)
+    # Sổ ghi riêng: trong done_qty ở trên, bao nhiêu là do kế hoạch ngày của cụm
+    # cộng lên. Có cột này thì mỗi lần cụm sửa bản đăng ký chỉ cộng/trừ đúng
+    # phần chênh, lưu lại mười lần vẫn ra một con số — và phần ai đó nhập tay
+    # không bị đè mất. KHÔNG cộng cột này vào báo cáo: nó đã nằm trong done_qty.
+    done_ngay = Column(Float, default=0)
     # Khối lượng bất khả kháng: phần không làm được vì lý do khách quan (vướng
     # mặt bằng, chờ đối tác...). Trừ khỏi kế hoạch khi tính tỷ lệ hoàn thành,
     # còn tồn thì không tính phần này.
@@ -869,6 +874,11 @@ class KeHoachNgayDong(Base):
     ke_hoach_id = Column(Integer, ForeignKey("ke_hoach_ngay.id", ondelete="CASCADE"),
                          nullable=False, index=True)
     mang = Column(String(40), nullable=False, index=True)
+    # Hạng mục định lượng (tech_progress_items.code) mà việc hôm nay thuộc về.
+    # Có ô này thì số trạm làm xong trong ngày tự cộng lên số Thực hiện của
+    # tháng — không ai phải ngồi chốt số tháng bằng tay nữa. Để trống vẫn đăng
+    # ký được, chỉ là ngày đó không đẩy được vào số tháng.
+    hang_muc = Column(String(60), index=True)
     # Mã user của các FT làm mảng này, ngăn bởi "; ". Số nhân sự thực hiện tự
     # đếm từ ô này (sửa tay được) — ghi tên người thay vì chỉ ghi số thì mới
     # đối chiếu được ai đang ở đâu, và bớt được một ô phải gõ.

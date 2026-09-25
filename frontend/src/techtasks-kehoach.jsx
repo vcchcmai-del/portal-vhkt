@@ -60,6 +60,7 @@ export function KeHoachNgayTab() {
   const [moNhanSu, setMoNhanSu] = useState(false);
   const [moKetQua, setMoKetQua] = useState(false);   // cột trạng thái + trạm xong, chỉ cần cuối ngày
   const [mangMo, setMangMo] = useState([]);          // mảng phụ người dùng bấm thêm
+  const [hangMuc, setHangMuc] = useState({});        // hạng mục để đẩy số lên báo cáo tháng
   const [moDeXuat, setMoDeXuat] = useState(true);
   const [err, setErr] = useState("");
   const [tin, setTin] = useState("");
@@ -77,6 +78,7 @@ export function KeHoachNgayTab() {
   useEffect(() => {
     api.get("/api/admin/ke-hoach-ngay/meta").then(setMeta).catch((e) => setErr(e.message));
     api.get("/api/admin/ke-hoach-ngay/nhan-su").then(setNhanSu).catch(() => {});
+    api.get("/api/admin/ke-hoach-ngay/hang-muc").then(setHangMuc).catch(() => {});
   }, []);
 
   const quanSo = useMemo(
@@ -84,9 +86,15 @@ export function KeHoachNgayTab() {
 
   const moForm = (center) => {
     setErr(""); setTin("");
+    // Gợi ý hạng mục theo khuyến nghị của chính cụm này: ô Hạng mục điền sẵn
+    // hạng mục đang tồn nhiều nhất của từng mảng, người nhập sửa lại được.
+    const goiY = (deXuat?.trung_tam || []).find((t) => t.center === center)?.goi_y_hang_muc || {};
     api.get(`/api/admin/ke-hoach-ngay/chi-tiet?center=${encodeURIComponent(center)}&ngay=${ngay}`)
       .then((x) => {
-        setForm(x);
+        setForm({
+          ...x,
+          dong: x.dong.map((d) => (d.hang_muc ? d : { ...d, hang_muc: goiY[d.mang] || "" })),
+        });
         // Mảng phụ chỉ mở sẵn nếu bản đăng ký đã có dữ liệu ở đó, để sửa lại
         // không bị mất phần đã nhập.
         setMangMo(x.dong.filter((d) => !mangChinh.includes(d.mang)
@@ -106,14 +114,20 @@ export function KeHoachNgayTab() {
       ghi_chu_nghi: form.ghi_chu_nghi || "",
       // Chỉ gửi mảng đang mở: mảng phụ chưa bấm mở thì coi như không đăng ký.
       dong: form.dong.filter((d) => mangChinh.includes(d.mang) || mangMo.includes(d.mang)).map((d) => ({
-        mang: d.mang, ft_user: d.ft_user,
+        mang: d.mang, hang_muc: d.hang_muc, ft_user: d.ft_user,
         so_ns: d.so_ns === "" || d.so_ns == null ? null : Number(d.so_ns),
         tram: d.tram,
         so_tram: d.so_tram === "" || d.so_tram == null ? null : Number(d.so_tram),
         cong_viec: d.cong_viec, ghi_chu: d.ghi_chu,
         trang_thai: d.trang_thai, so_tram_xong: Number(d.so_tram_xong) || 0,
       })),
-    }).then(() => { setForm(null); setTin(`Đã lưu kế hoạch ngày ${form.ngay} của cụm ${form.center}.`); load(); })
+    }).then((kq) => {
+      setForm(null);
+      const day = kq?.day_len_bao_cao_thang || [];
+      setTin(`Đã lưu kế hoạch ngày ${form.ngay} của cụm ${form.center}.`
+        + (day.length ? ` Đã cập nhật số Thực hiện tháng cho ${day.length} hạng mục.` : ""));
+      load();
+    })
       .catch((e) => setErr(e.message));
   };
 
@@ -296,6 +310,10 @@ export function KeHoachNgayTab() {
               <thead>
                 <tr>
                   <th style={{ minWidth: 120 }}>Mảng</th>
+                  <th style={{ minWidth: 180 }}
+                    title="Chọn hạng mục thì số trạm làm xong tự cộng lên số Thực hiện của tháng — khỏi phải chốt số tháng bằng tay">
+                    Hạng mục (đẩy lên số tháng)
+                  </th>
                   <th style={{ minWidth: 200 }} title="Mã user các FT làm mảng này, ngăn nhau bởi dấu chấm phẩy">
                     FT thực hiện (mã user)
                   </th>
@@ -312,6 +330,22 @@ export function KeHoachNgayTab() {
                 {dongHien.map(({ d, i }) => (
                   <tr key={d.mang}>
                     <td><b>{d.ten_mang}</b></td>
+                    <td>
+                      <select className="inp" value={d.hang_muc || ""}
+                        onChange={(e) => suaDong(i, "hang_muc", e.target.value)}>
+                        <option value="">— không đẩy lên số tháng —</option>
+                        {(hangMuc[d.mang] || []).map((h) => (
+                          <option key={h.ma} value={h.ma}>{h.ten}</option>
+                        ))}
+                        {(hangMuc.khac || []).length > 0 && (
+                          <optgroup label="Hạng mục mảng khác">
+                            {(hangMuc.khac || []).map((h) => (
+                              <option key={h.ma} value={h.ma}>{h.ten}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </td>
                     <td><input className="inp" value={d.ft_user || ""} placeholder="vd: luongdv; sonld"
                       onChange={(e) => suaDong(i, "ft_user", e.target.value)} /></td>
                     <td><input className="inp" type="number" min="0" style={{ width: 58 }}
@@ -370,6 +404,8 @@ export function KeHoachNgayTab() {
           <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
             Mảng nào không có việc thì để trống cả dòng — dòng trống không được lưu.
             Số NS và Số trạm bỏ trống thì tự đếm theo ô mã user và ô trạm.
+            Chọn Hạng mục thì số trạm làm xong (ô “Kết quả cuối ngày”) tự cộng lên số Thực hiện của tháng —
+            không phải ngồi chốt số tháng bằng tay nữa, và sửa lại bản đăng ký bao nhiêu lần cũng không cộng trùng.
           </p>
         </div>
       )}
