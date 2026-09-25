@@ -6,7 +6,7 @@ import re
 import time
 import unicodedata
 from collections import defaultdict
-from typing import Optional
+from typing import List, Optional
 
 from urllib.parse import quote
 
@@ -456,6 +456,18 @@ def _duoc_bao_cao(user, row) -> bool:
     return _duoc_sua(user) or (user.full_name or "").strip().casefold() in _nguoi_cua_viec(row)
 
 
+# Mức ưu tiên điều hành của đầu việc. Khai ở đây một nơi, giao diện đọc qua
+# /tech-tasks/uu-tien — không chép danh sách sang phía web.
+UU_TIEN_DAU_VIEC = [
+    ("khan_cap", "Khẩn cấp"),
+    ("ut1", "Ưu tiên 1"),
+    ("ut2", "Ưu tiên 2"),
+    ("ut3", "Ưu tiên 3"),
+]
+MA_UU_TIEN = [m for m, _t in UU_TIEN_DAU_VIEC]
+TEN_UU_TIEN = dict(UU_TIEN_DAU_VIEC)
+
+
 class CategoryIn(BaseModel):
     label: Optional[str] = None
     kieu: Optional[str] = None
@@ -465,6 +477,7 @@ class CategoryIn(BaseModel):
     group_code: Optional[str] = None
     order_no: Optional[int] = None
     active: Optional[bool] = None
+    uu_tien: Optional[str] = None
     sheet_url: Optional[str] = None
 
 
@@ -490,8 +503,54 @@ def list_categories(db: Session = Depends(get_db), user=Depends(require_module("
              "group_owner": (nhom[c.group_code].owner or "") if c.group_code in nhom else "",
              "sheet_url": c.sheet_url or "", "sheet_synced_at": c.sheet_synced_at,
              "kieu": c.kieu or "cum", "hc_don_vi": c.hc_don_vi or "ty",
+             "uu_tien": c.uu_tien or "",
              "co_the_sua": toan_quyen or ten_toi in phu_trach.get(c.code, set())}
             for c in categories(db)]
+
+
+@admin_router.get("/tech-tasks/uu-tien")
+def danh_muc_uu_tien(db: Session = Depends(get_db),
+                     _=Depends(require_module("tech_tasks", "view"))):
+    """Bốn mức ưu tiên kèm số đầu việc đang ở mỗi mức, cho bộ lọc đếm sẵn.
+
+    Có cả mức "" (chưa xếp): phải nhìn thấy còn bao nhiêu đầu việc chưa ai
+    quyết định mức nào thì mới xếp hết được — giấu đi thì bộ lọc trông đầy đủ
+    trong khi phần lớn đầu việc không thuộc mức nào.
+    """
+    dem = {m: 0 for m in MA_UU_TIEN}
+    dem[""] = 0
+    for c in categories(db):
+        dem[c.uu_tien if (c.uu_tien or "") in dem else ""] += 1
+    return {"muc": [{"ma": m, "ten": t, "so_dau_viec": dem[m]} for m, t in UU_TIEN_DAU_VIEC],
+            "chua_xep": dem[""]}
+
+
+class UuTienNhieuIn(BaseModel):
+    codes: List[str] = []
+    uu_tien: str = ""
+
+
+@admin_router.post("/tech-tasks/categories/uu-tien")
+def dat_uu_tien_nhieu(data: UuTienNhieuIn, db: Session = Depends(get_db),
+                      user=Depends(require_module("tech_tasks", "update")), request: Request = None):
+    """Đặt mức ưu tiên cho nhiều đầu việc cùng lúc — 84 đầu việc mà sửa từng
+    dòng thì không ai xếp hết."""
+    muc = (data.uu_tien or "").strip()
+    if muc and muc not in MA_UU_TIEN:
+        raise HTTPException(400, f"Mức ưu tiên “{muc}” không hợp lệ.")
+    ds = [c.strip() for c in (data.codes or []) if c and c.strip()]
+    if not ds:
+        raise HTTPException(400, "Chưa chọn đầu việc nào.")
+    rows = db.query(models.TechCategory).filter(models.TechCategory.code.in_(ds)).all()
+    if not rows:
+        raise HTTPException(404, "Không tìm thấy đầu việc nào trong danh sách đã chọn.")
+    for r in rows:
+        r.uu_tien = muc
+    db.commit()
+    log_action(db, user, "update", "tech_tasks", None,
+               f"Đặt mức ưu tiên “{TEN_UU_TIEN.get(muc, 'Chưa xếp')}” cho {len(rows)} đầu việc",
+               request=request)
+    return {"da_dat": len(rows), "uu_tien": muc}
 
 
 @admin_router.post("/tech-tasks/categories")
@@ -545,6 +604,11 @@ def update_category(code: str, data: CategoryIn, db: Session = Depends(get_db),
         row.kieu = data.kieu
     if data.hc_don_vi is not None and data.hc_don_vi in ("ty", "trieu"):
         row.hc_don_vi = data.hc_don_vi
+    if data.uu_tien is not None:
+        muc = (data.uu_tien or "").strip()
+        if muc and muc not in MA_UU_TIEN:
+            raise HTTPException(400, f"Mức ưu tiên “{muc}” không hợp lệ.")
+        row.uu_tien = muc
     db.commit()
     log_action(db, user, "update", "tech_tasks", row.id, f"Đầu việc: {row.label}", request=request)
     return {"id": row.code, "label": row.label, "hint": row.hint or ""}
@@ -679,6 +743,7 @@ def tech_structure(db: Session = Depends(get_db), _=Depends(require_module("tech
 
     def ds(ma):
         return [{"id": c.code, "label": c.label, "hint": c.hint or "", "owner": c.owner or "",
+                 "uu_tien": c.uu_tien or "",
                  "active": bool(c.active), "order_no": c.order_no or 0, "dang_dung": dem[c.code]}
                 for c in cats if (c.group_code or "") == ma]
 
@@ -986,6 +1051,7 @@ def admin_tasks_summary(db: Session = Depends(get_db), _=Depends(require_module(
         g = nhom.get(c.code) or {"code": "", "label": ""}
         cn = cap_nhat.get(c.code)
         ra.append({"category": c.code, "label": c.label, "owner": c.owner or "",
+                   "uu_tien": c.uu_tien or "",
                    "group": g["code"], "group_label": g["label"],
                    "updated_at": cn["luc"] if cn else None,
                    "updated_by": cn["ai"] if cn else "",

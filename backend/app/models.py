@@ -686,6 +686,10 @@ class TechCategory(Base):
     hint = Column(Text)                     # gợi ý phạm vi, hiện trên form giao việc
     group_code = Column(String(40), nullable=True, index=True)   # khoá về TechGroup.code
     owner = Column(String(160))             # nhân sự chủ trì đầu việc (mặc định cho việc giao mới)
+    # Mức ưu tiên điều hành: khan_cap | ut1 | ut2 | ut3. Để trống nghĩa là chưa
+    # xếp — cố ý KHÔNG đặt mặc định một mức nào, vì gán bừa thì bộ lọc nhìn có
+    # vẻ đầy đủ mà thực ra chưa ai quyết định việc nào gấp hơn việc nào.
+    uu_tien = Column(String(20), default="", index=True)
     order_no = Column(Integer, default=0)
     active = Column(Boolean, default=True)
     # Google Sheet của riêng đầu việc này: người làm cập nhật số liệu online,

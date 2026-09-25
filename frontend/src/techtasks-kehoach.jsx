@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { api, coQuyen } from "./api";
 import { Card, Empty, Field, RED, useCuonToi } from "./ui";
+import { THU_TU_UU_TIEN, TheUuTienDV, UU_TIEN_DV, UU_TIEN_DV_MAU } from "./techtasks-list";
 
 /*
  * Đăng ký kế hoạch ngày của các cụm kỹ thuật và bảng đánh giá các trung tâm.
@@ -62,6 +63,7 @@ export function KeHoachNgayTab() {
   const [mangMo, setMangMo] = useState([]);          // mảng phụ người dùng bấm thêm
   const [hangMuc, setHangMuc] = useState({});        // hạng mục để đẩy số lên báo cáo tháng
   const [moDeXuat, setMoDeXuat] = useState(true);
+  const [fUuTien, setFUuTien] = useState("");     // lọc khuyến nghị theo mức ưu tiên đầu việc
   const [err, setErr] = useState("");
   const [tin, setTin] = useState("");
   const oNhap = useCuonToi(!!form);
@@ -153,6 +155,17 @@ export function KeHoachNgayTab() {
         .filter(({ d }) => mangChinh.includes(d.mang) || mangMo.includes(d.mang))
     : [];
   const mangThem = (meta?.mang || []).filter((m) => !m.chinh && !mangMo.includes(m.ma));
+  // Khuyến nghị đã lọc theo mức ưu tiên: lọc theo mức của từng ĐẦU VIỆC còn tồn,
+  // không lọc theo mức chung của trung tâm — nếu không, chọn "Khẩn cấp" sẽ giấu
+  // mất trung tâm có một việc khẩn cấp lẫn trong nhiều việc thường.
+  const dsDeXuat = useMemo(() => {
+    const ds = deXuat?.trung_tam || [];
+    if (!fUuTien) return ds;
+    return ds
+      .map((x) => ({ ...x, dau_viec: (x.dau_viec || []).filter((d) => (d.uu_tien || "") === fUuTien) }))
+      .filter((x) => x.dau_viec.length)
+      .sort((a, b) => (THU_TU_UU_TIEN[a.uu_tien || ""] - THU_TU_UU_TIEN[b.uu_tien || ""]) || b.ton - a.ton);
+  }, [deXuat, fUuTien]);
   const soNghiForm = form ? (Number(form.ft_nghi_phep) || 0) + (Number(form.ft_nghi_ca) || 0) : 0;
   const lechQuanSo = !!(form && quanSoForm && (Number(form.ft_truc) || 0) + soNghiForm > quanSoForm);
 
@@ -199,7 +212,7 @@ export function KeHoachNgayTab() {
 
       {/* ---- Đề xuất việc nóng ---- */}
       <Card pad={false} icon={Flame}
-        title={`Đề xuất việc nóng / quá hạn theo trung tâm${deXuat?.trung_tam?.length ? ` (${deXuat.trung_tam.length})` : ""}`}
+        title={`Đề xuất việc nóng / quá hạn theo trung tâm${dsDeXuat.length ? ` (${dsDeXuat.length})` : ""}`}
         action={<button className="btn btn-sm" onClick={() => setMoDeXuat((v) => !v)}>
           {moDeXuat ? <ChevronDown size={14} /> : <ChevronRight size={14} />}{moDeXuat ? "Thu gọn" : "Mở"}
         </button>}>
@@ -209,27 +222,52 @@ export function KeHoachNgayTab() {
               Căn cứ khối lượng còn tồn của kỳ gần nhất (Kế hoạch − BKK − Thực hiện) và các nhiệm vụ đã quá hạn
               trong module Công việc. Trung tâm còn việc quá hạn xếp trước, sau đó tới nơi tồn nhiều nhất.
             </p>
-            {!deXuat?.trung_tam?.length ? (
+            <div className="flex items-center gap-2" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+              <b style={{ fontSize: 12.5 }}>Mức ưu tiên:</b>
+              <button className={`btn btn-sm ${!fUuTien ? "btn-red" : ""}`} onClick={() => setFUuTien("")}>
+                Tất cả
+              </button>
+              {Object.entries(UU_TIEN_DV).map(([ma, ten]) => (
+                <button key={ma} className={`btn btn-sm ${fUuTien === ma ? "btn-red" : ""}`}
+                  onClick={() => setFUuTien(fUuTien === ma ? "" : ma)}
+                  style={fUuTien === ma ? undefined : { borderLeft: `3px solid ${UU_TIEN_DV_MAU[ma]}` }}>
+                  {ten}
+                </button>
+              ))}
+            </div>
+            {!dsDeXuat.length ? (
               <Empty title="Chưa có đề xuất" hint="Chưa có số liệu tồn hoặc việc quá hạn nào theo trung tâm." />
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table className="tbl">
                   <thead>
                     <tr>
-                      <th>Trung tâm</th><th>Mức độ</th><th>Tồn</th><th>Việc quá hạn</th>
+                      <th>Trung tâm</th><th>Ưu tiên</th><th>Mức độ</th><th>Tồn</th><th>Việc quá hạn</th>
                       <th>Nên ưu tiên</th><th>Đăng ký</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {deXuat.trung_tam.map((x) => (
+                    {dsDeXuat.map((x) => (
                       <tr key={x.center}>
                         <td><b>{x.center}</b> <span className="muted">{x.ten}</span></td>
+                        <td><TheUuTienDV muc={x.uu_tien || ""} nho /></td>
                         <td><The chu={TEN_MUC_DO[x.muc_do] || x.muc_do} mau={MAU_MUC_DO[x.muc_do]} /></td>
                         <td className="mono">{so(x.ton)}</td>
                         <td className="mono" style={{ color: x.so_viec_qua_han ? MAU.do : undefined }}>
                           {x.so_viec_qua_han ? `${x.so_viec_qua_han} (trễ nhất ${x.tre_nhat} ngày)` : "—"}
                         </td>
-                        <td style={{ maxWidth: 420, fontSize: 12.5 }}>{x.de_xuat || "—"}</td>
+                        <td style={{ maxWidth: 420, fontSize: 12.5 }}>
+                          {x.de_xuat || "—"}
+                          {!!x.dau_viec?.length && (
+                            <div className="flex gap-1" style={{ flexWrap: "wrap", marginTop: 4 }}>
+                              {x.dau_viec.slice(0, 3).map((dv) => (
+                                <span key={dv.category} style={{ fontSize: 11.5 }}>
+                                  <TheUuTienDV muc={dv.uu_tien || ""} nho /> {dv.label} ({so(dv.ton)})
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
                         <td>{x.da_dang_ky
                           ? <span style={{ color: MAU.xanh, fontWeight: 700 }}><Check size={13} /> Đã đăng ký</span>
                           : <span className="muted">Chưa</span>}</td>

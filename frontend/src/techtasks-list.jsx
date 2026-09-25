@@ -53,6 +53,31 @@ function StatusTag({ task }) {
 
 export const UU_TIEN = { cao: "Cao", trung_binh: "Trung bình", thap: "Thấp" };
 const UU_TIEN_MAU = { cao: "#C8102E", trung_binh: "#0E6CD6", thap: "#16A34A" };
+
+/* Mức ưu tiên điều hành của ĐẦU VIỆC — khác với mức ưu tiên của từng nhiệm vụ
+   ở trên (cao/trung bình/thấp). Bốn mức này là thứ phòng VHKT, các mảng và các
+   trung tâm nhìn vào để biết làm cái gì trước. */
+export const UU_TIEN_DV = {
+  khan_cap: "Khẩn cấp", ut1: "Ưu tiên 1", ut2: "Ưu tiên 2", ut3: "Ưu tiên 3",
+};
+export const UU_TIEN_DV_MAU = {
+  khan_cap: "#C8102E", ut1: "#E06C00", ut2: "#0E6CD6", ut3: "#0A7A50", "": "#8A8284",
+};
+export const THU_TU_UU_TIEN = { khan_cap: 0, ut1: 1, ut2: 2, ut3: 3, "": 9 };
+
+/** Nhãn mức ưu tiên của đầu việc. Chưa xếp thì vẫn hiện, để còn biết mà xếp. */
+export function TheUuTienDV({ muc, nho = false }) {
+  const co = UU_TIEN_DV[muc];
+  return (
+    <span title={co ? `Mức ưu tiên: ${co}` : "Đầu việc chưa được xếp mức ưu tiên"}
+      style={{
+        display: "inline-block", padding: nho ? "0 6px" : "1px 8px", borderRadius: 99,
+        fontSize: nho ? 10.5 : 11.5, fontWeight: 700, whiteSpace: "nowrap",
+        color: co ? "#fff" : "#6B7A90",
+        background: co ? UU_TIEN_DV_MAU[muc] : "#EDF1F7",
+      }}>{co || "Chưa xếp"}</span>
+  );
+}
 const PHAM_VI = { ca_nhan: "Cá nhân được giao", nhieu_don_vi: "Có đơn vị khác cùng làm" };
 
 /** Thanh tiến độ nhỏ trong bảng và khung chi tiết. */
@@ -658,6 +683,20 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
     setXoaHoi({ cats: [cat], cach: "chuyen", dich: phang.find((c) => c.id !== cat.id)?.id || "" });
   };
 
+  /** Đặt mức ưu tiên cho một đầu việc — lưu ngay, không cần bấm Lưu. */
+  const datUuTienMot = (c, muc) => lam(
+    () => api.put(`/api/admin/tech-tasks/categories/${c.id}`, { uu_tien: muc }),
+    `Đã xếp “${c.label}” vào mức ${UU_TIEN_DV[muc] || "chưa xếp"}.`);
+
+  /** Đặt mức cho mọi đầu việc đang chọn — 84 đầu việc sửa từng dòng thì không ai xếp hết. */
+  const datUuTienNhieu = (muc) => {
+    const soLuong = chon.length;
+    setChon([]);
+    return lam(() => api.post("/api/admin/tech-tasks/categories/uu-tien",
+      { codes: chon, uu_tien: muc }),
+      `Đã xếp ${soLuong} đầu việc vào mức ${UU_TIEN_DV[muc] || "chưa xếp"}.`);
+  };
+
   const xoaDaChon = () => {
     const cats = phang.filter((c) => chon.includes(c.id));
     if (!cats.length) return;
@@ -861,6 +900,13 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
         <div className="flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px", marginBottom: 10,
                                                           background: "#FBF4F5", borderRadius: 10 }}>
           <b style={{ fontSize: 13 }}>Đã chọn {chon.length} đầu việc</b>
+          <span className="muted" style={{ fontSize: 12.5 }}>Đặt mức ưu tiên:</span>
+          {Object.entries(UU_TIEN_DV).map(([ma, ten]) => (
+            <button key={ma} className="btn btn-sm" disabled={!duocSua}
+              style={{ borderLeft: `3px solid ${UU_TIEN_DV_MAU[ma]}` }}
+              onClick={() => datUuTienNhieu(ma)}>{ten}</button>
+          ))}
+          <button className="btn btn-sm" disabled={!duocSua} onClick={() => datUuTienNhieu("")}>Bỏ mức</button>
           <button className="btn btn-sm" style={{ color: RED }} onClick={xoaDaChon}><Trash2 size={13} />Xóa đã chọn</button>
           <button className="btn btn-sm" onClick={() => setChon([])}>Bỏ chọn</button>
         </div>
@@ -957,13 +1003,14 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
                 <thead>
                   <tr>
                     <th style={{ width: 30 }} /><th style={{ width: 60 }}>Thứ tự</th><th>Tên đầu việc</th>
+                    <th style={{ width: 130 }} title="Mức ưu tiên điều hành — dùng cho bộ lọc ở Danh sách công việc và Kế hoạch ngày">Ưu tiên</th>
                     <th>Chủ trì</th><th>Dữ liệu đang có</th><th style={{ textAlign: "right" }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
                   {g.categories.map((c) => (sua?.id === c.id ? (
                     <tr key={c.id}>
-                      <td colSpan={6} style={{ background: "#FCFBFB" }}>
+                      <td colSpan={7} style={{ background: "#FCFBFB" }}>
                         <div className="grid md:grid-cols-4 gap-3">
                           <Field label="Tên đầu việc">
                             <input className="inp" autoFocus value={sua.label} onChange={(e) => setSua({ ...sua, label: e.target.value })} />
@@ -1001,6 +1048,16 @@ function QuanLyDauViec({ onDoi, onDong, suaNgay, chiNhom = null, moThem = false 
                       <td>
                         <b>{c.label}</b>
                         {c.hint && <><br /><span className="muted" style={{ fontSize: 12 }}>{c.hint.length > 90 ? `${c.hint.slice(0, 89)}…` : c.hint}</span></>}
+                      </td>
+                      <td>
+                        <select className="inp" style={{ padding: "2px 6px", fontSize: 12.5 }}
+                          value={c.uu_tien || ""} disabled={!duocSua}
+                          onChange={(e) => datUuTienMot(c, e.target.value)}>
+                          <option value="">— Chưa xếp —</option>
+                          {Object.entries(UU_TIEN_DV).map(([ma, ten]) => (
+                            <option key={ma} value={ma}>{ten}</option>
+                          ))}
+                        </select>
                       </td>
                       <td style={{ whiteSpace: "nowrap" }}>{c.owner || <span className="muted">chưa đặt</span>}</td>
                       <td style={{ fontSize: 12 }}>{theDuLieu(c.dang_dung || {})}</td>
@@ -1050,6 +1107,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   const [err, setErr] = useState("");
   const [fCategory, setFCategory] = useState(locDauViec || "");
   const [fNhom, setFNhom] = useState("");          // bấm ô nhóm ở Tổng quan để xem riêng nhóm đó
+  const [fUuTien, setFUuTien] = useState("");     // "" = mọi mức | khan_cap | ut1 | ut2 | ut3 | chua_xep
   const [tabCon, setTabCon] = useState("viec");   // trong một đầu việc: "viec" | "cum"
   const [coCum, setCoCum] = useState(false);      // đầu việc đang xem có theo dõi theo cụm không
   const [kieuDV, setKieuDV] = useState("cum");   // "cum" | "hoan_cong"
@@ -1220,12 +1278,24 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
   // Đầu việc nào thuộc nhóm nào — để lọc nhanh khi bấm một ô nhóm.
   const nhomCuaDauViec = useMemo(
     () => Object.fromEntries(summary.map((c) => [c.category, c.group || ""])), [summary]);
+  const uuTienCuaDauViec = useMemo(
+    () => Object.fromEntries(summary.map((c) => [c.category, c.uu_tien || ""])), [summary]);
+  // Đếm sẵn số đầu việc từng mức để nút lọc nói luôn còn bao nhiêu việc ở mức đó.
+  const demUuTien = useMemo(() => {
+    const d = { khan_cap: 0, ut1: 0, ut2: 0, ut3: 0, chua_xep: 0 };
+    for (const c of summary) d[c.uu_tien || "chua_xep"] = (d[c.uu_tien || "chua_xep"] || 0) + 1;
+    return d;
+  }, [summary]);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
     const nguoi = chuanTen(fNguoi);
     return rows.filter((x) => {
       if (fNhom && nhomCuaDauViec[x.category] !== fNhom) return false;
+      if (fUuTien) {
+        const m = uuTienCuaDauViec[x.category] || "";
+        if (fUuTien === "chua_xep" ? m : m !== fUuTien) return false;
+      }
       if (nguoi) {
         const vai = vaiTroCua(x, nguoi);
         if (!vai.length || (fVaiTro && !vai.includes(fVaiTro))) return false;
@@ -1233,7 +1303,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       return !term || [x.title, x.assignee, x.reporter, ...(x.coordinators || []), x.target, x.description, x.note]
         .filter(Boolean).join(" ").toLowerCase().includes(term);
     });
-  }, [rows, search, fNguoi, fVaiTro, fNhom, nhomCuaDauViec]);
+  }, [rows, search, fNguoi, fVaiTro, fNhom, nhomCuaDauViec, fUuTien, uuTienCuaDauViec]);
 
   // Gom số liệu cho Tổng quan: ô tổng hợp + nhóm -> đầu việc (từ /tech-tasks/summary).
   const tong = useMemo(() => {
@@ -1254,9 +1324,15 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
     // đang có nhiệm vụ gắn tên họ — xem “việc của ai” thì không nên thấy cả phòng.
     const ten = chuanTen(fNguoi);
     const dvCoViec = new Set(filteredRows.map((r) => r.category));
-    const nguon = ten
+    let nguon = ten
       ? summary.filter((c) => chuanTen(c.owner) === ten || dvCoViec.has(c.category))
       : summary;
+    // Lọc theo mức ưu tiên của đầu việc: thẻ nhóm chỉ còn đầu việc đúng mức,
+    // và nhóm không còn đầu việc nào thì biến mất khỏi Tổng quan luôn.
+    if (fUuTien) {
+      nguon = nguon.filter((c) => (fUuTien === "chua_xep"
+        ? !(c.uu_tien || "") : (c.uu_tien || "") === fUuTien));
+    }
     for (const c of nguon) {
       const ma = c.group || "";
       if (!theo.has(ma)) theo.set(ma, { id: ma, label: c.group_label || "Chưa xếp nhóm", cats: [] });
@@ -1280,7 +1356,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
       const i = thuTu.indexOf(a.id), j = thuTu.indexOf(b.id);
       return (i < 0 ? 999 : i) - (j < 0 ? 999 : j);
     });
-  }, [summary, nhomDS, fNguoi, filteredRows]);
+  }, [summary, nhomDS, fNguoi, filteredRows, fUuTien]);
 
   /** Xoá nhóm ngay trên thẻ Tổng quan — đầu việc bên trong vẫn giữ. */
   const xoaNhomTQ = async (g) => {
@@ -1331,7 +1407,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
      sách và màn chi tiết đầu việc, để bấm vào đâu thì khung mở ngay ở đó. */
   // Đang tìm hay đang lọc thì mới bày bảng nhiệm vụ ra; không thì thẻ nhóm ở
   // trên đã là danh sách rồi, bày thêm bảng rỗng chỉ tổ rối.
-  const dangLoc = !!(search || fStatus || fNguoi || cuaToi || fNhom || fCategory);
+  const dangLoc = !!(search || fStatus || fNguoi || cuaToi || fNhom || fCategory || fUuTien);
 
   const khungViec = (
     <>
@@ -1631,6 +1707,34 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
 
       {!dauViecDangXem && (
         <>
+      {/* Lọc theo mức ưu tiên điều hành: phòng, mảng và trung tâm nhìn vào đây
+          để biết việc nào phải làm trước. Đếm sẵn số đầu việc từng mức. */}
+      <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
+        <b style={{ fontSize: 12.5 }}>Mức ưu tiên:</b>
+        <button className={`btn btn-sm ${!fUuTien ? "btn-red" : ""}`} onClick={() => setFUuTien("")}>
+          Tất cả ({summary.length})
+        </button>
+        {Object.entries(UU_TIEN_DV).map(([ma, ten]) => (
+          <button key={ma} className={`btn btn-sm ${fUuTien === ma ? "btn-red" : ""}`}
+            onClick={() => setFUuTien(fUuTien === ma ? "" : ma)}
+            style={fUuTien === ma ? undefined : { borderLeft: `3px solid ${UU_TIEN_DV_MAU[ma]}` }}>
+            {ten} ({demUuTien[ma] || 0})
+          </button>
+        ))}
+        <button className={`btn btn-sm ${fUuTien === "chua_xep" ? "btn-red" : ""}`}
+          onClick={() => setFUuTien(fUuTien === "chua_xep" ? "" : "chua_xep")}
+          title="Đầu việc chưa được xếp mức nào — xếp hết thì bộ lọc mới dùng được">
+          Chưa xếp ({demUuTien.chua_xep || 0})
+        </button>
+        <span style={{ flex: 1 }} />
+        {duocSua && (
+          <button className="btn btn-sm" onClick={() => setQlDauViec(true)}
+            title="Xếp mức ưu tiên cho đầu việc ở màn hình Cơ cấu đầu việc">
+            <Pencil size={13} />Xếp mức ưu tiên
+          </button>
+        )}
+      </div>
+
       {/* Tổng quan: mỗi nhóm việc một ô, đọc thẳng ra tỷ lệ hoàn thành của nhóm. */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {theNhom.map((g) => {
@@ -1722,6 +1826,7 @@ export function TaskListTab({ locDauViec, locNguoi, onMoTienDo }) {
                       style={{ width: "100%", textAlign: "left", background: "none", border: "none",
                                borderBottom: "1px solid #F4F1F2", padding: "8px 0", cursor: "pointer", color: "inherit" }}>
                       <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+                        <TheUuTienDV muc={c.uu_tien || ""} nho />
                         <b style={{ fontSize: 13.5, flex: 1 }}>{c.label}</b>
                         <span style={{ fontSize: 12, fontWeight: 700 }}
                           title={c.total ? "Nhiệm vụ hoàn thành / tổng" : `Khối lượng thực hiện / kế hoạch kỳ ${c.kl_period}`}>

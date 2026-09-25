@@ -578,6 +578,7 @@ def _ton_theo_trung_tam(db: Session) -> dict:
 
     thuoc = item_category(db)
     nhan = {c.code: c.label for c in categories(db)}
+    uu_tien = {c.code: (c.uu_tien or "") for c in categories(db)}
     mang_cua = _mang_cua_dau_viec(db)
     dong = db.query(models.ProgressEntry).filter(models.ProgressEntry.ft_name.is_(None)).all()
 
@@ -602,7 +603,8 @@ def _ton_theo_trung_tam(db: Session) -> dict:
             continue
         o = ra.setdefault(r.center, {})
         m = o.setdefault(dv, {"category": dv, "label": nhan.get(dv, dv), "ton": 0.0,
-                              "period": r.period, "mang": mang, "hang_muc": {}})
+                              "period": r.period, "mang": mang,
+                              "uu_tien": uu_tien.get(dv, ""), "hang_muc": {}})
         m["ton"] += ton
         m["hang_muc"][r.item] = m["hang_muc"].get(r.item, 0.0) + ton
     return ra
@@ -621,6 +623,8 @@ def _viec_qua_han(db: Session, hom_nay: dt.date) -> dict:
                  models.TechTask.due_at.isnot(None),
                  models.TechTask.due_at < hom_nay))
     mang_cua = _mang_cua_dau_viec(db)
+    from .techtasks import categories as _cats
+    uu_tien_dv = {c.code: (c.uu_tien or "") for c in _cats(db)}
     ra = {}
     for t in q.all():
         mang = mang_cua.get(t.category, "")
@@ -630,7 +634,8 @@ def _viec_qua_han(db: Session, hom_nay: dt.date) -> dict:
         chung = {"id": t.id, "title": t.title, "category": t.category,
                  "due_at": t.due_at.isoformat(), "tre_ngay": tre,
                  "priority": t.priority or "trung_binh",
-                 "assignee": t.assignee or "", "mang": mang}
+                 "assignee": t.assignee or "", "mang": mang,
+                 "uu_tien": uu_tien_dv.get(t.category, "")}
         don_vi = [u.unit_name for u in t.units if _chuoi(u.unit_name)]
         for dv in don_vi or [""]:
             ra.setdefault(_chuoi(dv).upper() if dv else "", []).append(chung)
@@ -696,9 +701,15 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
             hm, sl = max(x["hang_muc"].items(), key=lambda kv: kv[1])
             if sl > goi_y.get(x["mang"], (None, 0))[1]:
                 goi_y[x["mang"]] = (hm, sl)
+        # Mức ưu tiên cao nhất trong số đầu việc còn tồn của trung tâm này —
+        # dùng để xếp trung tâm nào phải xử lý trước, và để lọc theo mức.
+        thu_tu_ut = {"khan_cap": 0, "ut1": 1, "ut2": 2, "ut3": 3, "": 9}
+        muc_ut = min((thu_tu_ut.get(x.get("uu_tien", ""), 9) for x in dau_viec), default=9)
+        ten_ut = next((k for k, v in thu_tu_ut.items() if v == muc_ut), "")
         ra.append({
             "center": code, "ten": ten.get(code, code),
             "ton": tong_ton,
+            "uu_tien": ten_ut,
             "goi_y_hang_muc": {m: hm for m, (hm, _sl) in goi_y.items()},
             "theo_mang": [{"mang": m, "ten_mang": TEN_MANG[m], "ton": round(v, 1)}
                           for m, v in theo_mang.items()],
@@ -712,7 +723,11 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
         })
 
     # Xếp hạng nóng: việc quá hạn nặng hơn tồn, vì đã trễ hạn cam kết.
-    ra.sort(key=lambda x: (-x["so_viec_qua_han"], -x["tre_nhat"], -x["ton"]))
+    # Ưu tiên điều hành đứng trước, rồi mới tới quá hạn và tồn: việc khẩn cấp
+    # của một trung tâm ít tồn vẫn phải làm trước việc thường của nơi tồn nhiều.
+    thu_tu = {"khan_cap": 0, "ut1": 1, "ut2": 2, "ut3": 3, "": 9}
+    ra.sort(key=lambda x: (thu_tu.get(x.get("uu_tien", ""), 9),
+                           -x["so_viec_qua_han"], -x["tre_nhat"], -x["ton"]))
     nguong = 0.0
     if ra:
         ds_ton = sorted((x["ton"] for x in ra), reverse=True)
