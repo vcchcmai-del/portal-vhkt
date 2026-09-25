@@ -59,6 +59,11 @@ export const getUser = () => { try { return JSON.parse(localStorage.getItem("por
  * xoá) khỏi màn hình mà cả phòng đều xem được. Ẩn nút chỉ là cho gọn mắt — máy
  * chủ vẫn kiểm tra lại quyền, xem require_module().
  */
+/** Mã cụm mà tài khoản đang đăng nhập phụ trách; rỗng = làm việc với mọi cụm. */
+export function cumCuaToi() {
+  return getUser()?.center || "";
+}
+
 export function coQuyen(module, thaoTac = "view") {
   const u = getUser();
   if (!u) return false;
@@ -192,7 +197,8 @@ export const api = {
 
     setToken(data.access_token);
     localStorage.setItem("portal_user", JSON.stringify({
-      full_name: data.full_name, role: data.role, permissions: data.permissions || [],
+      full_name: data.full_name, role: data.role, center: data.center || "",
+      permissions: data.permissions || [],
       permission_actions: data.permission_actions || {},
       must_change_password: !!data.must_change_password,
     }));

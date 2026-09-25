@@ -13,7 +13,7 @@ import {
   History, Search, Filter, RotateCcw, Trash, Upload,
 } from "lucide-react";
 
-import { api } from "./api";
+import { api, useCenters } from "./api";
 import { AdminImport } from "./bulkimport";
 import { AdminDiagnostics } from "./diagnostics";
 import { AdminDutyRosterImport } from "./dutyroster";
@@ -1509,6 +1509,7 @@ export function AdminUsers() {
   const { rows, loading, error, reload } = useAdminList("/api/admin/users");
   const { rows: people } = useAdminList("/api/admin/people");
   const { rows: quyenTuMayChu } = useAdminList("/api/admin/roles");
+  const { danhSach: dsTrungTam } = useCenters();
   const [modInfo, setModInfo] = useState({ modules: [], role_defaults: {} });
   const [edit, setEdit] = useState(null);
   const [pwFor, setPwFor] = useState(null);
@@ -1528,7 +1529,7 @@ export function AdminUsers() {
   }, []);
   const moduleLabel = (id) => modInfo.modules.find((m) => m.id === id)?.label || id;
 
-  const blank = { username: "", password: "", full_name: "", role: "staff", person_id: null, permissions: {} };
+  const blank = { username: "", password: "", full_name: "", role: "staff", person_id: null, center: "", permissions: {} };
 
   const changeRole = (role) => {
     setEdit({ ...edit, role, permissions: modInfo.role_defaults?.[role] || {} });
@@ -1555,6 +1556,7 @@ export function AdminUsers() {
       if (edit.id) {
         await api.put(`/api/admin/users/${edit.id}`, {
           full_name: edit.full_name, role: edit.role, person_id: edit.person_id,
+          center: edit.center || "",
           permissions: edit.permissions || [],
         });
       } else {
@@ -1707,6 +1709,19 @@ export function AdminUsers() {
               onChange={(permissions) => setEdit({ ...edit, permissions })}
             />
           </div>
+
+          <Field label="Phụ trách cụm (để trống nếu làm việc với mọi cụm)">
+            <select className="inp" value={edit.center || ""}
+              onChange={(e) => setEdit({ ...edit, center: e.target.value })}>
+              <option value="">— Cấp phòng, mọi cụm —</option>
+              {dsTrungTam.map((c) => (
+                <option key={c.code} value={c.code}>{c.code} — {c.short || c.name}</option>
+              ))}
+            </select>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Chọn cụm thì màn hình Kế hoạch ngày mở sẵn đúng cụm đó cho người này.
+            </span>
+          </Field>
 
           <Field label="Gắn với nhân viên trong danh sách (không bắt buộc)">
             <select className="inp" value={edit.person_id ?? ""}

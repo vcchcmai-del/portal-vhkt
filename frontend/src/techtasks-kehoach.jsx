@@ -3,7 +3,7 @@ import {
   AlertTriangle, CalendarDays, Check, ChevronDown, ChevronRight, ClipboardCheck,
   Flame, Plus, RefreshCw, Save, Trash2, Users, X,
 } from "lucide-react";
-import { api, coQuyen } from "./api";
+import { api, coQuyen, cumCuaToi } from "./api";
 import { Card, Empty, Field, RED, useCuonToi } from "./ui";
 import { THU_TU_UU_TIEN, TheUuTienDV, UU_TIEN_DV, UU_TIEN_DV_MAU } from "./techtasks-list";
 
@@ -68,6 +68,9 @@ export function KeHoachNgayTab() {
   const [tin, setTin] = useState("");
   const oNhap = useCuonToi(!!form);
 
+  // Tài khoản gắn với một cụm thì mở sẵn đúng cụm đó, khỏi tìm trong 13 cụm
+  // và khỏi đăng ký nhầm sang cụm khác.
+  const cumToi = cumCuaToi();
   const duocGhi = coQuyen("daily_plan", "create");
   const duocSua = coQuyen("daily_plan", "update");
   const duocXoa = coQuyen("daily_plan", "delete");
@@ -195,6 +198,25 @@ export function KeHoachNgayTab() {
         </label>
         <button className="btn btn-sm" onClick={load}><RefreshCw size={14} />Tải lại</button>
       </div>
+
+      {!!cumToi && (
+        <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
+          <b style={{ fontSize: 13 }}>Cụm của bạn: {cumToi}</b>
+          {(() => {
+            const daCo = ds.find((r) => r.center === cumToi);
+            return daCo
+              ? <span style={{ fontSize: 12.5, color: MAU.xanh, fontWeight: 700 }}>
+                  <Check size={13} /> Đã đăng ký hôm nay — {daCo.tong_ns} NS, {daCo.tong_tram} trạm
+                </span>
+              : <span style={{ fontSize: 12.5, color: MAU.do, fontWeight: 700 }}>Chưa đăng ký ngày {ngay}</span>;
+          })()}
+          {duocGhi && (
+            <button className="btn btn-sm btn-red" onClick={() => moForm(cumToi)}>
+              {ds.some((r) => r.center === cumToi) ? "Sửa / cập nhật kết quả" : "Đăng ký ngay"}
+            </button>
+          )}
+        </div>
+      )}
 
       {err && <p className="card" style={{ color: RED, fontWeight: 600 }}>{err}</p>}
       {tin && <p className="card" style={{ color: MAU.xanh, fontWeight: 600 }}>{tin}</p>}

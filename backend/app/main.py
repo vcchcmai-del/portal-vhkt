@@ -46,7 +46,7 @@ API_VERSION = 12
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-09-25.v68"
+PORTAL_BUILD = "2026-09-25.v69"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -311,6 +311,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     full_name: str
     role: str
+    center: str = ""
     permissions: List[str] = []
     permission_actions: dict = {}
     must_change_password: bool = False
@@ -324,6 +325,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
         raise HTTPException(status_code=401, detail="Sai tài khoản hoặc mật khẩu.")
     log_action(db, user, "login", "auth", user.id, user.username, request=request)
     return TokenOut(access_token=create_token(user), full_name=user.full_name, role=user.role,
+                    center=user.center or "",
                     permissions=effective_permissions_list(user),
                     permission_actions=effective_permission_matrix(user),
                     must_change_password=bool(user.must_change_password))
@@ -332,6 +334,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 @app.get("/api/auth/me", tags=["Đăng nhập"])
 def me(user: models.User = Depends(current_user)):
     return {"id": user.id, "username": user.username, "full_name": user.full_name, "role": user.role,
+            "center": user.center or "",
             "permissions": effective_permissions_list(user),
             "permission_actions": effective_permission_matrix(user),
             "must_change_password": bool(user.must_change_password)}

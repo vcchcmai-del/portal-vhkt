@@ -55,6 +55,11 @@ class User(Base):
     # NULL nghĩa là dùng bộ quyền mặc định theo role (xem permissions.py).
     permissions = Column(Text, nullable=True)
     person_id = Column(Integer, ForeignKey("people.id"), nullable=True)
+    # Mã cụm mà tài khoản này phụ trách (THA, CHP...). Trưởng cụm đăng nhập là
+    # màn hình Kế hoạch ngày mở sẵn đúng cụm của mình, khỏi phải tìm trong 13
+    # cụm và khỏi đăng ký nhầm sang cụm khác. Để trống = làm việc với mọi cụm
+    # (cấp phòng).
+    center = Column(String(20), nullable=True, index=True)
     created_at = Column(DateTime, default=now)
     # True cho tài khoản mới tạo hoặc vừa bị đặt lại mật khẩu — buộc người dùng
     # tự đặt mật khẩu riêng trước khi được dùng các chức năng khác.

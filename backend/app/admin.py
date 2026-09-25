@@ -920,6 +920,7 @@ class UserIn(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     person_id: Optional[int] = None
+    center: Optional[str] = None        # mã cụm phụ trách, để trống = cấp phòng
     # Quyền thao tác theo module, ví dụ {"people": ["view", "update", "delete"]}.
     # Vẫn nhận danh sách cũ để nâng cấp không làm hỏng các client cũ.
     permissions: Optional[Union[List[str], Dict[str, List[str]]]] = None
@@ -940,6 +941,7 @@ def user_out(u: models.User):
         "role": u.role, "role_label": ROLE_LABELS.get(u.role, u.role),
         "person_id": u.person_id,
         "person_name": u.person.full_name if u.person else None,
+        "center": u.center or "",
         "created_at": u.created_at,
         "permissions": effective_permissions_list(u),
         "permission_actions": effective_permission_matrix(u),
@@ -1017,6 +1019,7 @@ def admin_create_user(data: UserIn, db: Session = Depends(get_db), me=Depends(re
         full_name=data.full_name or username,
         role=data.role,
         person_id=data.person_id,
+        center=(data.center or "").strip().upper() or None,
         permissions=dump_permissions(data.permissions) if data.permissions is not None else None,
     )
     db.add(row); db.commit(); db.refresh(row)
@@ -1046,6 +1049,8 @@ def admin_update_user(uid: int, data: UserIn, db: Session = Depends(get_db),
         row.permissions = dump_permissions(data.permissions)
 
     apply(row, {"full_name": data.full_name, "person_id": data.person_id})
+    if data.center is not None:
+        row.center = (data.center or "").strip().upper() or None
     db.commit(); db.refresh(row)
     log_action(db, me, "update", "users", row.id, row.username,
               detail=f"Quyền: {row.role}, module: {', '.join(effective_permissions_list(row)) or '—'}",
