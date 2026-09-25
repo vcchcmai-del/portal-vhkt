@@ -555,8 +555,13 @@ def _don_lai_so_thang(db: Session, center: str, trong_ngay: dt.date) -> list:
                                        bkk_qty=0, done_ngay=0,
                                        note="Tự cộng từ kế hoạch ngày của cụm")
             db.add(row)
-        cu = row.done_ngay or 0
+        # Kẹp phần đã ghi nhận không vượt quá chính số Thực hiện đang có: nếu ai
+        # đó sửa tay số tháng xuống thấp hơn phần kế hoạch ngày đã cộng, phần
+        # "nhập tay" suy ra sẽ âm và những lần cộng sau ra số vô nghĩa.
+        cu = min(row.done_ngay or 0, row.done_qty or 0)
         if abs(moi - cu) < 0.001:
+            if (row.done_ngay or 0) != cu:
+                row.done_ngay = cu       # ghi lại cho khớp, không đổi số Thực hiện
             continue
         row.done_qty = round(max((row.done_qty or 0) + (moi - cu), 0), 1)
         row.done_ngay = moi
