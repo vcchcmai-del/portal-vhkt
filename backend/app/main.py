@@ -46,7 +46,7 @@ API_VERSION = 12
 # CỐ Ý không cho biến môi trường ghi đè giá trị này. Mục đích của nó là cho biết
 # ĐANG CHẠY MÃ NGUỒN NÀO. Nếu để môi trường ghi đè, một biến cũ còn sót trên nền
 # tảng triển khai sẽ khiến máy chủ báo sai, và cơ chế phát hiện lệch bản mất tác dụng.
-PORTAL_BUILD = "2026-09-26.v72"
+PORTAL_BUILD = "2026-09-26.v73"
 
 # Nhãn môi trường do người triển khai đặt, ví dụ "thử nghiệm", "chính thức".
 # Chỉ để ghi chú, không thay thế dấu hiệu bản dựng.
@@ -240,6 +240,11 @@ def on_startup():
     chay("Cập nhật KPI báo cáo T8/2026", buoc_kpi_t8_2026)
 
     # Chuẩn hoá tên trung tâm về mã viết tắt, chạy một lần sau khi đã có danh mục.
+    def buoc_tach_mang_45g():
+        from .dailyplan import tach_mang_45g_once
+        tach_mang_45g_once()
+    chay("Tách mảng Tích hợp 4G/5G", buoc_tach_mang_45g)
+
     def buoc_ma_trung_tam():
         from .center_codes import apply_once
         apply_once()

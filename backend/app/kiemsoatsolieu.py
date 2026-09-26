@@ -212,7 +212,11 @@ def kiem_soat_so_lieu(db: Session = Depends(get_db),
         if not (c.owner or "").strip():
             o["thieu_chu_tri"] += 1
 
-    for r in db.query(M.ProgressEntry).all():
+    # Chỉ lấy dòng TỔNG theo trung tâm (ft_name rỗng). Trung tâm nào có nhập
+    # thêm chi tiết theo từng FT thì tổng của nó nằm ở cả hai nơi; cộng cả hai
+    # là đội số lên đúng một lần nữa — nhóm Kế hoạch 5G từng hiện 137 thay vì
+    # 116 vì THA có dòng FT.
+    for r in db.query(M.ProgressEntry).filter(M.ProgressEntry.ft_name.is_(None)).all():
         g = nhom_cua.get(r.category)
         if g is None:                      # số liệu của đầu việc đã tắt/đã xoá
             continue

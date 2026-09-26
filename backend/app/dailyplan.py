@@ -43,11 +43,17 @@ MANG = [
     ("kiem_soat", "Kiểm soát"),
     ("bao_duong", "Bảo dưỡng"),
     ("ung_cuu", "Ứng cứu thông tin"),
-    ("tich_hop_45g", "Tích hợp 4G/5G"),
+    ("tich_hop_4g", "Tích hợp 4G"),
+    ("tich_hop_5g", "Tích hợp 5G"),
     ("phat_sinh", "Phát sinh nóng / khác"),
 ]
 MA_MANG = [m[0] for m in MANG]
-TEN_MANG = dict(MANG)
+
+# Mã mảng đã bỏ, giữ lại CHỈ để hiển thị: bản đăng ký cũ ghi "tich_hop_45g"
+# (4G và 5G gộp làm một). Bỏ hẳn khỏi bảng tra thì những bản ghi đó hiện ra mã
+# thô, người đọc không hiểu đó là gì. Đăng ký mới không chọn được mã này nữa.
+TEN_MANG_CU = {"tich_hop_45g": "Tích hợp 4G/5G (gộp, bản cũ)"}
+TEN_MANG = {**dict(MANG), **TEN_MANG_CU}
 
 # Ba mảng mở sẵn trong màn hình đăng ký và là phạm vi của phần khuyến nghị
 # việc nóng. Bốn mảng còn lại vẫn đăng ký được, nhưng phải bấm thêm — mở sẵn
@@ -62,7 +68,17 @@ NHOM_CUA_MANG = {
     "co_dien": ["co_dien"],
     "truyen_dan": ["truyen_dan"],
     "kiem_soat": ["kiem_soat_vhkt", "kiem_soat"],
+    # Nhóm "Kế hoạch 5G" trong danh mục đầu việc chính là mảng tích hợp 5G.
+    # 4G chưa có nhóm riêng: khi phòng lập nhóm cho nó thì thêm mã nhóm vào
+    # đây, còn trước mắt nhận theo tên đầu việc (xem TU_KHOA_45G).
+    "tich_hop_5g": ["ke_hoach_5g", "tich_hop_5g"],
+    "tich_hop_4g": ["ke_hoach_4g", "tich_hop_4g"],
 }
+
+# Nhận mảng 4G/5G theo tên đầu việc, chỉ dùng cho đầu việc mà NHÓM không nói
+# lên mảng nào. Nhóm luôn thắng: "Triển khai đấu nối 5G năm 2026" thuộc nhóm
+# Truyền dẫn thì vẫn là truyền dẫn, không kéo sang tích hợp 5G.
+TU_KHOA_45G = [("tich_hop_5g", "5G"), ("tich_hop_4g", "4G")]
 
 # Gợi ý loại công việc cho ô "Công việc thực hiện". Chỉ là gợi ý bấm nhanh,
 # người đăng ký vẫn gõ tự do được.
@@ -97,8 +113,17 @@ def _mang_cua_dau_viec(db: Session) -> dict:
             if nhan.startswith(ten) or ten in nhan:
                 nhom_ra_mang[g.code] = ma_mang
                 break
-    return {c.code: nhom_ra_mang.get(c.group_code or "", "")
-            for c in db.query(models.TechCategory).all()}
+    ra = {}
+    for c in db.query(models.TechCategory).all():
+        m = nhom_ra_mang.get(c.group_code or "", "")
+        if not m:
+            nhan = (c.label or "").upper()
+            for ma_mang, tu in TU_KHOA_45G:
+                if tu in nhan:
+                    m = ma_mang
+                    break
+        ra[c.code] = m
+    return ra
 
 
 def _chuoi(v) -> str:
@@ -157,6 +182,35 @@ def _ngay(v: Optional[str], mac_dinh: Optional[dt.date] = None) -> dt.date:
         return dt.date.fromisoformat(v)
     except ValueError:
         raise HTTPException(400, f"Ngày “{v}” không đúng dạng YYYY-MM-DD.")
+
+
+KHOA_TACH_45G = "_system_tach_mang_4g_5g_v1"
+
+
+def tach_mang_45g_once() -> None:
+    """Chuyển bản đăng ký cũ từ mảng gộp "Tích hợp 4G/5G" sang "Tích hợp 5G".
+
+    Toàn bộ đầu việc tích hợp đang có trong danh mục đều là 5G (nhóm "Kế hoạch
+    5G"), chưa có đầu việc 4G nào — nên chuyển về 5G là đúng với thực tế, và
+    người nhập vẫn sửa lại được từng bản nếu có trường hợp 4G.
+
+    Chạy đúng một lần, đánh dấu bằng site_config để lần khởi động sau không
+    đụng lại vào dữ liệu người dùng đã tự sửa.
+    """
+    from .database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        if db.query(models.SiteConfig).filter(models.SiteConfig.key == KHOA_TACH_45G).first():
+            return
+        n = (db.query(models.KeHoachNgayDong)
+             .filter(models.KeHoachNgayDong.mang == "tich_hop_45g")
+             .update({"mang": "tich_hop_5g"}, synchronize_session=False))
+        db.add(models.SiteConfig(key=KHOA_TACH_45G, value=str(n),
+                                 label="Tách mảng Tích hợp 4G/5G thành 4G và 5G riêng"))
+        db.commit()
+    finally:
+        db.close()
 
 
 # ------------------------------------------------------------ Khuôn dữ liệu
