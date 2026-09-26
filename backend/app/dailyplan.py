@@ -761,6 +761,139 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
 
 # --------------------------------------------------- Đánh giá các trung tâm
 
+@admin_router.get("/ke-hoach-ngay/tong-hop")
+def tong_hop_khoi_luong(tu: Optional[str] = None, den: Optional[str] = None,
+                        center: Optional[str] = None, mang: Optional[str] = None,
+                        db: Session = Depends(get_db),
+                        _=Depends(require_module("daily_plan", "view"))):
+    """Cộng khối lượng các cụm đã đăng ký trong một khoảng ngày.
+
+    Bốn cách nhìn cùng một số liệu: theo ngày (nhịp làm việc), theo mảng (mảng
+    nào đang gánh), theo cụm (ai làm nhiều, năng suất trên đầu FT), theo hạng
+    mục (khối lượng thật, đối chiếu ngược lên kế hoạch tháng).
+
+    Bảng theo hạng mục là chỗ đáng xem nhất: nó đặt cạnh nhau số trạm cụm khai
+    trong ngày, số đã đẩy lên báo cáo tháng, và kế hoạch tháng của chính hạng
+    mục đó — lệch nhau ở đâu là thấy ngay, thay vì tin rằng hai bên khớp.
+    """
+    from .techtasks import categories, item_labels, item_category
+
+    d2 = _ngay(den)
+    d1 = _ngay(tu, d2 - dt.timedelta(days=6))
+    if d1 > d2:
+        d1, d2 = d2, d1
+    if (d2 - d1).days > 366:
+        raise HTTPException(400, "Khoảng ngày quá dài — chọn tối đa 1 năm.")
+    loc_cum = _chuoi(center).upper()
+    loc_mang = _chuoi(mang)
+    if loc_mang and loc_mang not in MA_MANG:
+        raise HTTPException(400, f"Mảng công việc “{loc_mang}” không hợp lệ.")
+
+    q = (_truy_van(db)
+         .filter(models.KeHoachNgay.plan_date >= d1, models.KeHoachNgay.plan_date <= d2))
+    if loc_cum:
+        q = q.filter(models.KeHoachNgay.center == loc_cum)
+    rows = q.all()
+
+    ten_tt = _ten_trung_tam(db)
+    quan_so = {r.center: (r.so_nhan_su or 0) for r in db.query(models.CumNhanSu).all()}
+    nhan_hm = item_labels(db)
+    thuoc = item_category(db)
+    nhan_dv = {c.code: c.label for c in categories(db)}
+
+    def khung():
+        return {"ns": 0, "tram": 0, "xong": 0, "so_dong": 0}
+
+    tong = {**khung(), "so_ban": 0, "ft_truc": 0, "ft_nghi": 0, "cum": set(), "ngay": set()}
+    theo_ngay, theo_mang, theo_cum, theo_hm = {}, {}, {}, {}
+
+    for r in rows:
+        dong = [d for d in r.dong if not loc_mang or d.mang == loc_mang]
+        if loc_mang and not dong:
+            continue                      # bản đăng ký không có mảng đang lọc
+        tong["so_ban"] += 1
+        tong["cum"].add(r.center)
+        tong["ngay"].add(r.plan_date)
+        # Quân số trực/nghỉ ghi ở mức cụm nên chỉ cộng khi không lọc theo mảng;
+        # lọc mảng mà vẫn cộng thì một người trực bị đếm cho mọi mảng.
+        if not loc_mang:
+            tong["ft_truc"] += r.ft_truc or 0
+            tong["ft_nghi"] += (r.ft_nghi_phep or 0) + (r.ft_nghi_ca or 0)
+
+        n = theo_ngay.setdefault(r.plan_date, {**khung(), "cum": set()})
+        c = theo_cum.setdefault(r.center, {**khung(), "ngay": set()})
+        n["cum"].add(r.center)
+        c["ngay"].add(r.plan_date)
+
+        for d in dong:
+            ns, tram, xong = d.so_ns or 0, d.so_tram or 0, d.so_tram_xong or 0
+            for o in (tong, n, c):
+                o["ns"] += ns; o["tram"] += tram; o["xong"] += xong; o["so_dong"] += 1
+            m = theo_mang.setdefault(d.mang, khung())
+            m["ns"] += ns; m["tram"] += tram; m["xong"] += xong; m["so_dong"] += 1
+            if d.hang_muc:
+                h = theo_hm.setdefault(d.hang_muc, {**khung(), "cum": set()})
+                h["ns"] += ns; h["tram"] += tram; h["xong"] += xong; h["so_dong"] += 1
+                h["cum"].add(r.center)
+
+    def ty_le(o):
+        return round(o["xong"] / o["tram"], 4) if o["tram"] else None
+
+    # Kế hoạch tháng và phần đã đẩy lên, để đối chiếu với khối lượng khai trong ngày.
+    ky = {d.strftime("%Y-%m") for d in (d1, d2)}
+    ke_hoach, da_day = {}, {}
+    if theo_hm:
+        for pe in (db.query(models.ProgressEntry)
+                   .filter(models.ProgressEntry.item.in_(list(theo_hm)),
+                           models.ProgressEntry.period.in_(list(ky)),
+                           models.ProgressEntry.ft_name.is_(None))
+                   .all()):
+            if loc_cum and pe.center != loc_cum:
+                continue
+            ke_hoach[pe.item] = ke_hoach.get(pe.item, 0.0) + (pe.plan_qty or 0)
+            da_day[pe.item] = da_day.get(pe.item, 0.0) + (pe.done_ngay or 0)
+
+    return {
+        "tu": d1.isoformat(), "den": d2.isoformat(),
+        "so_ngay": (d2 - d1).days + 1,
+        "loc": {"center": loc_cum, "mang": loc_mang},
+        "tong": {
+            "so_ban": tong["so_ban"], "so_cum": len(tong["cum"]),
+            "so_ngay_co_dang_ky": len(tong["ngay"]),
+            "ns": tong["ns"], "tram": tong["tram"], "xong": tong["xong"],
+            "ty_le": ty_le(tong), "ft_truc": tong["ft_truc"], "ft_nghi": tong["ft_nghi"],
+        },
+        "theo_ngay": [{"ngay": d.isoformat(), "so_cum": len(o["cum"]), "ns": o["ns"],
+                       "tram": o["tram"], "xong": o["xong"], "ty_le": ty_le(o)}
+                      for d, o in sorted(theo_ngay.items())],
+        "theo_mang": [{"mang": m, "ten_mang": TEN_MANG.get(m, m), "ns": o["ns"],
+                       "tram": o["tram"], "xong": o["xong"], "ty_le": ty_le(o),
+                       "so_dong": o["so_dong"]}
+                      for m, o in sorted(theo_mang.items(),
+                                         key=lambda kv: MA_MANG.index(kv[0]) if kv[0] in MA_MANG else 99)],
+        "theo_cum": sorted(
+            [{"center": k, "ten": ten_tt.get(k, k), "so_ngay_dang_ky": len(o["ngay"]),
+              "ns": o["ns"], "tram": o["tram"], "xong": o["xong"], "ty_le": ty_le(o),
+              "ft": quan_so.get(k, 0),
+              # Năng suất: trạm làm xong trên mỗi FT hiện có của cụm, tính trên
+              # số ngày cụm đó có đăng ký — so được giữa cụm 12 người và cụm 3
+              # người, điều mà số trạm tuyệt đối không nói ra.
+              "nang_suat": (round(o["xong"] / quan_so[k] / len(o["ngay"]), 2)
+                            if quan_so.get(k) and o["ngay"] else None)}
+             for k, o in theo_cum.items()],
+            key=lambda x: -x["tram"]),
+        "theo_hang_muc": sorted(
+            [{"hang_muc": k, "ten": nhan_hm.get(k, k),
+              "dau_viec": thuoc.get(k, ""), "ten_dau_viec": nhan_dv.get(thuoc.get(k, ""), ""),
+              "so_cum": len(o["cum"]), "ns": o["ns"], "tram": o["tram"], "xong": o["xong"],
+              "ty_le": ty_le(o),
+              "ke_hoach_thang": round(ke_hoach.get(k, 0), 1),
+              "da_day_len_thang": round(da_day.get(k, 0), 1)}
+             for k, o in theo_hm.items()],
+            key=lambda x: -x["tram"]),
+    }
+
+
 @admin_router.get("/ke-hoach-ngay/danh-gia")
 def danh_gia(tu: Optional[str] = None, den: Optional[str] = None,
              db: Session = Depends(get_db), _=Depends(require_module("daily_plan", "view"))):

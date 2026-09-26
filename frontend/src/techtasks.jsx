@@ -4,6 +4,7 @@ import { TheoNhanVienTab } from "./techtasks-person";
 import { BaoCaoCongViec } from "./techtasks-report";
 import { DanhGiaTrungTamTab, KeHoachNgayTab } from "./techtasks-kehoach";
 import { KiemSoatSoLieuTab } from "./techtasks-kiemsoat";
+import { TongHopKhoiLuongTab } from "./techtasks-tonghop";
 
 // Đầu việc KHÔNG còn khai báo cứng ở đây nữa: danh sách lấy từ
 // /api/admin/tech-tasks/categories (bảng tech_categories). Trước đây cùng một
@@ -27,6 +28,7 @@ export function AdminTechTasks() {
         {nutTab("list", "Danh sách công việc")}
         {nutTab("person", "Theo nhân viên")}
         {nutTab("kehoach", "Kế hoạch ngày")}
+        {nutTab("tonghop", "Tổng hợp khối lượng")}
         {nutTab("danhgia", "Đánh giá trung tâm")}
         {nutTab("report", "Báo cáo")}
         {nutTab("kiemsoat", "Kiểm soát số liệu")}
@@ -41,6 +43,7 @@ export function AdminTechTasks() {
         <TheoNhanVienTab onXemViec={(ten) => { setLocDauViec(""); setLocNguoi({ ten, luc: Date.now() }); setTab("list"); }} />
       )}
       {tab === "kehoach" && <KeHoachNgayTab />}
+      {tab === "tonghop" && <TongHopKhoiLuongTab />}
       {tab === "danhgia" && <DanhGiaTrungTamTab />}
       {tab === "kiemsoat" && <KiemSoatSoLieuTab />}
       {tab === "report" && (
