@@ -17,7 +17,6 @@ import {
 } from "recharts";
 
 import { api, adapt, useRemote } from "./api";
-import { BangDieuHanhNgay } from "./dieuhanhngay";
 import * as D from "./data";
 import { Avatar, Card, Check as CheckBox, Delta, Empty, RED, RED_DARK, initials, norm, tooltipStyle } from "./ui";
 
@@ -276,9 +275,6 @@ export function HomeView({ onGo, onOpenNews, config }) {
           </section>
         ))}
       </div>
-
-      {/* Bảng điều hành ngày: chỉ hiện với người đã đăng nhập, tự ẩn nếu lỗi. */}
-      <BangDieuHanhNgay onGo={onGo} />
 
       <section className="cnct-apps">
         <div className="cnct-apps-head">
