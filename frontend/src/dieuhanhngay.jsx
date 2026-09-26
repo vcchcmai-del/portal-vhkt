@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, CalendarCheck, ChevronRight } from "lucide-react";
+import { AlertTriangle, CalendarCheck, PenLine } from "lucide-react";
 import { api, getUser } from "./api";
 
 /*
@@ -84,13 +84,14 @@ export function BangDieuHanhNgay({ onGo }) {
         <span className="muted" style={{ fontSize: 12 }}>
           {tongTruc} FT trực · {tramXong}/{tongTram} trạm xong
         </span>
-        <button className="btn btn-sm" onClick={() => onGo?.("tech-tasks")}>
-          Mở Kế hoạch ngày <ChevronRight size={13} />
+        <button className="btn btn-sm btn-red" onClick={() => onGo?.("tech-tasks", "kehoach")}
+          title="Mở màn hình đăng ký, rồi chọn trung tâm cần đăng ký">
+          <PenLine size={13} />Đăng ký kế hoạch ngày
         </button>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 8,
                     gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))" }}>
-        {ds.map((c) => <OCum key={c.center} c={c} onMo={() => onGo?.("tech-tasks")} />)}
+        {ds.map((c) => <OCum key={c.center} c={c} onMo={() => onGo?.("tech-tasks", "kehoach")} />)}
       </div>
     </section>
   );

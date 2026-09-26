@@ -617,7 +617,12 @@ export default function Portal() {
                 : view === "news"
                   ? <NewsView openId={openNewsId} onOpened={() => setOpenNewsId(null)} />
                   : PublicView
-                ? (view === "dash" ? <PublicView bangMoSan={bangDashboard} /> : <PublicView />)
+                ? (view === "dash" ? <PublicView bangMoSan={bangDashboard} />
+                  // Cùng một tham số thứ hai của go(): với Dashboard là bảng cần
+                  // mở sẵn, với Công việc là tab cần mở sẵn. Nhờ vậy nút ở trang
+                  // chủ nhảy thẳng vào màn đăng ký, không rơi vào tab mặc định.
+                  : view === "tech-tasks" ? <PublicView tabBanDau={bangDashboard} />
+                    : <PublicView />)
                 : null}
 
           <footer style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid #E7E3E4" }}

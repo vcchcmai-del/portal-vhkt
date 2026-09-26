@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { TaskListTab } from "./techtasks-list";
 import { TheoNhanVienTab } from "./techtasks-person";
 import { BaoCaoCongViec } from "./techtasks-report";
@@ -13,8 +13,10 @@ import { TongHopKhoiLuongTab } from "./techtasks-tonghop";
 
 const pct = (rate) => (rate == null ? "—" : `${Math.round(rate * 100)}%`);
 
-export function AdminTechTasks() {
-  const [tab, setTab] = useState("list");
+export function AdminTechTasks({ tabBanDau }) {
+  // tabBanDau cho phép mở thẳng một tab từ nơi khác (nút ở trang chủ).
+  const [tab, setTab] = useState(tabBanDau || "list");
+  useEffect(() => { if (tabBanDau) setTab(tabBanDau); }, [tabBanDau]);
   const [locDauViec, setLocDauViec] = useState(undefined);
   // Từ tab "Theo nhân viên" bấm "Xem việc" -> danh sách lọc sẵn theo người đó.
   // Kèm mốc thời gian để bấm lại cùng một người vẫn áp lại bộ lọc.
