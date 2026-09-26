@@ -71,6 +71,10 @@ export function KeHoachNgayTab() {
   // Tài khoản gắn với một cụm thì mở sẵn đúng cụm đó, khỏi tìm trong 13 cụm
   // và khỏi đăng ký nhầm sang cụm khác.
   const cumToi = cumCuaToi();
+  // Máy chủ nói rõ tài khoản này được ghi cho cụm nào ("" = mọi cụm), để nút
+  // chỉ mở đúng chỗ thay vì để người dùng bấm rồi mới nhận báo lỗi.
+  const chiCum = meta?.cum_duoc_ghi || "";
+  const ghiDuocCho = (ma) => !chiCum || ma === chiCum;
   const duocGhi = coQuyen("daily_plan", "create");
   const duocSua = coQuyen("daily_plan", "update");
   const duocXoa = coQuyen("daily_plan", "delete");
@@ -199,6 +203,13 @@ export function KeHoachNgayTab() {
         <button className="btn btn-sm" onClick={load}><RefreshCw size={14} />Tải lại</button>
       </div>
 
+      {!!chiCum && (
+        <p className="card" style={{ fontSize: 12.5, padding: "8px 12px" }}>
+          Tài khoản của bạn đăng ký được cho <b>cụm {chiCum}</b>. Cần đăng ký hộ cụm khác thì nhờ
+          quản trị viên cấp quyền sửa mục “Kế hoạch ngày của cụm”.
+        </p>
+      )}
+
       {!!cumToi && (
         <div className="card flex items-center gap-2" style={{ flexWrap: "wrap", padding: "8px 12px" }}>
           <b style={{ fontSize: 13 }}>Cụm của bạn: {cumToi}</b>
@@ -293,7 +304,7 @@ export function KeHoachNgayTab() {
                         <td>{x.da_dang_ky
                           ? <span style={{ color: MAU.xanh, fontWeight: 700 }}><Check size={13} /> Đã đăng ký</span>
                           : <span className="muted">Chưa</span>}</td>
-                        <td>{duocGhi && (
+                        <td>{duocGhi && ghiDuocCho(x.center) && (
                           <button className="btn btn-sm" onClick={() => moForm(x.center)}>Đăng ký</button>
                         )}</td>
                       </tr>
@@ -505,7 +516,7 @@ export function KeHoachNgayTab() {
                     </td>
                     <td style={{ fontSize: 12 }}>{r.updated_by || "—"}</td>
                     <td className="flex gap-1">
-                      {(duocGhi || duocSua) && (
+                      {(duocGhi || duocSua) && ghiDuocCho(r.center) && (
                         <button className="btn btn-sm" onClick={() => moForm(r.center)}>Sửa</button>
                       )}
                       {duocXoa && (
@@ -526,8 +537,12 @@ export function KeHoachNgayTab() {
         <Card title={`Cụm chưa đăng ký ngày ${data.ngay} (${data.chua_dang_ky.length})`}>
           <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
             {data.chua_dang_ky.map((c) => (
-              <button key={c.center} className="btn btn-sm" disabled={!duocGhi}
-                onClick={() => moForm(c.center)} title={duocGhi ? "Đăng ký cho cụm này" : "Không có quyền đăng ký"}>
+              <button key={c.center} className="btn btn-sm"
+                disabled={!duocGhi || !ghiDuocCho(c.center)}
+                onClick={() => moForm(c.center)}
+                title={!duocGhi ? "Không có quyền đăng ký"
+                  : ghiDuocCho(c.center) ? "Đăng ký cho cụm này"
+                    : `Tài khoản của bạn chỉ đăng ký được cho cụm ${chiCum}`}>
                 <b>{c.center}</b>&nbsp;<span className="muted">{c.ten}</span>
               </button>
             ))}

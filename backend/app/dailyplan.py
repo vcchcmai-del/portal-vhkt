@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session, selectinload
 from . import models
 from .auditlog import log_action
 from .database import get_db
-from .permissions import require_module
+from .permissions import duoc_cap_rieng, require_module
 
 admin_router = APIRouter(prefix="/api/admin", tags=["Kế hoạch ngày của cụm"])
 
@@ -247,8 +247,21 @@ class KeHoachIn(BaseModel):
 
 # ------------------------------------------------------------ Quân số cụm
 
+def _cum_duoc_ghi(user) -> str:
+    """Tài khoản này được đăng ký cho cụm nào: "" nghĩa là mọi cụm.
+
+    Ai được quản trị viên cấp riêng quyền sửa kế hoạch ngày thì làm được cho
+    mọi cụm (cấp phòng, trực chỉ huy). Còn tài khoản chỉ có quyền mở sẵn mà lại
+    gắn với một cụm thì chỉ đăng ký cho cụm đó — mở quyền cho cả phòng mà ai
+    cũng ghi đè được bản đăng ký của nhau thì hỏng dữ liệu của người khác.
+    """
+    if duoc_cap_rieng(user, "daily_plan", "update"):
+        return ""
+    return (getattr(user, "center", "") or "").strip().upper()
+
+
 @admin_router.get("/ke-hoach-ngay/meta")
-def meta(_=Depends(require_module("daily_plan", "view"))):
+def meta(user=Depends(require_module("daily_plan", "view"))):
     """Danh mục dùng chung cho màn hình đăng ký — mảng, loại công việc, trạng thái."""
     return {
         "mang": [{"ma": m, "ten": t, "chinh": m in MANG_CHINH} for m, t in MANG],
@@ -256,6 +269,9 @@ def meta(_=Depends(require_module("daily_plan", "view"))):
         "loai_cong_viec": LOAI_CONG_VIEC,
         "trang_thai": [{"ma": m, "ten": t} for m, t in TRANG_THAI],
         "ngay_phe_binh": NGAY_PHE_BINH,
+        # Giao diện đọc cái này để chỉ mở nút đăng ký ở đúng cụm người dùng
+        # được phép, thay vì để họ bấm rồi mới nhận báo lỗi.
+        "cum_duoc_ghi": _cum_duoc_ghi(user),
     }
 
 
@@ -464,6 +480,11 @@ def ghi(data: KeHoachIn, db: Session = Depends(get_db),
     if not code:
         raise HTTPException(400, "Chưa chọn cụm.")
     d = _ngay(data.ngay)
+    chi_cum = _cum_duoc_ghi(user)
+    if chi_cum and code != chi_cum:
+        raise HTTPException(403, f"Tài khoản của bạn chỉ đăng ký được cho cụm {chi_cum}. "
+                                 f"Cần đăng ký cho cụm khác thì nhờ quản trị viên cấp quyền sửa "
+                                 f"mục “Kế hoạch ngày của cụm”.")
     ds_cum = set(_ds_cum(db))
     if ds_cum and code not in ds_cum:
         raise HTTPException(400, f"Mã cụm “{code}” không có trong danh mục mã cụm.")

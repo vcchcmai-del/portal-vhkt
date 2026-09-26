@@ -77,6 +77,17 @@ ALL_MODULE_LABELS = {**MODULE_LABELS, **dict(ADMIN_ONLY_MODULES)}
 # và vẫn bật/tắt được cho từng tài khoản ở màn hình Quản lý tài khoản.
 MODULE_AI_CUNG_XEM = {"csdl_ht", "tech_tasks", "daily_plan"}
 
+# Module mà AI ĐĂNG NHẬP CŨNG LÀM ĐƯỢC, không cần quản trị viên cấp riêng.
+#
+# Đăng ký kế hoạch ngày là việc của chính người đi làm ở 13 cụm, làm hằng ngày
+# trước 7h30. Bắt chờ quản trị viên cấp quyền cho từng người thì đến khi cấp
+# xong đã qua mất mấy ngày, và mỗi lần thay người phụ trách lại phải cấp lại —
+# nên việc này mở sẵn cho mọi tài khoản.
+#
+# Cố ý KHÔNG mở "delete": xoá bản đăng ký của cụm khác là mất dữ liệu thật,
+# vẫn phải cấp riêng.
+MODULE_AI_CUNG_LAM = {"daily_plan": ["view", "create", "update"]}
+
 ACTIONS = ("view", "create", "update", "delete")
 ACTION_LABELS = {
     "view": "xem", "create": "thêm", "update": "sửa", "delete": "xóa",
@@ -149,6 +160,11 @@ def effective_permission_matrix(user: User) -> dict:
     for module_id in MODULE_AI_CUNG_XEM:
         if "view" not in ma_tran.get(module_id, []):
             ma_tran[module_id] = ["view"] + ma_tran.get(module_id, [])
+    # Module ai đăng nhập cũng làm được: cộng thêm thao tác, giữ nguyên phần đã
+    # cấp riêng (ví dụ quyền xoá) chứ không thay thế.
+    for module_id, thao_tac in MODULE_AI_CUNG_LAM.items():
+        dang_co = ma_tran.get(module_id, [])
+        ma_tran[module_id] = [a for a in ACTIONS if a in thao_tac or a in dang_co]
     return ma_tran
 
 
@@ -162,6 +178,22 @@ def get_permissions(user: User) -> set:
 
 def effective_permissions_list(user: User) -> list:
     return sorted(get_permissions(user))
+
+
+def duoc_cap_rieng(user: User, module_id: str, action: str) -> bool:
+    """Thao tác này có phải do quản trị viên cấp RIÊNG cho tài khoản không?
+
+    Phân biệt với phần mở sẵn cho mọi người (MODULE_AI_CUNG_LAM): người được
+    cấp riêng là người phòng giao làm cả phòng, còn người chỉ có quyền mở sẵn
+    thì chỉ nên làm phần của cụm mình.
+    """
+    if user.role == "admin":
+        return True
+    if user.permissions is not None:
+        ma_tran = parse_permissions(user.permissions)
+    else:
+        ma_tran = normalize_permissions(ROLE_DEFAULT_PERMISSIONS.get(user.role, {}))
+    return action in ma_tran.get(module_id, [])
 
 
 def require_module(module_id: str, action: str = "view"):
