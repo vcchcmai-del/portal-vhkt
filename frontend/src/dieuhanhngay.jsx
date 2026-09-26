@@ -41,6 +41,23 @@ function OCum({ c, onMo }) {
   );
 }
 
+/**
+ * Nút đăng ký đặt ở góc phải đầu trang chủ, ngay trên dòng ngày tháng.
+ *
+ * Tách khỏi bảng điều hành bên dưới vì bảng đó chỉ hiện khi gọi được API và có
+ * cụm; nút thì phải luôn ở đúng một chỗ cố định để người đăng ký hằng ngày
+ * biết bấm vào đâu, không phải đi tìm.
+ */
+export function NutDangKyNgay({ onGo }) {
+  if (!getUser()) return null;
+  return (
+    <button className="btn btn-sm btn-red" onClick={() => onGo?.("tech-tasks", "kehoach")}
+      title="Mở màn hình đăng ký, rồi chọn trung tâm cần đăng ký">
+      <PenLine size={13} />Đăng ký kế hoạch ngày
+    </button>
+  );
+}
+
 export function BangDieuHanhNgay({ onGo }) {
   const [data, setData] = useState(null);
   const [an, setAn] = useState(!getUser());
@@ -84,10 +101,6 @@ export function BangDieuHanhNgay({ onGo }) {
         <span className="muted" style={{ fontSize: 12 }}>
           {tongTruc} FT trực · {tramXong}/{tongTram} trạm xong
         </span>
-        <button className="btn btn-sm btn-red" onClick={() => onGo?.("tech-tasks", "kehoach")}
-          title="Mở màn hình đăng ký, rồi chọn trung tâm cần đăng ký">
-          <PenLine size={13} />Đăng ký kế hoạch ngày
-        </button>
       </div>
       <div style={{ padding: 12, display: "grid", gap: 8,
                     gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))" }}>

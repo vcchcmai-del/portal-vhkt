@@ -19,6 +19,7 @@ import { AdminGroupPage, Avatar, CSS, Card, RED, RED_DARK, norm } from "./ui";
 import {
   AppsView, CultureView, DashView, DocsView, ForumView, HomeView, IdeasView, NewsView,
 } from "./views";
+import { NutDangKyNgay } from "./dieuhanhngay";
 import { DutyRosterView } from "./dutyroster";
 import { OperationsView } from "./operations";
 import { RecruitmentView } from "./recruitment";
@@ -592,9 +593,12 @@ export default function Portal() {
               <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-.03em", marginTop: 4 }}>{current.label}</h1>
             </div>
             {view === "home" && (
-              <p className="muted mono" style={{ fontSize: 12.5 }}>
-                {new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}
-              </p>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                <NutDangKyNgay onGo={go} />
+                <p className="muted mono" style={{ fontSize: 12.5 }}>
+                  {new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}
+                </p>
+              </div>
             )}
           </div>
 
