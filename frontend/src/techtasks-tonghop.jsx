@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BarChart3, Download, RefreshCw } from "lucide-react";
 import { api } from "./api";
 import { Card, Empty, RED } from "./ui";
+import { TramThucHienTab } from "./techtasks-tram";
 
 /*
  * Tổng hợp khối lượng các cụm đăng ký trong ngày.
@@ -45,7 +46,23 @@ function Thanh({ xong, tram }) {
   );
 }
 
+/** Hai cách nhìn cùng một nguồn: khối lượng cộng lại, và từng trạm cụ thể. */
 export function TongHopKhoiLuongTab() {
+  const [oCon, setOCon] = useState("khoi_luong");
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="card flex gap-2" style={{ padding: 8, flexWrap: "wrap" }}>
+        <button className={`btn btn-sm ${oCon === "khoi_luong" ? "btn-red" : ""}`}
+          onClick={() => setOCon("khoi_luong")}>Khối lượng</button>
+        <button className={`btn btn-sm ${oCon === "tram" ? "btn-red" : ""}`}
+          onClick={() => setOCon("tram")}>Trạm thực hiện</button>
+      </div>
+      {oCon === "khoi_luong" ? <BangKhoiLuong /> : <TramThucHienTab />}
+    </div>
+  );
+}
+
+function BangKhoiLuong() {
   const [tu, setTu] = useState(() => luiNgay(6));
   const [den, setDen] = useState(homNay);
   const [center, setCenter] = useState("");

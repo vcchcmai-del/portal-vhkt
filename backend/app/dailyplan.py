@@ -20,6 +20,7 @@ Ba phần gắn với nhau:
 thêm bảng tổng hợp sẵn là tự chuốc lấy hai nguồn số liệu lệch nhau.
 """
 import datetime as dt
+import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -117,6 +118,23 @@ def _dem_tram(tram: str) -> int:
         return 0
     tach = tram.replace("\n", ";").replace(",", ";").split(";")
     return len([t for t in tach if t.strip()])
+
+
+def _tach_tram(v: str) -> list:
+    """Tách ô "trạm thực hiện" thành danh sách mã trạm đã chuẩn hoá.
+
+    Người nhập gõ tay nên cùng một trạm có thể thành "hcm0123", "HCM 0123",
+    " HCM0123 ". Chuẩn về CHỮ HOA, bỏ khoảng trắng bên trong, thì thống kê mới
+    gom đúng một trạm thành một dòng thay vì ba dòng khác nhau.
+    """
+    if not v:
+        return []
+    ra = []
+    for phan in re.split(r"[;,\n]", str(v)):
+        ma = "".join(phan.split()).upper()
+        if ma:
+            ra.append(ma)
+    return ra
 
 
 def _dem_user(ds: str) -> int:
@@ -760,6 +778,237 @@ def de_xuat(ngay: Optional[str] = None, db: Session = Depends(get_db),
 
 
 # --------------------------------------------------- Đánh giá các trung tâm
+
+# ------------------------------------------------------------ Danh mục trạm
+
+class NhapTramIn(BaseModel):
+    # Mỗi dòng: mã trạm, mã cụm, tên trạm, loại — ngăn nhau bởi dấu phẩy hoặc TAB.
+    noi_dung: str = ""
+    ghi_de: bool = True          # trạm đã có thì cập nhật lại cụm/tên
+
+
+@admin_router.get("/ke-hoach-ngay/danh-muc-tram")
+def xem_danh_muc_tram(center: Optional[str] = None, q: Optional[str] = None,
+                      db: Session = Depends(get_db),
+                      _=Depends(require_module("daily_plan", "view"))):
+    """Danh mục trạm, để đối chiếu mã trạm trong bản đăng ký với cụm quản lý."""
+    truy = db.query(models.DanhMucTram)
+    if center:
+        truy = truy.filter(models.DanhMucTram.center == _chuoi(center).upper())
+    tim = _chuoi(q).upper()
+    if tim:
+        truy = truy.filter(models.DanhMucTram.ma_tram.contains(tim))
+    rows = truy.order_by(models.DanhMucTram.center, models.DanhMucTram.ma_tram).limit(3000).all()
+    ten_tt = _ten_trung_tam(db)
+    theo_cum = {}
+    for r in db.query(models.DanhMucTram).all():
+        theo_cum[r.center or ""] = theo_cum.get(r.center or "", 0) + 1
+    return {
+        "tong": db.query(models.DanhMucTram).count(),
+        "theo_cum": [{"center": k or "(chua gan cum)", "ten": ten_tt.get(k, ""), "so_tram": v}
+                     for k, v in sorted(theo_cum.items())],
+        "danh_sach": [{"ma_tram": r.ma_tram, "center": r.center or "", "ten": r.ten or "",
+                       "loai": r.loai or "", "note": r.note or ""} for r in rows],
+    }
+
+
+@admin_router.post("/ke-hoach-ngay/danh-muc-tram/nhap")
+def nhap_danh_muc_tram(data: NhapTramIn, db: Session = Depends(get_db),
+                       user=Depends(require_module("daily_plan", "update")),
+                       request: Request = None):
+    """Nhập danh mục trạm bằng cách dán từ Excel: mỗi dòng một trạm.
+
+    Cột: mã trạm, mã cụm, tên trạm, loại. Chỉ cột đầu bắt buộc. Dòng lỗi được
+    trả về kèm số dòng chứ không chặn cả mẻ — dán hai nghìn trạm mà hỏng vì một
+    dòng thì không ai nhập nổi.
+    """
+    ds_cum = set(_ds_cum(db))
+    them = sua = 0
+    loi = []
+    da_thay = set()
+    for i, dong in enumerate((data.noi_dung or "").splitlines(), start=1):
+        if not dong.strip():
+            continue
+        phan = [p.strip() for p in dong.replace("\t", ",").split(",")]
+        ma = "".join(phan[0].split()).upper() if phan else ""
+        if not ma:
+            continue
+        if ma in da_thay:
+            loi.append("Dòng %d: mã trạm “%s” lặp ngay trong nội dung dán." % (i, ma))
+            continue
+        da_thay.add(ma)
+        cum = (phan[1].strip().upper() if len(phan) > 1 else "")
+        if cum and ds_cum and cum not in ds_cum:
+            loi.append("Dòng %d: mã cụm “%s” không có trong danh mục mã cụm." % (i, cum))
+            continue
+        row = db.query(models.DanhMucTram).filter(models.DanhMucTram.ma_tram == ma).first()
+        if row is not None and not data.ghi_de:
+            continue
+        if row is None:
+            row = models.DanhMucTram(ma_tram=ma)
+            db.add(row)
+            them += 1
+        else:
+            sua += 1
+        row.center = cum or None
+        if len(phan) > 2 and phan[2]:
+            row.ten = phan[2][:200]
+        if len(phan) > 3 and phan[3]:
+            row.loai = phan[3][:60]
+        row.updated_by = getattr(user, "full_name", "") or getattr(user, "username", "")
+    db.commit()
+    log_action(db, user, "update", "daily_plan", None,
+               "Nhập danh mục trạm: thêm %d, cập nhật %d" % (them, sua), request=request)
+    return {"them": them, "sua": sua, "loi": loi[:50],
+            "tong": db.query(models.DanhMucTram).count()}
+
+
+@admin_router.delete("/ke-hoach-ngay/danh-muc-tram/{ma_tram}")
+def xoa_tram(ma_tram: str, db: Session = Depends(get_db),
+             user=Depends(require_module("daily_plan", "delete")), request: Request = None):
+    ma = "".join(_chuoi(ma_tram).split()).upper()
+    row = db.query(models.DanhMucTram).filter(models.DanhMucTram.ma_tram == ma).first()
+    if not row:
+        raise HTTPException(404, "Không tìm thấy trạm trong danh mục.")
+    db.delete(row)
+    db.commit()
+    log_action(db, user, "delete", "daily_plan", None,
+               "Xoá trạm %s khỏi danh mục" % ma, request=request)
+    return {"deleted": ma}
+
+
+# -------------------------------------------------- Trạm thực hiện theo cụm
+
+@admin_router.get("/ke-hoach-ngay/theo-tram")
+def theo_tram(tu: Optional[str] = None, den: Optional[str] = None,
+              center: Optional[str] = None, q: Optional[str] = None,
+              chi_bat_thuong: bool = False,
+              db: Session = Depends(get_db),
+              _=Depends(require_module("daily_plan", "view"))):
+    """Từng trạm đã đăng ký thực hiện: cụm nào làm, mấy lượt, ngày nào, xong chưa.
+
+    Bốn dấu hiệu bất thường đánh ngay trên dòng, vì đó là thứ người điều hành soi:
+
+    - sai_cum: mã trạm có trong danh mục nhưng thuộc cụm khác — làm nhầm địa
+      bàn, hoặc gõ nhầm mã.
+    - ngoai_danh_muc: mã trạm không có trong danh mục. Chỉ báo khi danh mục đã
+      có dữ liệu; danh mục trống thì không kết luận gì.
+    - nhieu_cum: từ hai cụm trở lên cùng khai một trạm trong kỳ — chồng chéo.
+    - lap_lai: một trạm khai từ ba lượt trở lên mà chưa lần nào xong — làm mãi
+      không dứt điểm.
+    """
+    from .techtasks import item_labels
+
+    d2 = _ngay(den)
+    d1 = _ngay(tu, d2 - dt.timedelta(days=6))
+    if d1 > d2:
+        d1, d2 = d2, d1
+    if (d2 - d1).days > 366:
+        raise HTTPException(400, "Khoảng ngày quá dài — chọn tối đa 1 năm.")
+    loc_cum = _chuoi(center).upper()
+    tim = "".join(_chuoi(q).split()).upper()
+
+    truy = (_truy_van(db)
+            .filter(models.KeHoachNgay.plan_date >= d1, models.KeHoachNgay.plan_date <= d2))
+    if loc_cum:
+        truy = truy.filter(models.KeHoachNgay.center == loc_cum)
+    rows = truy.all()
+
+    danh_muc = {r.ma_tram: r for r in db.query(models.DanhMucTram).all()}
+    co_danh_muc = bool(danh_muc)
+    nhan_hm = item_labels(db)
+    ten_tt = _ten_trung_tam(db)
+
+    tram = {}
+    for r in rows:
+        for d in r.dong:
+            ds = _tach_tram(d.tram)
+            if not ds:
+                continue
+            # Ô "số trạm xong" chỉ là MỘT CON SỐ, không nói trạm nào xong. Ở đây
+            # quy ước tính cho các trạm đầu danh sách, và nói rõ quy ước đó ra
+            # giao diện — để không ai đọc dấu tích như một khẳng định chắc chắn.
+            so_xong = min(d.so_tram_xong or 0, len(ds))
+            for vt, ma in enumerate(ds):
+                o = tram.setdefault(ma, {
+                    "luot": 0, "luot_xong": 0, "cum": {}, "ngay": set(),
+                    "mang": set(), "hang_muc": set(),
+                })
+                o["luot"] += 1
+                if vt < so_xong:
+                    o["luot_xong"] += 1
+                o["cum"][r.center] = o["cum"].get(r.center, 0) + 1
+                o["ngay"].add(r.plan_date)
+                o["mang"].add(d.mang)
+                if d.hang_muc:
+                    o["hang_muc"].add(d.hang_muc)
+
+    ra = []
+    for ma, o in tram.items():
+        if tim and tim not in ma:
+            continue
+        dm = danh_muc.get(ma)
+        cums = sorted(o["cum"])
+        # Sai cụm tính theo từng cặp trạm–cụm, không theo trạm: một trạm của
+        # CHP mà THA cũng khai thì THA sai, kể cả khi CHP có khai trạm đó.
+        # Tính theo trạm thì cặp sai bị chính cụm đúng che mất.
+        cum_sai = [c for c in cums if dm and dm.center and c != dm.center]
+        sai_cum = bool(cum_sai)
+        ngoai = bool(co_danh_muc and not dm)
+        nhieu_cum = len(cums) > 1
+        lap_lai = o["luot"] >= 3 and o["luot_xong"] == 0
+        if chi_bat_thuong and not (sai_cum or ngoai or nhieu_cum or lap_lai):
+            continue
+        ra.append({
+            "ma_tram": ma,
+            "ten": (dm.ten or "") if dm else "",
+            "cum_quan_ly": (dm.center or "") if dm else "",
+            "cum_thuc_hien": cums,
+            "cum_sai": cum_sai,
+            "luot": o["luot"], "luot_xong": o["luot_xong"],
+            "so_ngay": len(o["ngay"]),
+            "ngay_dau": min(o["ngay"]).isoformat(),
+            "ngay_cuoi": max(o["ngay"]).isoformat(),
+            "ten_mang": [TEN_MANG.get(m, m) for m in sorted(o["mang"])],
+            "hang_muc": [nhan_hm.get(h, h) for h in sorted(o["hang_muc"])],
+            "sai_cum": sai_cum, "ngoai_danh_muc": ngoai,
+            "nhieu_cum": nhieu_cum, "lap_lai": lap_lai,
+        })
+    ra.sort(key=lambda x: (not (x["sai_cum"] or x["nhieu_cum"] or x["lap_lai"]),
+                           -x["luot"], x["ma_tram"]))
+
+    # Gom theo cụm thực hiện: một trạm hai cụm cùng làm thì tính cho cả hai.
+    theo_cum = {}
+    for x in ra:
+        for c in x["cum_thuc_hien"]:
+            o = theo_cum.setdefault(c, {"center": c, "ten": ten_tt.get(c, c), "so_tram": 0,
+                                        "luot": 0, "xong": 0, "sai_cum": 0,
+                                        "ngoai_danh_muc": 0, "lap_lai": 0})
+            o["so_tram"] += 1
+            o["luot"] += x["luot"]
+            o["xong"] += x["luot_xong"]
+            # Chỉ tính sai cho đúng cụm đã làm nhầm, không tính cho cụm chủ quản
+            # cũng có mặt trên trạm đó.
+            o["sai_cum"] += 1 if c in x["cum_sai"] else 0
+            o["ngoai_danh_muc"] += 1 if x["ngoai_danh_muc"] else 0
+            o["lap_lai"] += 1 if x["lap_lai"] else 0
+
+    return {
+        "tu": d1.isoformat(), "den": d2.isoformat(),
+        "co_danh_muc": co_danh_muc, "so_tram_danh_muc": len(danh_muc),
+        "tong": {
+            "so_tram": len(ra),
+            "luot": sum(x["luot"] for x in ra),
+            "xong": sum(x["luot_xong"] for x in ra),
+            "sai_cum": len([x for x in ra if x["sai_cum"]]),
+            "ngoai_danh_muc": len([x for x in ra if x["ngoai_danh_muc"]]),
+            "nhieu_cum": len([x for x in ra if x["nhieu_cum"]]),
+            "lap_lai": len([x for x in ra if x["lap_lai"]]),
+        },
+        "theo_cum": sorted(theo_cum.values(), key=lambda x: -x["so_tram"]),
+        "danh_sach": ra[:1000],
+    }
+
 
 @admin_router.get("/ke-hoach-ngay/tong-hop")
 def tong_hop_khoi_luong(tu: Optional[str] = None, den: Optional[str] = None,

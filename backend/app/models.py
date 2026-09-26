@@ -836,6 +836,29 @@ class CumNhanSu(Base):
     updated_at = Column(DateTime, default=now, onupdate=now)
 
 
+class DanhMucTram(Base):
+    """Danh mục trạm: mã trạm thuộc cụm nào.
+
+    Vì sao cần: bản đăng ký ngày ghi mã trạm bằng tay. Không có danh mục thì hệ
+    thống chỉ đếm được trạm, không trả lời được câu "cụm này có làm đúng trạm
+    của mình không" — mà đó mới là câu người điều hành hỏi.
+
+    Để trống bảng này vẫn dùng được: màn hình trạm vẫn thống kê bình thường,
+    chỉ không đối chiếu được mã trạm với cụm.
+    """
+    __tablename__ = "danh_muc_tram"
+
+    id = Column(Integer, primary_key=True)
+    ma_tram = Column(String(40), unique=True, nullable=False, index=True)   # HCM0123
+    center = Column(String(20), index=True)      # mã cụm quản lý trạm này
+    ten = Column(String(200))                    # tên/địa chỉ trạm
+    loai = Column(String(60))                    # BTS, nhà trạm, tuyến cáp...
+    active = Column(Boolean, default=True)
+    note = Column(Text)
+    updated_by = Column(String(160))
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+
 class KeHoachNgay(Base):
     """Đăng ký kế hoạch làm việc trong ngày của một cụm kỹ thuật.
 
