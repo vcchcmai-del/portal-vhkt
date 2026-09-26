@@ -92,10 +92,15 @@ function BangKhoiLuong() {
     d.push([`Tổng hợp khối lượng kế hoạch ngày ${data.tu} đến ${data.den}`]);
     if (center || mang) d.push([`Lọc: ${center || "mọi cụm"} / ${mang ? (meta?.mang || []).find((m) => m.ma === mang)?.ten : "mọi mảng"}`]);
     d.push([]);
-    d.push(["Theo cụm", "Ngày có đăng ký", "Nhân sự (lượt)", "Trạm đăng ký", "Trạm xong", "Tỷ lệ", "FT cụm", "Trạm/FT/ngày"]);
+    d.push(["Theo cụm", "Ngày có đăng ký", "Nhân sự (lượt)", "Trạm đăng ký", "Trạm xong", "Tỷ lệ",
+            "FT cụm", "Trạm/FT/ngày", "Mục tiêu tháng", "Đã làm", "Còn tồn", "Đánh giá"]);
     for (const x of data.theo_cum) {
       d.push([`${x.center} ${x.ten}`, x.so_ngay_dang_ky, x.ns, x.tram, x.xong,
-              pct(x.ty_le), x.ft || "", x.nang_suat ?? ""]);
+              pct(x.ty_le), x.ft || "", x.nang_suat ?? "",
+              x.ke_hoach_thang, x.thuc_hien_thang, x.ton_thang,
+              x.bo_muc_tieu ? "Còn tồn mà không đăng ký"
+                : x.ngoai_muc_tieu ? "Làm ngoài chỉ tiêu"
+                  : x.ton_thang ? "Đang bám" : (x.ke_hoach_thang ? "Đạt mục tiêu" : "")]);
     }
     d.push([]);
     d.push(["Theo hạng mục", "Đầu việc", "Số cụm", "Trạm đăng ký", "Trạm xong", "Đã đẩy lên tháng", "Kế hoạch tháng"]);
@@ -114,6 +119,7 @@ function BangKhoiLuong() {
   if (!data) return <p className="muted">Đang tải…</p>;
 
   const t = data.tong;
+  const tenMang = (meta?.mang || []).find((m) => m.ma === mang)?.ten || "";
 
   return (
     <div className="flex flex-col gap-4">
@@ -186,18 +192,42 @@ function BangKhoiLuong() {
             </div>
           </Card>
 
-          <Card pad={false} title="Theo cụm — kèm năng suất trên đầu FT">
+          <Card pad={false}
+            title={`Theo cụm — đối chiếu với mục tiêu tháng${tenMang ? ` của mảng ${tenMang}` : ""}`}>
+            <p className="muted" style={{ fontSize: 12, padding: "8px 12px 0" }}>
+              Bên trái là khối lượng cụm đã đăng ký trong khoảng ngày, bên phải là mục tiêu tháng
+              {tenMang ? ` của riêng mảng ${tenMang}` : " của cả ba mảng Cơ điện, Truyền dẫn, Kiểm soát"}
+              {" "}lấy từ bảng tiến độ, kỳ {(data.ky_doi_chieu || []).join(" + ")}.
+              Cụm còn tồn mà kỳ này không đăng ký gì thì bị đánh dấu.
+            </p>
+            {!!data.ngoai_cum?.length && (
+              <p style={{ fontSize: 12.5, padding: "0 12px 8px", color: MAU.vang }}>
+                Ngoài bảng này còn{" "}
+                <b>{so(data.ngoai_cum.reduce((a, x) => a + x.ton, 0))} khối lượng chưa chia về cụm nào</b>
+                {" "}({data.ngoai_cum.map((x) => `${x.center}: ${so(x.ton)}`).join(", ")}) — chưa cụm nào
+                nhận nên không thể đánh giá đúng/sai mục tiêu.
+              </p>
+            )}
             <div style={{ overflowX: "auto" }}>
               <table className="tbl">
                 <thead>
-                  <tr><th>Cụm</th><th>Ngày có đăng ký</th><th>Nhân sự</th><th>Trạm</th>
-                    <th>Trạm xong</th><th>Tỷ lệ</th><th>FT cụm</th>
+                  <tr>
+                    <th>Cụm</th><th>Ngày có ĐK</th><th>Nhân sự</th><th>Trạm</th>
+                    <th>Trạm xong</th><th>Tỷ lệ</th><th>FT</th>
                     <th title="Trạm làm xong trên mỗi FT, mỗi ngày có đăng ký — so được giữa cụm đông và cụm ít người">
-                      Trạm/FT/ngày</th></tr>
+                      Trạm/FT/ngày</th>
+                    <th style={{ borderLeft: "2px solid #E6E1E2" }}
+                      title="Kế hoạch tháng của mảng đang xem, tại cụm này">Mục tiêu tháng</th>
+                    <th title="Thực hiện tháng, đã gồm phần kế hoạch ngày đẩy lên">Đã làm</th>
+                    <th title="Kế hoạch − BKK − Thực hiện">Còn tồn</th>
+                    <th>Đánh giá</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {data.theo_cum.map((x) => (
-                    <tr key={x.center}>
+                    <tr key={x.center}
+                      style={x.bo_muc_tieu ? { background: "#FFF3F5" }
+                        : x.ngoai_muc_tieu ? { background: "#FFF8EC" } : undefined}>
                       <td><b>{x.center}</b> <span className="muted">{x.ten}</span></td>
                       <td className="mono">{x.so_ngay_dang_ky}/{data.so_ngay}</td>
                       <td className="mono">{so(x.ns)}</td>
@@ -208,6 +238,24 @@ function BangKhoiLuong() {
                       </td>
                       <td className="mono">{x.ft || "—"}</td>
                       <td className="mono" style={{ fontWeight: 700 }}>{x.nang_suat ?? "—"}</td>
+                      <td className="mono" style={{ borderLeft: "2px solid #E6E1E2" }}>
+                        {x.ke_hoach_thang ? so(x.ke_hoach_thang) : "—"}
+                      </td>
+                      <td className="mono">{so(x.thuc_hien_thang)}</td>
+                      <td className="mono" style={{ color: x.ton_thang ? MAU.vang : MAU.xanh }}>
+                        {x.ton_thang ? so(x.ton_thang) : "—"}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {x.bo_muc_tieu ? (
+                          <b style={{ color: MAU.do }}>Còn tồn {so(x.ton_thang)} mà không đăng ký</b>
+                        ) : x.ngoai_muc_tieu ? (
+                          <b style={{ color: MAU.vang }}>Có làm nhưng mảng này chưa có chỉ tiêu</b>
+                        ) : x.ton_thang ? (
+                          <span className="muted">Đang bám, còn {so(x.ton_thang)}</span>
+                        ) : x.ke_hoach_thang ? (
+                          <b style={{ color: MAU.xanh }}>Đạt mục tiêu tháng</b>
+                        ) : <span className="muted">—</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -1010,6 +1010,38 @@ def theo_tram(tu: Optional[str] = None, den: Optional[str] = None,
     }
 
 
+def _dong_theo_cum(ma, o, mt, ten_tt, quan_so, ty_le):
+    """Một dòng của bảng "theo cụm": khối lượng đã đăng ký đặt cạnh mục tiêu tháng.
+
+    Hai cờ trả lời thẳng câu "có đúng mục tiêu không":
+    - bo_muc_tieu: còn tồn mà kỳ này không đăng ký lượt nào ở mảng đang xét.
+    - ngoai_muc_tieu: có đăng ký nhưng mảng đó không có kế hoạch tháng nào cho
+      cụm này — làm việc nằm ngoài chỉ tiêu, hoặc kế hoạch chưa được chia về cụm.
+    """
+    o = o or {"ns": 0, "tram": 0, "xong": 0, "ngay": set()}
+    mt = mt or {"ke_hoach": 0.0, "thuc_hien": 0.0, "bkk": 0.0}
+    phai_lam = max(mt["ke_hoach"] - mt["bkk"], 0)
+    ton = max(phai_lam - mt["thuc_hien"], 0)
+    so_ngay_dk = len(o["ngay"])
+    return {
+        "center": ma, "ten": ten_tt.get(ma, ma),
+        "so_ngay_dang_ky": so_ngay_dk,
+        "ns": o["ns"], "tram": o["tram"], "xong": o["xong"], "ty_le": ty_le(o),
+        "ft": quan_so.get(ma, 0),
+        # Năng suất: trạm làm xong trên mỗi FT hiện có của cụm, tính trên số
+        # ngày cụm đó có đăng ký — so được giữa cụm 12 người và cụm 3 người,
+        # điều mà số trạm tuyệt đối không nói ra.
+        "nang_suat": (round(o["xong"] / quan_so[ma] / so_ngay_dk, 2)
+                      if quan_so.get(ma) and so_ngay_dk else None),
+        "ke_hoach_thang": round(mt["ke_hoach"], 1),
+        "thuc_hien_thang": round(mt["thuc_hien"], 1),
+        "ton_thang": round(ton, 1),
+        "ty_le_thang": round(mt["thuc_hien"] / phai_lam, 4) if phai_lam else None,
+        "bo_muc_tieu": bool(ton > 0 and not o["tram"]),
+        "ngoai_muc_tieu": bool(o["tram"] and not mt["ke_hoach"]),
+    }
+
+
 @admin_router.get("/ke-hoach-ngay/tong-hop")
 def tong_hop_khoi_luong(tu: Optional[str] = None, den: Optional[str] = None,
                         center: Optional[str] = None, mang: Optional[str] = None,
@@ -1088,6 +1120,31 @@ def tong_hop_khoi_luong(tu: Optional[str] = None, den: Optional[str] = None,
     def ty_le(o):
         return round(o["xong"] / o["tram"], 4) if o["tram"] else None
 
+    # ---- Mục tiêu tháng của (các) mảng đang xét, theo từng trung tâm ----
+    #
+    # Chọn mảng Cơ điện rồi nhìn "cụm này đăng ký 12 trạm" vẫn chưa trả lời
+    # được câu có đúng mục tiêu không: phải đặt cạnh kế hoạch tháng của chính
+    # mảng đó ở chính cụm đó. Kế hoạch lấy từ bảng tiến độ, gom qua nhóm đầu
+    # việc ứng với mảng.
+    la_cum = set(_ds_cum(db))
+    ky_doi_chieu = sorted({d1.strftime("%Y-%m"), d2.strftime("%Y-%m")})
+    mang_cua_dv = _mang_cua_dau_viec(db)
+    dv_thuoc_mang = {dv for dv, m in mang_cua_dv.items()
+                     if m and (not loc_mang or m == loc_mang)}
+    muc_tieu = {}
+    if dv_thuoc_mang:
+        for pe in (db.query(models.ProgressEntry)
+                   .filter(models.ProgressEntry.category.in_(list(dv_thuoc_mang)),
+                           models.ProgressEntry.period.in_(ky_doi_chieu),
+                           models.ProgressEntry.ft_name.is_(None))
+                   .all()):
+            if loc_cum and pe.center != loc_cum:
+                continue
+            o = muc_tieu.setdefault(pe.center, {"ke_hoach": 0.0, "thuc_hien": 0.0, "bkk": 0.0})
+            o["ke_hoach"] += pe.plan_qty or 0
+            o["thuc_hien"] += pe.done_qty or 0
+            o["bkk"] += pe.bkk_qty or 0
+
     # Kế hoạch tháng và phần đã đẩy lên, để đối chiếu với khối lượng khai trong ngày.
     ky = {d.strftime("%Y-%m") for d in (d1, d2)}
     ke_hoach, da_day = {}, {}
@@ -1120,17 +1177,22 @@ def tong_hop_khoi_luong(tu: Optional[str] = None, den: Optional[str] = None,
                        "so_dong": o["so_dong"]}
                       for m, o in sorted(theo_mang.items(),
                                          key=lambda kv: MA_MANG.index(kv[0]) if kv[0] in MA_MANG else 99)],
+        "ky_doi_chieu": ky_doi_chieu,
         "theo_cum": sorted(
-            [{"center": k, "ten": ten_tt.get(k, k), "so_ngay_dang_ky": len(o["ngay"]),
-              "ns": o["ns"], "tram": o["tram"], "xong": o["xong"], "ty_le": ty_le(o),
-              "ft": quan_so.get(k, 0),
-              # Năng suất: trạm làm xong trên mỗi FT hiện có của cụm, tính trên
-              # số ngày cụm đó có đăng ký — so được giữa cụm 12 người và cụm 3
-              # người, điều mà số trạm tuyệt đối không nói ra.
-              "nang_suat": (round(o["xong"] / quan_so[k] / len(o["ngay"]), 2)
-                            if quan_so.get(k) and o["ngay"] else None)}
-             for k, o in theo_cum.items()],
-            key=lambda x: -x["tram"]),
+            [_dong_theo_cum(k, theo_cum.get(k), muc_tieu.get(k), ten_tt, quan_so, ty_le)
+             # Cụm có mục tiêu mà KHÔNG đăng ký gì vẫn phải hiện ra: bỏ đi thì
+             # bảng chỉ còn người đang làm, đúng chỗ cần soi lại biến mất.
+             for k in sorted(set(theo_cum) | set(muc_tieu)) if k in la_cum or not la_cum],
+            key=lambda x: (-x["tram"], -x["ton_thang"])),
+        # Mục tiêu mang mã không phải cụm — chủ yếu là "CN" (chưa chia cụm).
+        # Không xếp lẫn vào bảng trên: CN không đăng ký được nên kết luận "còn
+        # tồn mà không đăng ký" cho nó là vô nghĩa, lại đẩy một dòng giả lên
+        # đầu bảng. Vẫn trả về để thấy còn bao nhiêu khối lượng chưa chia.
+        "ngoai_cum": sorted(
+            [{"center": k, "ke_hoach": round(v["ke_hoach"], 1),
+              "ton": round(max(max(v["ke_hoach"] - v["bkk"], 0) - v["thuc_hien"], 0), 1)}
+             for k, v in muc_tieu.items() if la_cum and k not in la_cum],
+            key=lambda x: -x["ton"]),
         "theo_hang_muc": sorted(
             [{"hang_muc": k, "ten": nhan_hm.get(k, k),
               "dau_viec": thuoc.get(k, ""), "ten_dau_viec": nhan_dv.get(thuoc.get(k, ""), ""),
