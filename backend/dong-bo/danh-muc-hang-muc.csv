@@ -1,28 +1,83 @@
 ﻿code,label,category_code,order_no,active
-5g_minishelter,Minishelter,ke_hoach_5g,3,1
-5g_phat_song,Tích hợp phát sóng trạm 5G,ke_hoach_5g,4,1
-5g_srt5g,Tích hợp SRT5G,ke_hoach_5g,1,1
+5g_minishelter,Minishelter,minishelter,3,1
+5g_phat_song,Tích hợp phát sóng trạm 5G,tich_hop_phat_song_tram_5g,4,1
+5g_srt5g,Tích hợp SRT5G,tich_hop_srt5g,1,1
 5g_sua_soi,Sửa sợi,ke_hoach_5g,0,1
-5g_tu_nguon,Lắp tủ nguồn,ke_hoach_5g,2,1
-cc_bo_cap,Bó cáp,cung_co,11,1
+5g_tu_nguon,Lắp tủ nguồn,lap_tu_nguon,2,1
+ban_giao_ftth,Bàn giao FTTH,ban_giao_ftth,48,1
+bao_duong_dieu_hoa_may_phat_dien_to_hop_,"Bảo dưỡng điều hòa, máy phát điện, tổ hợp làm bằng",bao_duong_dieu_hoa_may_phat_dien_to_hop_,50,1
+bao_duong_thc,Bảo dưỡng THC,bao_duong_thc,52,1
+bao_duong_tram_ha_tang_cho_thue,Bảo dưỡng trạm hạ tầng cho thuê,bao_duong_tram_ha_tang_cho_thue,51,1
+bao_duong_tuyen_cap_truyen_dan,Bảo dưỡng tuyến cáp truyền dẫn,bao_duong_tuyen_cap_truyen_dan,53,1
+cap_nhat_link_tren_nims,Cập nhật link trên NIMS,cap_nhat_link_tren_nims,27,1
+cat_cap_dap_nat,Cắt cáp dập nát,cat_cap_dap_nat,33,1
+cc_bo_cap,Bó cáp,bo_cap,11,1
 cc_dat_chuan,Củng cố trạm đạt chuẩn,cung_co,14,1
-cc_son_tu,Sơn lại tủ,cung_co,13,1
-cc_thay_tu,Thay tủ ong/tủ bay,cung_co,12,1
-cldv_keo_tu,Đề xuất kéo tủ,cldv_co_dinh,20,1
-cldv_nha_tro,Củng cố TB nhà trọ,cldv_co_dinh,21,1
-cldv_port_kem,Port kém,cldv_co_dinh,16,1
-cldv_su_co_lap,Sự cố lặp,cldv_co_dinh,19,1
-cldv_swap_ont,Swap ONT 2BT,cldv_co_dinh,18,1
-cldv_tammi,Cài Tammi,cldv_co_dinh,15,1
-cldv_wifi_kem,Home-wifi kém,cldv_co_dinh,17,1
-dd_bo_cap,Bó cáp phối hợp chính quyền,di_doi_ngam_hoa,10,1
-dd_de_xuat,Đề xuất di dời Trạm/Cáp,di_doi_ngam_hoa,9,1
-sla_thu_hoi_tb,Thu hồi thiết bị,giam_phat_sla,7,1
-sla_tiep_xuc_rm,Tiếp xúc KH rời mạng,giam_phat_sla,6,1
-sla_wo_qua_han,WO quá hạn nguy cơ phạt SLA,giam_phat_sla,8,1
-ts_chenh_lech,Xử lý chênh lệch tài sản,ql_tai_san,23,1
-ts_huy_di_doi,Trạm hủy/di dời,ql_tai_san,24,1
-ts_kiem_ke,Kiểm kê kết hợp WO MR,ql_tai_san,22,1
+cc_son_tu,Sơn lại tủ,son_lai_tu,13,1
+cc_thay_tu,Thay tủ ong/tủ bay,thay_tu_ong_tu_bay,12,1
+chen_srt_phat_song_tram_moi,Chèn SRT phát sóng trạm mới,chen_srt_phat_song_tram_moi,34,1
+cldv_keo_tu,Đề xuất kéo tủ,de_xuat_keo_tu,20,1
+cldv_nha_tro,Củng cố TB nhà trọ,cung_co_tb_nha_tro,21,1
+cldv_port_kem,Port kém,port_kem,16,1
+cldv_su_co_lap,Sự cố lặp,su_co_lap,19,1
+cldv_swap_ont,Swap ONT 2BT,swap_ont_2bt,18,1
+cldv_tammi,Cài Tammi,cai_tammi,15,1
+cldv_wifi_kem,Home-wifi kém,home_wifi_kem,17,1
+cung_co_thc_theo_ttr_4149,Củng cố THC theo TTr 4149,cung_co_thc_theo_ttr_4149,42,1
+cung_co_tuyen_cap_loi_lap_tren_2_lan,Củng cố tuyến cáp lỗi lặp trên 2 lần,cung_co_tuyen_cap_loi_lap_tren_2_lan,32,1
+dd_bo_cap,Bó cáp phối hợp chính quyền,bo_cap_phoi_hop_chinh_quyen,10,1
+dd_de_xuat,Đề xuất di dời Trạm/Cáp,de_xuat_di_doi_tram_cap,9,1
+giai_nghen_ring_luu_luong_cao,Giải nghẽn ring lưu lượng cao,giai_nghen_ring_luu_luong_cao,35,1
+giai_nghen_uplink_olt,Giải nghẽn uplink OLT,giai_nghen_uplink_olt,28,1
+giam_sat_thiet_bi_co_dien_theo_ke_hoach_,Giám sát thiết bị cơ điện theo kế hoạch 778,giam_sat_thiet_bi_co_dien_theo_ke_hoach_,59,1
+giao_chi_tieu_rot_mang,Giao chỉ tiêu rớt mạng,giao_chi_tieu_rot_mang,44,1
+hoan_thanh_dau_giam_sat_ac_quy_lib,Hoàn thành đấu giám sát ắc quy LIB,hoan_thanh_dau_giam_sat_ac_quy_lib,60,1
+home_kem_duoi_80_db,Home kém dưới -80 dB,home_kem_duoi_80_db,46,1
+home_ket_noi_lan_100m,Home kết nối LAN 100M,home_ket_noi_lan_100m,47,1
+ke_hoach_di_doi_tram,Kế hoạch di dời trạm,ke_hoach_di_doi_tram,55,1
+khac_phuc_loi_bao_hong,Khắc phục lỗi báo hỏng,khac_phuc_loi_bao_hong,49,1
+khac_phuc_loi_bao_hong_html_inos,Khắc phục lỗi báo hỏng HTML InOS,khac_phuc_loi_bao_hong_html_inos,63,1
+khac_phuc_tram_mat_giam_sat_may_phat_die,Khắc phục trạm mất giám sát máy phát điện,khac_phuc_tram_mat_giam_sat_may_phat_die,64,1
+kiem_soat_cac_du_an_do_viettel_dau_tu,Kiểm soát các dự án do Viettel đầu tư,kiem_soat_cac_du_an_do_viettel_dau_tu,62,1
+kiem_tra_hien_truong_nha_tram,Kiểm tra hiện trường nhà trạm,kiem_tra_hien_truong_nha_tram,58,1
+kiem_tra_hien_truong_thc,Kiểm tra hiện trường THC,kiem_tra_hien_truong_thc,56,1
+kiem_tra_hien_truong_tuyen_cap_truyen_da,Kiểm tra hiện trường tuyến cáp truyền dẫn,kiem_tra_hien_truong_tuyen_cap_truyen_da,57,1
+kiem_tra_tram_dau_sai_nguon_uu_tien,Kiểm tra trạm đấu sai nguồn ưu tiên,kiem_tra_tram_dau_sai_nguon_uu_tien,65,1
+kiem_tra_tram_toi_kpi_ats,Kiểm tra trạm tồi KPI ATS,kiem_tra_tram_toi_kpi_ats,66,1
+ky_bien_ban_nghiem_thu_xhh_cho_98_tram,Ký biên bản nghiệm thu XHH cho 98 trạm,ky_bien_ban_nghiem_thu_xhh_cho_98_tram,61,1
+ky_phuong_an_ung_cuu_thong_tin_quy_iv,Ký phương án ứng cứu thông tin quý IV,ky_phuong_an_ung_cuu_thong_tin_quy_iv,67,1
+lap_dat_ats,Lắp đặt ATS,lap_dat_ats,68,1
+lap_dat_iacv,Lắp đặt iACV,lap_dat_iacv,69,1
+lap_dat_may_phat_dien,Lắp đặt máy phát điện,lap_dat_may_phat_dien,70,1
+lap_dat_olt_swap_card_gtgh_sang_gtgo,"Lắp đặt OLT, swap card GTGH sang GTGO",lap_dat_olt_swap_card_gtgh_sang_gtgo,31,1
+lap_dat_router_nfx150,Lắp đặt ROUTER NFX150,lap_dat_router_nfx150,40,1
+lap_dat_thiet_bi_co_dien_phuc_vu_5g,Lắp đặt thiết bị cơ điện phục vụ 5G,lap_dat_thiet_bi_co_dien_phuc_vu_5g,71,1
+nang_cap_agg,Nâng cấp AGG,nang_cap_agg,37,1
+nhan_su_thuc_hien,Nhân sự thực hiện,kiem_soat_wo,41,1
+port_kem_duoi_26_db,Port kém dưới -26 dB,port_kem_duoi_26_db,45,1
+sla_thu_hoi_tb,Thu hồi thiết bị,thu_hoi_thiet_bi,7,1
+sla_tiep_xuc_rm,Tiếp xúc KH rời mạng,tiep_xuc_kh_roi_mang,6,1
+sla_wo_qua_han,WO quá hạn nguy cơ phạt SLA,wo_qua_han_nguy_co_phat_sla,8,1
+sua_chua_dieu_hoa_may_phat_dien,"Sửa chữa điều hòa, máy phát điện",sua_chua_dieu_hoa_may_phat_dien,72,1
+sua_suy_hao_link_srt_dwdm_sdh,"Sửa suy hao link SRT, DWDM, SDH",sua_suy_hao_link_srt_dwdm_sdh,36,1
+swap_1bt_doi_uctt_mesh,"SWAP 1BT, đổi UCTT Mesh",swap_1bt_doi_uctt_mesh,43,1
+swap_tu_nguon_dc,Swap tủ nguồn DC,swap_tu_nguon_dc,73,1
+swap_xgspon_nam_2026,Swap XGSPON năm 2026,swap_xgspon_nam_2026,30,1
+tach_node_co_dinh_bang_rong,Tách node cố định băng rộng,tach_node_co_dinh_bang_rong,38,1
+test_may_phat_dien_ac_quy_pool,"Test máy phát điện, ắc quy Pool",test_may_phat_dien_ac_quy_pool,74,1
+test_may_phat_dien_trong_kho,Test máy phát điện trong kho,test_may_phat_dien_trong_kho,75,1
+thay_the_daq,Thay thế DAQ,thay_the_daq,76,1
+thay_the_thiet_bi_bao_hong_tren_phan_mem,Thay thế thiết bị báo hỏng trên phần mềm ICMS,thay_the_thiet_bi_bao_hong_tren_phan_mem,77,1
+thu_hoi_ac_quy,Thu hồi ắc quy,thu_hoi_ac_quy,78,1
+thu_hoi_ats_hong_han,Thu hồi ATS hỏng hẳn,thu_hoi_ats_hong_han,79,1
+thuc_hien_bao_duong_nha_tram,Thực hiện bảo dưỡng nhà trạm,thuc_hien_bao_duong_nha_tram,54,1
+thuc_hien_wo_tt,Thực hiện WO_TT,thuc_hien_wo_tt,80,1
+trien_khai_dau_noi_5g_nam_2026,Triển khai đấu nối 5G năm 2026,trien_khai_dau_noi_5g_nam_2026,29,1
+trien_khai_dau_noi_ring_5g_khep_ring,Triển khai đấu nối ring 5G khép ring,trien_khai_dau_noi_ring_5g_khep_ring,39,1
+trien_khai_lap_dat_tich_hop_giam_sat,Triển khai lắp đặt tích hợp giám sát,trien_khai_lap_dat_tich_hop_giam_sat,81,1
+ts_chenh_lech,Xử lý chênh lệch tài sản,xu_ly_chenh_lech_tai_san,23,1
+ts_huy_di_doi,Trạm hủy/di dời,tram_huy_di_doi,24,1
+ts_kiem_ke,Kiểm kê kết hợp WO MR,kiem_ke_ket_hop_wo_mr,22,1
 wo_kiem_soat_ft,Kiểm soát WO theo FT,kiem_soat_wo,5,1
-xd_de_xuat,Đề xuất - phê duyệt qua cBusiness360,xang_dau,25,1
-xd_du_phong,Đổ dầu dự phòng UCTT,xang_dau,26,1
+xd_de_xuat,Đề xuất - phê duyệt qua cBusiness360,de_xuat_phe_duyet_qua_cbusiness360,25,1
+xd_du_phong,Đổ dầu dự phòng UCTT,do_dau_du_phong_uctt,26,1

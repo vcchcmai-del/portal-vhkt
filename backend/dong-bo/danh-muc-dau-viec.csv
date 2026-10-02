@@ -1,11 +1,85 @@
 ﻿code,label,hint,order_no,active
-ban_hang,Bán hàng,"Thống nhất kế hoạch bán hàng trong tháng: Năng lượng, Xây dựng, FTTH, 8 dự án Chung cư được giao quản lý toàn diện.",6,1
-cldv_co_dinh,Cải thiện CLDV cố định,"Cài Tammi, Port kém, Home-wifi kém, Swap ONT 2BT, sự cố lặp, đề xuất kéo tủ, củng cố TB nhà trọ.",7,1
-cung_co,Củng cố,"Bó cáp, thay tủ ong/tủ bay, sơn lại tủ, củng cố trạm đạt chuẩn.",5,1
-di_doi_ngam_hoa,Di dời – ngầm hóa,"Báo cáo lại đề xuất di dời Trạm/Cáp, phối hợp chính quyền bó cáp cần triển khai trong tháng.",4,1
-giam_phat_sla,Giảm phạt SLA,"Tiếp xúc KH rời mạng, thu hồi thiết bị, ưu tiên xử lý các WO quá hạn có nguy cơ phạt SLA.",3,1
-hoan_cong,Hoàn Công,,10,1
-ke_hoach_5g,Kế hoạch 5G,"Sửa sợi, tích hợp SRT5G, lắp tủ nguồn, Minishelter, tích hợp phát sóng trạm 5G.",2,1
-kiem_soat_wo,Kiểm soát WO,Sử dụng tool kiểm soát: https://manage-wo.pages.dev/login — kiểm soát từng nhóm WO theo từng FT.,1,1
-ql_tai_san,QL Tài sản,"Tổ chức kiểm kê kết hợp WO MR, xử lý chênh lệch tài sản, trạm hủy/di dời.",8,1
-xang_dau,Xăng dầu,"Kiểm soát đề xuất - phê duyệt xăng dầu qua app cBusiness360, tổ chức đổ dầu dự phòng UCTT đủ định mức cho các trạm cố định.",9,1
+ban_giao_ftth,Bàn giao FTTH,ĐVT: Vị trí · Kế hoạch tháng 09/2026: 420,32,1
+bao_duong_dieu_hoa_may_phat_dien_to_hop_,"Bảo dưỡng điều hòa, máy phát điện, tổ hợp làm bằng",chỉ tiêu tháng 09/2026: 591 Thiết bị,36,1
+bao_duong_thc,Bảo dưỡng THC,Chỉ tiêu bảo dưỡng · chỉ tiêu tháng 09/2026: 650 THC,81,1
+bao_duong_tram_ha_tang_cho_thue,Bảo dưỡng trạm hạ tầng cho thuê,chỉ tiêu tháng 09/2026: 85 Trạm,40,1
+bao_duong_tuyen_cap_truyen_dan,Bảo dưỡng tuyến cáp truyền dẫn,,82,1
+bo_cap,Bó cáp,,66,1
+bo_cap_phoi_hop_chinh_quyen,Bó cáp phối hợp chính quyền,,65,1
+cai_tammi,Cài Tammi,,69,1
+cap_nhat_link_tren_nims,Cập nhật link trên NIMS,ĐVT: Link · Kế hoạch tháng 09/2026: 530,11,1
+cat_cap_dap_nat,Cắt cáp dập nát,ĐVT: Vị trí · Kế hoạch tháng 09/2026: 32,17,1
+chen_srt_phat_song_tram_moi,Chèn SRT phát sóng trạm mới,ĐVT: Trạm · Kế hoạch tháng 09/2026: 32,18,1
+cung_co,Củng cố trạm đạt chuẩn,"Bó cáp, thay tủ ong/tủ bay, sơn lại tủ, củng cố trạm đạt chuẩn.",4,1
+cung_co_tb_nha_tro,Củng cố TB nhà trọ,,75,1
+cung_co_thc_theo_ttr_4149,Củng cố THC theo TTr 4149,ĐVT: THC · Kế hoạch tháng 09/2026: 227,26,1
+cung_co_tuyen_cap_loi_lap_tren_2_lan,Củng cố tuyến cáp lỗi lặp trên 2 lần,ĐVT: Tuyến · Kế hoạch tháng 09/2026: 55,16,1
+de_xuat_di_doi_tram_cap,Đề xuất di dời Trạm/Cáp,,64,1
+de_xuat_keo_tu,Đề xuất kéo tủ,,74,1
+de_xuat_phe_duyet_qua_cbusiness360,Đề xuất - phê duyệt qua cBusiness360,,79,1
+do_dau_du_phong_uctt,Đổ dầu dự phòng UCTT,,80,1
+giai_nghen_ring_luu_luong_cao,Giải nghẽn ring lưu lượng cao,ĐVT: Ring · Kế hoạch tháng 09/2026: 27,19,1
+giai_nghen_uplink_olt,Giải nghẽn uplink OLT,ĐVT: OLT · Kế hoạch tháng 09/2026: 318,12,1
+giam_sat_thiet_bi_co_dien_theo_ke_hoach_,Giám sát thiết bị cơ điện theo kế hoạch 778,chỉ tiêu tháng 09/2026: 262 Thiết bị,38,1
+giao_chi_tieu_rot_mang,Giao chỉ tiêu rời mạng,ĐVT: Thuê bao · Kế hoạch tháng 09/2026: 3.111,28,1
+hoan_cong_mang_co_dien,Hoàn công mảng Cơ điện,MCT tồn công nợ theo nhóm 1/2/3 và trạng thái hồ sơ,91,1
+hoan_cong_mang_truyen_dan_ip,Hoàn công mảng Truyền dẫn/IP,,92,1
+hoan_thanh_dau_giam_sat_ac_quy_lib,Hoàn thành đấu giám sát ắc quy LIB,chỉ tiêu tháng 09/2026: 22 Bộ,48,1
+home_kem_duoi_80_db,Home kém dưới -80 dB,ĐVT: Home · Kế hoạch tháng 09/2026: 2.124,30,1
+home_ket_noi_lan_100m,Home kết nối LAN 100M,ĐVT: Home · Kế hoạch tháng 09/2026: 4.163,31,1
+home_wifi_kem,Home-wifi kém,,71,1
+ke_hoach_5g,Sửa sợi 5G,Sửa sợi,1,1
+ke_hoach_di_doi_tram,Kế hoạch di dời trạm,Chỉ tiêu kiểm tra hiện trường · chỉ tiêu tháng 09/2026: 6 Trạm,84,1
+khac_phuc_loi_bao_hong,Khắc phục lỗi báo hỏng,Chỉ tiêu tháng 09/2026: 3.797,34,1
+khac_phuc_loi_bao_hong_html_inos,Khắc phục lỗi báo hỏng HTML InOS,,90,1
+khac_phuc_tram_mat_giam_sat_may_phat_die,Khắc phục trạm mất giám sát máy phát điện,chỉ tiêu tháng 09/2026: 57 Trạm,42,1
+kiem_ke_ket_hop_wo_mr,Kiểm kê kết hợp WO MR,,76,1
+kiem_soat_cac_du_an_do_viettel_dau_tu,Kiểm soát các dự án do Viettel đầu tư,,89,1
+kiem_soat_wo,Kiểm soát WO,,0,1
+kiem_tra_hien_truong_nha_tram,Kiểm tra hiện trường nhà trạm,Chỉ tiêu kiểm tra hiện trường · chưa giao chỉ tiêu tháng 09/2026,87,1
+kiem_tra_hien_truong_thc,Kiểm tra hiện trường THC,Chỉ tiêu kiểm tra hiện trường · chưa giao chỉ tiêu tháng 09/2026,85,1
+kiem_tra_hien_truong_tuyen_cap_truyen_da,Kiểm tra hiện trường tuyến cáp truyền dẫn,Chỉ tiêu kiểm tra hiện trường · chưa giao chỉ tiêu tháng 09/2026,86,1
+kiem_tra_tram_dau_sai_nguon_uu_tien,Kiểm tra trạm đấu sai nguồn ưu tiên,chỉ tiêu tháng 09/2026: 9 Trạm,50,1
+kiem_tra_tram_toi_kpi_ats,Kiểm tra trạm tồi KPI ATS,chỉ tiêu tháng 09/2026: 7 Trạm,52,1
+ky_bien_ban_nghiem_thu_xhh_cho_98_tram,Ký biên bản nghiệm thu XHH cho 98 trạm,Khắc phục lỗi báo hỏng · chỉ tiêu tháng 09/2026: 98 Trạm,88,1
+ky_phuong_an_ung_cuu_thong_tin_quy_iv,Ký phương án ứng cứu thông tin quý IV,chỉ tiêu tháng 09/2026: 37 Phương án,46,1
+lap_dat_ats,Lắp đặt ATS,chỉ tiêu tháng 09/2026: 2 Bộ,56,1
+lap_dat_iacv,Lắp đặt iACV,chỉ tiêu tháng 09/2026: 71 Bộ,41,1
+lap_dat_may_phat_dien,Lắp đặt máy phát điện,chỉ tiêu tháng 09/2026: 8 Máy,51,1
+lap_dat_olt_swap_card_gtgh_sang_gtgo,"Lắp đặt OLT, swap card GTGH sang GTGO",ĐVT: Card · Kế hoạch tháng 09/2026: 75,15,1
+lap_dat_router_nfx150,Lắp đặt ROUTER NFX150,ĐVT: Bộ · Kế hoạch tháng 09/2026: 5,24,1
+lap_dat_thiet_bi_co_dien_phuc_vu_5g,Lắp đặt thiết bị cơ điện phục vụ 5G,chỉ tiêu tháng 09/2026: 318 Thiết bị,37,1
+lap_tu_nguon,Lắp tủ nguồn,,58,1
+minishelter,Minishelter,,59,1
+nang_cap_agg,Nâng cấp AGG,ĐVT: Node · Kế hoạch tháng 09/2026: 8,21,1
+port_kem,Port kém,,70,1
+port_kem_duoi_26_db,Port kém dưới -26 dB,ĐVT: Port · Kế hoạch tháng 09/2026: 3.472,29,1
+son_lai_tu,Sơn lại tủ,,68,1
+su_co_lap,Sự cố lặp,,73,1
+sua_chua_dieu_hoa_may_phat_dien,"Sửa chữa điều hòa, máy phát điện",chỉ tiêu tháng 09/2026: 42 Thiết bị,44,1
+sua_suy_hao_link_srt_dwdm_sdh,"Sửa suy hao link SRT, DWDM, SDH",ĐVT: Link · Kế hoạch tháng 09/2026: 19,20,1
+swap_1bt_doi_uctt_mesh,"SWAP 1BT, đổi UCTT Mesh",ĐVT: Thuê bao · Kế hoạch tháng 09/2026: 4.105,27,1
+swap_ont_2bt,Swap ONT 2BT,,72,1
+swap_tu_nguon_dc,Swap tủ nguồn DC,chỉ tiêu tháng 09/2026: 4 Tủ,54,1
+swap_xgspon_nam_2026,Swap XGSPON năm 2026,ĐVT: Node · Kế hoạch tháng 09/2026: 78,14,1
+tach_node_co_dinh_bang_rong,Tách node cố định băng rộng,ĐVT: Node · Kế hoạch tháng 09/2026: 6,22,1
+test_may_phat_dien_ac_quy_pool,"Test máy phát điện, ắc quy Pool",chỉ tiêu tháng 09/2026: 28 Thiết bị,47,1
+test_may_phat_dien_trong_kho,Test máy phát điện trong kho,chỉ tiêu tháng 09/2026: 17 Máy,49,1
+thay_the_daq,Thay thế DAQ,chỉ tiêu tháng 09/2026: 2 Bộ,55,1
+thay_the_thiet_bi_bao_hong_tren_phan_mem,Thay thế thiết bị báo hỏng trên phần mềm ICMS,chỉ tiêu tháng 09/2026: 51 Thiết bị,43,1
+thay_tu_ong_tu_bay,Thay tủ ong/tủ bay,,67,1
+thu_hoi_ac_quy,Thu hồi ắc quy,chỉ tiêu tháng 09/2026: 40 Bộ,45,1
+thu_hoi_ats_hong_han,Thu hồi ATS hỏng hẳn,chỉ tiêu tháng 09/2026: 1 Bộ,57,1
+thu_hoi_thiet_bi,Thu hồi thiết bị,,62,1
+thuc_hien_bao_duong_nha_tram,Thực hiện bảo dưỡng nhà trạm,,83,1
+thuc_hien_wo_tt,Thực hiện WO_TT,chỉ tiêu tháng 09/2026: 99 WO,39,1
+tich_hop_phat_song_tram_5g,Tích hợp phát sóng trạm 5G,,60,1
+tich_hop_srt5g,Tích hợp SRT5G,,10,1
+tiep_xuc_kh_roi_mang,Tiếp xúc KH rời mạng,,61,1
+tram_huy_di_doi,Trạm hủy/di dời,,78,1
+trien_khai_dau_noi_5g_nam_2026,Triển khai đấu nối 5G năm 2026,ĐVT: Trạm · Kế hoạch tháng 09/2026: 317,13,1
+trien_khai_dau_noi_ring_5g_khep_ring,Triển khai đấu nối ring 5G khép ring,ĐVT: Ring · Kế hoạch tháng 09/2026: 5,23,1
+trien_khai_diem_phat_song,SOCq,Triển khai mạng quân sự,93,1
+trien_khai_lap_dat_tich_hop_giam_sat,Triển khai lắp đặt tích hợp giám sát,chỉ tiêu tháng 09/2026: 4 Trạm,53,1
+wo_qua_han_nguy_co_phat_sla,WO quá hạn nguy cơ phạt SLA,,63,1
+xu_ly_chenh_lech_tai_san,Xử lý chênh lệch tài sản,,77,1
