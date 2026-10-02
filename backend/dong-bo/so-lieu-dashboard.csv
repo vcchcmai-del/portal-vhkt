@@ -1796,6 +1796,32 @@ PAKH_TARGET,2026-08,Số sự cố truyền dẫn,VCC HCM,56.0
 PAKH_TARGET,2026-08,Số sự cố truyền dẫn,VTU,23.0
 PAKH_TARGET,2026-09,Số sự cố truyền dẫn,BDG,34.0
 PAKH_TARGET,2026-09,Số sự cố truyền dẫn,VTU,24.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,BRA,3.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,CDO,1.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,CHP,9.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,DTG,2.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,HTM,0.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,NGO,0.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,PGO,2.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,PMY,1.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,TDH,9.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,TGO,6.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,THA,8.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,TTG,1.0
+TD_KETQUA,2026-09,Chỉ tiêu hồ sơ,TUN,5.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,BRA,1.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,CDO,0.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,CHP,1.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,DTG,1.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,HTM,1.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,NGO,0.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,PGO,0.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,PMY,2.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,TDH,2.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,TGO,0.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,THA,2.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,TTG,0.0
+TD_KETQUA,2026-09,Kết quả hồ sơ,TUN,1.0
 TL_LAP,2026-04,Tỉ lệ lặp,VCC HCM,6.08
 TL_LAP,2026-05,Tỉ lệ lặp,VCC HCM,6.12
 TL_LAP,2026-06,Tỉ lệ lặp,VCC HCM,5.73

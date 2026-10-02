@@ -1101,6 +1101,7 @@ const DASHBOARD_BOARDS = [
   { value: "WO_TINH", label: "Rời mạng CĐBR — số lượng theo tỉnh" },
   { value: "WO_HUYEN_BD", label: "Rời mạng CĐBR — theo huyện (Bình Dương)" },
   { value: "WO_HUYEN_BRVT", label: "Rời mạng CĐBR — theo huyện (Bà Rịa - Vũng Tàu)" },
+  { value: "TD_KETQUA", label: "Kết quả tuyển dụng theo trung tâm (chỉ tiêu / kết quả hồ sơ)" },
 ];
 
 const boardsOf = (...ma) => DASHBOARD_BOARDS.filter((b) => ma.includes(b.value));
@@ -1118,6 +1119,7 @@ const DASHBOARD_IMPORT_TABS = [
   { id: "pakh10k", label: "PAKH 10k/TB", boards: boardsOf("PAKH10K", "PAKH10K_TARGET") },
   { id: "tl_lap", label: "Tỉ lệ lặp", boards: boardsOf("TL_LAP", "TL_LAP_TARGET") },
   { id: "tl_dapung", label: "Tỉ lệ đáp ứng", boards: boardsOf("TL_DAPUNG", "TL_DAPUNG_TARGET") },
+  { id: "td_ketqua", label: "Kết quả tuyển dụng", boards: boardsOf("TD_KETQUA") },
 ];
 
 const blankMetric = { board: "KPI", period: "", label: "", unit_name: "", value: "" };

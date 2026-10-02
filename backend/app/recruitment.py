@@ -97,6 +97,45 @@ def _latest_staffing_per_center(db: Session):
     return list(latest.values())
 
 
+TD_CHI_TIEU = "Chỉ tiêu hồ sơ"
+TD_KET_QUA = "Kết quả hồ sơ"
+
+
+def _ty_le_thuc_hien(chi_tieu, ket_qua):
+    """Tỷ lệ % thực hiện theo đúng cách Phòng Kế hoạch tính trong thông báo
+    kết quả tuyển dụng tháng: chỉ tiêu 0 thì không giao gì là đạt 100%, có hồ
+    sơ là 200%; còn lại kết quả/chỉ tiêu, trần 200%."""
+    ct, kq = chi_tieu or 0, ket_qua or 0
+    if ct <= 0:
+        return 100.0 if kq <= 0 else 200.0
+    return round(min(kq / ct, 2) * 100, 1)
+
+
+def _ket_qua_tuyen_dung(db: Session):
+    """Chỉ tiêu và kết quả hồ sơ theo trung tâm của tháng gần nhất có số liệu
+    (bảng TD_KETQUA, đơn vị = mã trung tâm), kèm danh sách các tháng đã có."""
+    rows = db.query(models.Metric).filter(models.Metric.board == "TD_KETQUA").all()
+    if not rows:
+        return None
+    ky = max(r.period for r in rows)
+    theo_tt = {}
+    for r in rows:
+        if r.period == ky and r.unit_name:
+            theo_tt.setdefault(r.unit_name, {})[r.label] = r.value
+    trung_tam = []
+    for tt, v in theo_tt.items():
+        ct, kq = v.get(TD_CHI_TIEU) or 0, v.get(TD_KET_QUA) or 0
+        trung_tam.append({"center": tt, "chi_tieu": ct, "ket_qua": kq,
+                          "ty_le": _ty_le_thuc_hien(ct, kq)})
+    trung_tam.sort(key=lambda x: (x["ty_le"], -x["chi_tieu"]))
+    tong_ct = sum(x["chi_tieu"] for x in trung_tam)
+    tong_kq = sum(x["ket_qua"] for x in trung_tam)
+    return {"ky": ky, "cac_ky": sorted({r.period for r in rows}, reverse=True),
+            "tong_chi_tieu": tong_ct, "tong_ket_qua": tong_kq,
+            "ty_le": round(tong_kq / tong_ct * 100, 1) if tong_ct else None,
+            "trung_tam": trung_tam}
+
+
 @public_router.get("/recruitment/summary")
 def recruitment_summary(db: Session = Depends(get_db)):
     """
@@ -122,6 +161,7 @@ def recruitment_summary(db: Session = Depends(get_db)):
         "by_status": [{"status": k, "label": STATUS_LABELS.get(k, k), "count": v} for k, v in by_status.items()],
         # Khu vực có ít ứng viên nộp nhất — tín hiệu để nhận biết nơi cần bổ sung nhân sự.
         "short_staffed_locations": [{"label": k, "count": v} for k, v in location_rank[:5]],
+        "ket_qua_thang": _ket_qua_tuyen_dung(db),
         "staffing": {
             "report_date": report_date,
             "total_oft_gap": sum(r.oft_gap for r in staffing_rows),

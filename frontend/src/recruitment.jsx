@@ -158,7 +158,8 @@ const blankStaffing = {
 
 const fmtDay = (v) => v ? new Date(v).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
-const statusCount = (summary, key) => summary?.by_status?.find((s) => s.status === key)?.count ?? 0;
+const fmtKy = (ky) => { const [y, m] = (ky || "").split("-"); return m ? `${m}/${y}` : ky; };
+const statusCount =(summary, key) => summary?.by_status?.find((s) => s.status === key)?.count ?? 0;
 
 /* ============================== TRANG TUYỂN DỤNG (công khai) ============================== */
 
@@ -217,6 +218,7 @@ export function RecruitmentView() {
   const [summary, setSummary] = useState(null);
   const user = getUser();
   const staffing = summary?.staffing;
+  const ketQua = summary?.ket_qua_thang;
   const { tenTrungTam } = useCenters();
 
   const load = () => api.get("/api/recruitment/summary").then(setSummary).catch(() => {});
@@ -286,6 +288,35 @@ export function RecruitmentView() {
           {!(staffing?.centers || []).length && <Empty title="Chưa có báo cáo định biên theo trung tâm." />}
         </div>
       </Card>
+
+      {ketQua && (
+        <Card title={`Kết quả tuyển dụng tháng ${fmtKy(ketQua.ky)}`} icon={UserCheck} pad={false}
+          action={<span className="muted" style={{ fontSize: 12 }}>
+            {ketQua.tong_ket_qua}/{ketQua.tong_chi_tieu} hồ sơ · đạt {ketQua.ty_le ?? "—"}%
+          </span>}>
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Trung tâm</th><th>Chỉ tiêu hồ sơ</th><th>Kết quả</th><th>Tỷ lệ thực hiện</th></tr></thead>
+              <tbody>
+                {ketQua.trung_tam.map((c) => (
+                  <tr key={c.center}>
+                    <td><b>{tenTrungTam(c.center)}</b></td>
+                    <td>{c.chi_tieu}</td>
+                    <td>{c.ket_qua || "—"}</td>
+                    <td><span className={`tag ${c.ty_le >= 100 ? "tag-grey" : c.ket_qua > 0 ? "tag-amber" : "tag-red"}`}>{c.ty_le}%</span></td>
+                  </tr>
+                ))}
+                <tr>
+                  <td><b>Tổng</b></td>
+                  <td><b>{ketQua.tong_chi_tieu}</b></td>
+                  <td><b>{ketQua.tong_ket_qua}</b></td>
+                  <td><b>{ketQua.ty_le ?? "—"}%</b></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card>

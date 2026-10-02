@@ -242,6 +242,7 @@ BOARD_LABELS = {
     "TL_DAPUNG": "Tỉ lệ đáp ứng (theo tỉnh)",
     "TL_DAPUNG_TARGET": "Chỉ tiêu/Target Tỉ lệ đáp ứng",
     "HIRE": "Tuyển dụng (tính tự động từ Ứng viên/Định biên, không nhập tay)",
+    "TD_KETQUA": "Kết quả tuyển dụng theo trung tâm (chỉ tiêu / kết quả hồ sơ)",
 }
 BOARDS = set(BOARD_LABELS)
 # Tra ngược từ tên hiển thị (không phân biệt hoa/thường, khoảng trắng thừa)
@@ -278,7 +279,7 @@ BOARDS_KHONG_THEO_TINH = {
 # bảng đối chiếu cùng kỳ năm trước bị trống.
 BOARDS_THEO_DIA_BAN = {"NETWORK", "NETWORK_TARGET", "VHKT", "VHKT_TARGET",
                        "PAKH10K", "PAKH10K_TARGET", "TL_LAP", "TL_LAP_TARGET",
-                       "TL_DAPUNG", "TL_DAPUNG_TARGET"}
+                       "TL_DAPUNG", "TL_DAPUNG_TARGET", "TD_KETQUA"}
 DIA_BAN_CO_DINH = set(province_codes.BANG_TRA)
 
 
