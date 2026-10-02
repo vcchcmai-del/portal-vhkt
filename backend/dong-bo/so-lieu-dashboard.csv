@@ -2291,7 +2291,7 @@ WO,2026-05,Tỷ lệ rời mạng CĐBR,,0.92
 WO,2026-06,Tỷ lệ rời mạng CĐBR,,0.88
 WO,2026-07,Tỷ lệ rời mạng CĐBR,,0.83
 WO,2026-08,Tỷ lệ rời mạng CĐBR,,0.95
-WO,2026-09,Tỷ lệ rời mạng CĐBR,,0.82
+WO,2026-09,Tỷ lệ rời mạng CĐBR,,0.85
 WO_HUYEN_BD,2026-01,Số lượng rời mạng,Bàu Bàng,58.0
 WO_HUYEN_BD,2026-01,Số lượng rời mạng,Bắc Tân Uyên,43.0
 WO_HUYEN_BD,2026-01,Số lượng rời mạng,Bến Cát,249.0
@@ -2623,6 +2623,7 @@ WO_TARGET,2026-05,Tỷ lệ rời mạng CĐBR,,0.61
 WO_TARGET,2026-06,Tỷ lệ rời mạng CĐBR,,0.61
 WO_TARGET,2026-07,Tỷ lệ rời mạng CĐBR,,0.61
 WO_TARGET,2026-08,Tỷ lệ rời mạng CĐBR,,0.61
+WO_TARGET,2026-09,Tỷ lệ rời mạng CĐBR,,0.61
 WO_TINH,2026-01,Số lượng KH rời mạng,BDG,3035.0
 WO_TINH,2026-01,Số lượng KH rời mạng,VCC HCM,4088.0
 WO_TINH,2026-01,Số lượng KH rời mạng,VTU,1053.0
@@ -2647,3 +2648,6 @@ WO_TINH,2026-07,Số lượng KH rời mạng,VTU,868.0
 WO_TINH,2026-08,Số lượng KH rời mạng,BDG,3035.0
 WO_TINH,2026-08,Số lượng KH rời mạng,VCC HCM,3874.0
 WO_TINH,2026-08,Số lượng KH rời mạng,VTU,839.0
+WO_TINH,2026-09,Số lượng KH rời mạng,BDG,2550.0
+WO_TINH,2026-09,Số lượng KH rời mạng,VCC HCM,3467.0
+WO_TINH,2026-09,Số lượng KH rời mạng,VTU,917.0
