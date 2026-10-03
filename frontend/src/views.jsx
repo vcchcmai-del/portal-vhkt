@@ -1500,6 +1500,9 @@ function NhomPhatPie({ title, nhom, kyGop }) {
   const sapXep = Object.entries(cong).map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
   const tong = sapXep.reduce((s, x) => s + x.value, 0);
+  // Ghi thẳng số tiền lên chú giải và giữa vòng tròn — trước đây phải rê/bấm
+  // vào từng miếng mới thấy bao nhiêu triệu.
+  const trieu = (v) => (Math.round(v * 10) / 10).toLocaleString("vi-VN");
   return (
     <Card title={title} pad={false}
       action={<span className="muted" style={{ fontSize: 12.5 }}>{nhanBoLoc}</span>}>
@@ -1512,15 +1515,18 @@ function NhomPhatPie({ title, nhom, kyGop }) {
               <Pie data={sapXep} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={100} paddingAngle={1.5}>
                 {sapXep.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
               </Pie>
-              <Tooltip {...tooltipStyle} formatter={(v) => `${v.toLocaleString("vi-VN")} triệu (${Math.round((v / tong) * 100)}%)`} />
+              <text x="50%" y="50%" textAnchor="middle" dy={-4} style={{ fontSize: 20, fontWeight: 800, fill: "currentColor" }}>{trieu(tong)}</text>
+              <text x="50%" y="50%" textAnchor="middle" dy={16} style={{ fontSize: 11.5, fill: "#807A7C" }}>triệu</text>
+              <Tooltip {...tooltipStyle} formatter={(v) => `${trieu(v)} triệu (${Math.round((v / tong) * 100)}%)`} />
             </PieChart>
           </ResponsiveContainer>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "9px 16px", marginTop: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: "9px 16px", marginTop: 10 }}>
             {sapXep.map((x, i) => (
               <div key={x.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
                 <span style={{ width: 10, height: 10, borderRadius: 3, background: MAU_TRON[i % MAU_TRON.length], flexShrink: 0 }} />
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
-                <b className="mono">{Math.round((x.value / tong) * 100)}%</b>
+                <span title={x.name} style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
+                <span className="mono" style={{ whiteSpace: "nowrap" }}>{trieu(x.value)} tr</span>
+                <b className="mono" style={{ minWidth: 34, textAlign: "right" }}>{Math.round((x.value / tong) * 100)}%</b>
               </div>
             ))}
           </div>
