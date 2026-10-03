@@ -1511,8 +1511,21 @@ function NhomPhatPie({ title, nhom, kyGop }) {
       ) : (
         <div style={{ padding: "8px 18px 18px" }}>
           <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie data={sapXep} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={100} paddingAngle={1.5}>
+            <PieChart margin={{ top: 16, bottom: 16, left: 90, right: 90 }}>
+              <Pie data={sapXep} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={100} paddingAngle={1.5}
+                labelLine={(p) => (p.value / tong >= 0.03 ? <path d={`M${p.points[0].x},${p.points[0].y}L${p.points[1].x},${p.points[1].y}`} stroke={p.stroke} fill="none" /> : <g />)}
+                label={({ cx, cy, midAngle, outerRadius, value, fill }) => {
+                  // Miếng dưới 3% bỏ nhãn cho khỏi đè chữ — số vẫn có ở chú giải.
+                  if (value / tong < 0.03) return null;
+                  const r = outerRadius + 22, rad = Math.PI / 180;
+                  const x = cx + r * Math.cos(-midAngle * rad), y = cy + r * Math.sin(-midAngle * rad);
+                  return (
+                    <text x={x} y={y} textAnchor={x > cx ? "start" : "end"} dominantBaseline="central"
+                      style={{ fontSize: 12, fontWeight: 700, fill }}>
+                      {trieu(value)} tr · {Math.round((value / tong) * 100)}%
+                    </text>
+                  );
+                }}>
                 {sapXep.map((_, i) => <Cell key={i} fill={MAU_TRON[i % MAU_TRON.length]} />)}
               </Pie>
               <text x="50%" y="50%" textAnchor="middle" dy={-4} style={{ fontSize: 20, fontWeight: 800, fill: "currentColor" }}>{trieu(tong)}</text>
