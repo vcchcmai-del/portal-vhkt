@@ -1647,11 +1647,15 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
   // Tên kỳ liền trước (Tháng 2026-08 / Quý 2/2026) để đặt lên đầu cột; luỹ kế
   // không có kỳ liền trước nên ẩn hẳn nhóm cột này.
   const nhanKyTruoc = rows.find((r) => r.nhan_ky_lien_truoc)?.nhan_ky_lien_truoc;
-  const tot = (kq) => (kq == null ? null : (huongTot === "thap" ? kq <= 0 : kq >= 0));
-  const nhanTot = (t) => (huongTot === "thap" ? (t ? "Cải thiện" : "Kém đi") : (t ? "Tăng trưởng" : "Suy giảm"));
+  // Chiều tốt theo TỪNG chỉ tiêu nếu có khai báo (vd Doanh thu nằm chung bảng
+  // với tỷ lệ phạt nhưng càng cao càng tốt), không thì theo cả bảng.
+  const huongCua = (ct) => HUONG_TOT_CHI_TIEU[ct] || huongTot;
+  const tot = (kq, hg) => (kq == null ? null : (hg === "thap" ? kq <= 0 : kq >= 0));
+  const nhanTot = (t, hg) => (hg === "thap" ? (t ? "Cải thiện" : "Kém đi") : (t ? "Tăng trưởng" : "Suy giảm"));
+  const tenTruoc = tenKyTruoc(nhanKyTruoc);
 
   return (
-    <Card title={`Đánh giá KPI so với target, kỳ trước & cùng kỳ — kỳ ${kyMoiNhat}`} icon={ShieldCheck} pad={false}>
+    <Card title={`Đánh giá KPI so với target${nhanKyTruoc ? `, ${tenTruoc.toLowerCase()}` : ""} & cùng kỳ năm trước — kỳ ${kyMoiNhat}`} icon={ShieldCheck} pad={false}>
       <div style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead>
@@ -1661,23 +1665,22 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
               {hienBinhQuan && <th style={{ textAlign: "right" }}>BQ/tháng</th>}
               <th style={{ textAlign: "right" }}>So target — Kết quả</th><th>So target — Đánh giá</th>
               {nhanKyTruoc && <>
-                <th style={{ textAlign: "right" }}>Kỳ trước — Giá trị<br /><span className="muted" style={{ fontWeight: 500 }}>{nhanKyTruoc}</span></th>
-                <th style={{ textAlign: "right" }}>Kỳ trước — Kết quả</th><th>Kỳ trước — Đánh giá</th>
+                <th style={{ textAlign: "right" }}>{tenTruoc} — Giá trị<br /><span className="muted" style={{ fontWeight: 500 }}>{nhanKyTruoc}</span></th>
+                <th style={{ textAlign: "right" }}>{tenTruoc} — Kết quả</th><th>{tenTruoc} — Đánh giá</th>
               </>}
-              <th style={{ textAlign: "right" }}>Cùng kỳ — Kết quả</th><th>Cùng kỳ — Đánh giá</th>
-              <th style={{ textAlign: "right" }}>Cùng kỳ — Giá trị</th>
+              <th style={{ textAlign: "right" }}>Cùng kỳ năm trước — Kết quả</th><th>Cùng kỳ năm trước — Đánh giá</th>
+              <th style={{ textAlign: "right" }}>Cùng kỳ năm trước — Giá trị</th>
             </tr>
           </thead>
           <tbody>
             {nhom.map((n, idx) => n.hang.map((r, j) => {
               const kq = soTarget(r);
+              const hg = huongCua(n.chiTieu);
               // "thap": vượt target (kq dương) là chưa đạt. "cao": vượt target (kq dương) là đạt.
-              const dat = kq == null ? null : (huongTot === "thap" ? kq <= 0 : kq >= 0);
+              const dat = tot(kq, hg);
               const kqCk = r.chenh_lech_cung_ky_phan_tram;
-              const totCungKy = kqCk == null ? null : (huongTot === "thap" ? kqCk <= 0 : kqCk >= 0);
-              const nhanCungKy = huongTot === "thap"
-                ? (totCungKy ? "Cải thiện" : "Kém đi")
-                : (totCungKy ? "Tăng trưởng" : "Suy giảm");
+              const totCungKy = tot(kqCk, hg);
+              const nhanCungKy = nhanTot(totCungKy, hg);
               return (
                 <tr key={`${n.chiTieu}-${r.don_vi || j}`}>
                   {j === 0 && <td className="mono" rowSpan={n.hang.length} style={{ textAlign: "center", fontWeight: 700 }}>{idx + 1}</td>}
@@ -1695,11 +1698,11 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
                   <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt" : "Chưa đạt"}</span>}</td>
                   {nhanKyTruoc && (() => {
                     const kqKt = r.chenh_lech_ky_lien_truoc_phan_tram;
-                    const t = tot(kqKt);
+                    const t = tot(kqKt, hg);
                     return <>
                       <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(r.ky_lien_truoc, n.chiTieu)}</td>
                       <td className="mono" style={{ textAlign: "right" }}>{kqKt != null ? `${kqKt > 0 ? "+" : ""}${kqKt}%` : "—"}</td>
-                      <td>{t == null ? <span className="muted">—</span> : <span className={`tag ${t ? "tag-green" : "tag-amber"}`}>{nhanTot(t)}</span>}</td>
+                      <td>{t == null ? <span className="muted">—</span> : <span className={`tag ${t ? "tag-green" : "tag-amber"}`}>{nhanTot(t, hg)}</span>}</td>
                     </>;
                   })()}
                   <td className="mono" style={{ textAlign: "right" }}>{kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}</td>
@@ -1789,7 +1792,16 @@ const TAB_MOT_CHI_TIEU = {
 
 const HUONG_TOT_CHI_TIEU = {
   "PAKH 10k/TB": "thap", "Tỉ lệ lặp": "thap", "Tỉ lệ đáp ứng": "cao",
+  "F-DV khác 10k/TB": "thap",
+  // Doanh thu nằm chung tab với tỷ lệ phạt (càng thấp càng tốt) nên phải ghi
+  // rõ — trước đây doanh thu tăng 2% lại bị đánh giá "Suy giảm".
+  "Doanh thu": "cao",
+  "XLSC đúng hẹn": "cao", "XLSC VIP 3H": "cao", "XLSC HOT 3h": "cao", "HTDV 24H": "cao",
+  "SOC2 24H": "cao", "SOC2 72h": "cao", "TKM đúng hẹn": "cao",
 };
+
+/** "Quý 2/2026" -> "Quý trước", "Tháng 2026-08" -> "Tháng trước" — tên cột so kỳ liền trước. */
+const tenKyTruoc = (nhan) => (nhan?.startsWith("Quý") ? "Quý trước" : "Tháng trước");
 /**
  * Ghi chú "(N th)" khi chỉ tiêu chỉ có số ở một phần các tháng của kỳ.
  *
@@ -1877,10 +1889,13 @@ function kyLienTruocCua(cheDo, phamVi) {
   }
   if (cheDo.startsWith("thang") && phamVi.ky.length === 1) {
     const ky = thangLienTruoc(phamVi.ky[0]);
-    return ky ? { ky: [ky], nhan: `Tháng ${ky}` } : null;
+    return ky ? { ky: [ky], nhan: nhanThang(ky) } : null;
   }
   return null;
 }
+
+/** "2026-08" -> "Tháng 08/2026". */
+const nhanThang = (ky) => { const [y, m] = ky.split("-"); return `Tháng ${m}/${y}`; };
 
 const chenhLechPhanTram = (th, truoc) =>
   (th != null && truoc ? Math.round(((th - truoc) / truoc) * 1000) / 10 : null);
@@ -1893,7 +1908,7 @@ function gopTheoKy(compare, cheDo) {
     return compare.map((c) => {
       const kyTruoc = thangLienTruoc(c.ky);
       const truoc = kyTruoc ? theoKhoa.get(`${kyTruoc}|${c.chi_tieu}|${c.don_vi || ""}`) ?? null : null;
-      return { ...c, ky_lien_truoc: truoc, nhan_ky_lien_truoc: kyTruoc && `Tháng ${kyTruoc}`,
+      return { ...c, ky_lien_truoc: truoc, nhan_ky_lien_truoc: kyTruoc && nhanThang(kyTruoc),
                chenh_lech_ky_lien_truoc_phan_tram: chenhLechPhanTram(c.thuc_hien, truoc) };
     });
   }
@@ -2220,7 +2235,7 @@ export function DashView({ bangMoSan }) {
       {laVHKT && <CanhBaoTrungTam danhSach={duLieu?.canh_bao_trung_tam} />}
 
       {compareXem?.length > 0 && (
-        <Card title="Đối chiếu chỉ tiêu, kỳ trước & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
+        <Card title={`Đối chiếu chỉ tiêu${coKyTruoc ? `, ${tenKyTruoc(compareXem.find((c) => c.nhan_ky_lien_truoc)?.nhan_ky_lien_truoc).toLowerCase()}` : ""} & cùng kỳ năm trước`} icon={ArrowUpRight} pad={false}>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead>
@@ -2229,9 +2244,9 @@ export function DashView({ bangMoSan }) {
                   {dangGop && <th style={{ textAlign: "right" }}>BQ/tháng</th>}
                   <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>So target</th><th>Đánh giá</th>
                   {coKyTruoc && <>
-                    <th style={{ textAlign: "right" }}>Kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
+                    <th style={{ textAlign: "right" }}>{tenKyTruoc(compareXem.find((c) => c.nhan_ky_lien_truoc)?.nhan_ky_lien_truoc)}</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
                   </>}
-                  <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
+                  <th style={{ textAlign: "right" }}>Cùng kỳ năm trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
                 </tr>
               </thead>
               <tbody>
