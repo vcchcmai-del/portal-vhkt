@@ -1644,9 +1644,14 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
   // càng thấp càng tốt (sự cố, ksub*min, GĐTT, tiền phạt, rời mạng) thì vượt
   // (dương) là chưa đạt/tồi đi; càng cao càng tốt (XLCS, KPI TKM) thì vượt là đạt.
   const soTarget = (r) => (r.target == null ? null : ((r.thuc_hien - r.target) / r.target) * 100);
+  // Tên kỳ liền trước (Tháng 2026-08 / Quý 2/2026) để đặt lên đầu cột; luỹ kế
+  // không có kỳ liền trước nên ẩn hẳn nhóm cột này.
+  const nhanKyTruoc = rows.find((r) => r.nhan_ky_lien_truoc)?.nhan_ky_lien_truoc;
+  const tot = (kq) => (kq == null ? null : (huongTot === "thap" ? kq <= 0 : kq >= 0));
+  const nhanTot = (t) => (huongTot === "thap" ? (t ? "Cải thiện" : "Kém đi") : (t ? "Tăng trưởng" : "Suy giảm"));
 
   return (
-    <Card title={`Đánh giá KPI so với target & cùng kỳ — kỳ ${kyMoiNhat}`} icon={ShieldCheck} pad={false}>
+    <Card title={`Đánh giá KPI so với target, kỳ trước & cùng kỳ — kỳ ${kyMoiNhat}`} icon={ShieldCheck} pad={false}>
       <div style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead>
@@ -1655,6 +1660,10 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
               <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>Thực hiện</th>
               {hienBinhQuan && <th style={{ textAlign: "right" }}>BQ/tháng</th>}
               <th style={{ textAlign: "right" }}>So target — Kết quả</th><th>So target — Đánh giá</th>
+              {nhanKyTruoc && <>
+                <th style={{ textAlign: "right" }}>Kỳ trước — Giá trị<br /><span className="muted" style={{ fontWeight: 500 }}>{nhanKyTruoc}</span></th>
+                <th style={{ textAlign: "right" }}>Kỳ trước — Kết quả</th><th>Kỳ trước — Đánh giá</th>
+              </>}
               <th style={{ textAlign: "right" }}>Cùng kỳ — Kết quả</th><th>Cùng kỳ — Đánh giá</th>
               <th style={{ textAlign: "right" }}>Cùng kỳ — Giá trị</th>
             </tr>
@@ -1684,6 +1693,15 @@ function BangDanhGiaKPI({ compare, chiTieuList, huongTot = "thap", nhanChiTieu }
                   )}
                   <td className="mono" style={{ textAlign: "right" }}>{kq != null ? `${kq > 0 ? "+" : ""}${kq.toFixed(2)}%` : "—"}</td>
                   <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt" : "Chưa đạt"}</span>}</td>
+                  {nhanKyTruoc && (() => {
+                    const kqKt = r.chenh_lech_ky_lien_truoc_phan_tram;
+                    const t = tot(kqKt);
+                    return <>
+                      <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(r.ky_lien_truoc, n.chiTieu)}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{kqKt != null ? `${kqKt > 0 ? "+" : ""}${kqKt}%` : "—"}</td>
+                      <td>{t == null ? <span className="muted">—</span> : <span className={`tag ${t ? "tag-green" : "tag-amber"}`}>{nhanTot(t)}</span>}</td>
+                    </>;
+                  })()}
                   <td className="mono" style={{ textAlign: "right" }}>{kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}</td>
                   <td>{totCungKy == null ? <span className="muted">—</span> : <span className={`tag ${totCungKy ? "tag-green" : "tag-amber"}`}>{nhanCungKy}</span>}</td>
                   <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(r.cung_ky_truoc, n.chiTieu)}</td>
@@ -1834,11 +1852,63 @@ function kyCuaCheDo(cheDo, nam) {
   };
 }
 
+/** "2026-09" -> "2026-08"; "2026-01" -> "2025-12". */
+function thangLienTruoc(ky) {
+  const [y, m] = (ky || "").split("-").map((x) => parseInt(x, 10));
+  if (!y || !m) return null;
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+
+/**
+ * Kỳ liền trước của kỳ đang xem, để so "tháng n với tháng n-1" hoặc "quý n với
+ * quý n-1". Luỹ kế T1–Tn thì không so: luỹ kế n tháng luôn lớn hơn n-1 tháng,
+ * con số chênh lệch không nói lên điều gì.
+ */
+function kyLienTruocCua(cheDo, phamVi) {
+  if (!phamVi) return null;
+  if (cheDo.startsWith("quy")) {
+    const q = parseInt(cheDo.slice(3), 10);
+    const nam = parseInt(phamVi.ky[0].split("-")[0], 10);
+    const [qt, namT] = q === 1 ? [4, nam - 1] : [q - 1, nam];
+    return {
+      ky: [qt * 3 - 2, qt * 3 - 1, qt * 3].map((m) => `${namT}-${String(m).padStart(2, "0")}`),
+      nhan: `Quý ${qt}/${namT}`,
+    };
+  }
+  if (cheDo.startsWith("thang") && phamVi.ky.length === 1) {
+    const ky = thangLienTruoc(phamVi.ky[0]);
+    return ky ? { ky: [ky], nhan: `Tháng ${ky}` } : null;
+  }
+  return null;
+}
+
+const chenhLechPhanTram = (th, truoc) =>
+  (th != null && truoc ? Math.round(((th - truoc) / truoc) * 1000) / 10 : null);
+
 function gopTheoKy(compare, cheDo) {
-  if (!compare?.length || cheDo === "thang") return compare || [];
+  if (!compare?.length) return compare || [];
+  if (cheDo === "thang") {
+    // Xem từng tháng: mỗi dòng so với chính chỉ tiêu/đơn vị đó ở tháng liền trước.
+    const theoKhoa = new Map(compare.map((c) => [`${c.ky}|${c.chi_tieu}|${c.don_vi || ""}`, c.thuc_hien]));
+    return compare.map((c) => {
+      const kyTruoc = thangLienTruoc(c.ky);
+      const truoc = kyTruoc ? theoKhoa.get(`${kyTruoc}|${c.chi_tieu}|${c.don_vi || ""}`) ?? null : null;
+      return { ...c, ky_lien_truoc: truoc, nhan_ky_lien_truoc: kyTruoc && `Tháng ${kyTruoc}`,
+               chenh_lech_ky_lien_truoc_phan_tram: chenhLechPhanTram(c.thuc_hien, truoc) };
+    });
+  }
   const nam = Math.max(...compare.map((c) => parseInt((c.ky || "0-0").split("-")[0], 10) || 0));
   const phamVi = kyCuaCheDo(cheDo, nam);
   if (!phamVi) return compare;
+  const kyTruoc = kyLienTruocCua(cheDo, phamVi);
+  const trongKyTruoc = new Set(kyTruoc?.ky || []);
+  const giaTriKyTruoc = new Map();
+  for (const c of compare) {
+    if (!trongKyTruoc.has(c.ky) || c.thuc_hien == null) continue;
+    const khoa = `${c.chi_tieu}|${c.don_vi || ""}`;
+    if (!giaTriKyTruoc.has(khoa)) giaTriKyTruoc.set(khoa, []);
+    giaTriKyTruoc.get(khoa).push(c.thuc_hien);
+  }
   const nhanKy = phamVi.nhan;
   const trongKy = new Set(phamVi.ky);
   const soThangCuaKy = phamVi.soThang;
@@ -1872,7 +1942,17 @@ function gopTheoKy(compare, cheDo) {
   return [...nhom.values()].map((g) => {
     const th = gop(g.chi_tieu, g.th);
     const ck = gop(g.chi_tieu, g.ck);
+    const dsTruoc = giaTriKyTruoc.get(`${g.chi_tieu}|${g.don_vi || ""}`) || [];
+    let truoc = gop(g.chi_tieu, dsTruoc);
+    // Quý đang xem chưa đủ tháng (vd Q4 mới có T10) mà đem tổng so với cả
+    // quý trước thì "giảm 66%" là ảo — chỉ tiêu cộng dồn được thì quy kỳ trước
+    // về đúng số tháng đang có (bình quân tháng × số tháng) rồi mới so.
+    if (truoc != null && !laChiTieuTyLe(g.chi_tieu) && dsTruoc.length !== g.th.length && g.th.length) {
+      truoc = Math.round((truoc / dsTruoc.length) * g.th.length * 100) / 100;
+    }
     return {
+      ky_lien_truoc: truoc, nhan_ky_lien_truoc: kyTruoc?.nhan || null,
+      chenh_lech_ky_lien_truoc_phan_tram: chenhLechPhanTram(th, truoc),
       ky: nhanKy, chi_tieu: g.chi_tieu, don_vi: g.don_vi,
       thuc_hien: th, target: gop(g.chi_tieu, g.tg), cung_ky_truoc: ck,
       chenh_lech_cung_ky_phan_tram:
@@ -1938,6 +2018,7 @@ export function DashView({ bangMoSan }) {
     () => gopTheoKy(duLieu?.compare, cheDoHopLe), [duLieu, cheDoHopLe]);
   const kyGop = kyCuaCheDo(cheDoHopLe, namXem);
   const dangGop = cheDoHopLe !== "thang";
+  const coKyTruoc = (compareXem || []).some((c) => c.nhan_ky_lien_truoc);
 
   const coSoThat = duLieu?.series?.length > 0;
   const seriesGoc = coSoThat ? duLieu.series : board.mau;
@@ -2139,7 +2220,7 @@ export function DashView({ bangMoSan }) {
       {laVHKT && <CanhBaoTrungTam danhSach={duLieu?.canh_bao_trung_tam} />}
 
       {compareXem?.length > 0 && (
-        <Card title="Đối chiếu chỉ tiêu & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
+        <Card title="Đối chiếu chỉ tiêu, kỳ trước & cùng kỳ năm trước" icon={ArrowUpRight} pad={false}>
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
               <thead>
@@ -2147,6 +2228,9 @@ export function DashView({ bangMoSan }) {
                   <th>Kỳ</th><th>Chỉ tiêu</th><th>Đơn vị</th><th style={{ textAlign: "right" }}>Thực hiện</th>
                   {dangGop && <th style={{ textAlign: "right" }}>BQ/tháng</th>}
                   <th style={{ textAlign: "right" }}>Target</th><th style={{ textAlign: "right" }}>So target</th><th>Đánh giá</th>
+                  {coKyTruoc && <>
+                    <th style={{ textAlign: "right" }}>Kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
+                  </>}
                   <th style={{ textAlign: "right" }}>Cùng kỳ trước</th><th style={{ textAlign: "right" }}>Chênh lệch</th><th>Đánh giá</th>
                 </tr>
               </thead>
@@ -2186,6 +2270,17 @@ export function DashView({ bangMoSan }) {
                         {soTarget != null ? `${soTarget > 0 ? "+" : ""}${soTarget.toFixed(2)}%` : "—"}
                       </td>
                       <td>{dat == null ? <span className="muted">—</span> : <span className={`tag ${dat ? "tag-green" : "tag-red"}`}>{dat ? "Đạt target" : "Không đạt target"}</span>}</td>
+                      {coKyTruoc && (() => {
+                        const kqKt = c.chenh_lech_ky_lien_truoc_phan_tram;
+                        const t = kqKt == null ? null : (hg === "thap" ? kqKt <= 0 : kqKt >= 0);
+                        return <>
+                          <td className="mono muted" style={{ textAlign: "right" }} title={c.nhan_ky_lien_truoc || undefined}>{soTheoChiTieu(c.ky_lien_truoc, c.chi_tieu)}</td>
+                          <td className="mono" style={{ textAlign: "right", color: t == null ? undefined : (t ? "#0A7A50" : RED) }}>
+                            {kqKt != null ? `${kqKt > 0 ? "+" : ""}${kqKt}%` : "—"}
+                          </td>
+                          <td>{t == null ? <span className="muted">—</span> : <span className={`tag ${t ? "tag-green" : "tag-red"}`}>{t ? "Cải thiện" : "Suy giảm"}</span>}</td>
+                        </>;
+                      })()}
                       <td className="mono muted" style={{ textAlign: "right" }}>{soTheoChiTieu(c.cung_ky_truoc, c.chi_tieu)}</td>
                       <td className="mono" style={{ textAlign: "right", color: totCungKy == null ? undefined : (totCungKy ? "#0A7A50" : RED) }}>
                         {kqCk != null ? `${kqCk > 0 ? "+" : ""}${kqCk}%` : "—"}
